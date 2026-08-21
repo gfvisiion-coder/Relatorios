@@ -52,7 +52,6 @@ def main():
     st.markdown("<p style='text-align: center; color: #8B5CF6 !important; font-weight: bold; margin-top: -15px;'>CONTROLE DE PLANTA</p>", unsafe_allow_html=True)
     st.divider()
     
-    # --- ADICIONADO A ABA DE EDIÇÃO AQUI ---
     aba_afc, aba_rtf, aba_equipe, aba_editar, aba_relatorio = st.tabs(["⚙️ AFC", "⚙️ RTF", "👥 EQUIPE", "✏️ EDITAR", "📋 RELATÓRIO"])
     
     # --- ABA AFC ---
@@ -98,7 +97,7 @@ def main():
                 else:
                     st.error("⚠️ Por favor, digite o nome do colaborador!")
 
-    # --- ABA EDITAR (NOVIDADE) ---
+    # --- ABA EDITAR ---
     with aba_editar:
         st.markdown("### ✏️ Corrigir ou Excluir Dados")
         st.caption("Você pode alterar os textos diretamente nas tabelas abaixo. Para apagar uma linha, selecione a caixa à esquerda e aperte **Delete**. Não esqueça de clicar em 'Salvar'!")
@@ -111,7 +110,6 @@ def main():
                 if 'Operador' not in df_maq.columns:
                     df_maq['Operador'] = ""
                 
-                # Tabela editável
                 df_maq_editado = st.data_editor(df_maq, num_rows="dynamic", use_container_width=True, key="edit_maq")
                 
                 if st.button("💾 Salvar Alterações nas Operações"):
@@ -141,7 +139,6 @@ def main():
             
         st.divider()
         
-        # Botão para Zerar tudo (Novo Turno)
         with st.expander("⚠️ ZERAR TODOS OS DADOS (FIM DE TURNO)"):
             st.warning("Atenção: Isso irá apagar **todos** os registros atuais. Só clique aqui se quiser iniciar os relatórios de um novo turno.")
             if st.button("🗑️ APAGAR TUDO E REINICIAR", type="primary", use_container_width=True):
@@ -150,18 +147,34 @@ def main():
                 if os.path.exists(ARQUIVO_EQUIPE):
                     os.remove(ARQUIVO_EQUIPE)
                 st.success("✨ Todos os dados foram apagados! O sistema está pronto para um novo turno.")
-                st.rerun() # Recarrega a página automaticamente
+                time.sleep(1)
+                st.rerun()
 
     # --- ABA RELATÓRIO FINAL ---
     with aba_relatorio:
         st.markdown("### 📋 Gerador de Relatório para WhatsApp/Email")
-        if st.button("🔄 Gerar Relatório de Hoje", type="primary"):
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            gerar = st.button("🔄 Gerar Relatório de Hoje", type="primary", use_container_width=True)
+        with col2:
+            apagar = st.button("🗑️ Apagar Dados e Relatório", use_container_width=True)
+
+        if apagar:
+            if os.path.exists(ARQUIVO_DADOS):
+                os.remove(ARQUIVO_DADOS)
+            if os.path.exists(ARQUIVO_EQUIPE):
+                os.remove(ARQUIVO_EQUIPE)
+            st.success("✨ Todos os dados foram apagados com sucesso!")
+            time.sleep(1)
+            st.rerun()
+
+        if gerar:
             data_hoje = datetime.now().strftime("%d/%m/%Y")
             
             try:
                 df_maq = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
             except pd.errors.ParserError:
-                st.warning("⚠️ Arquivo de operações (CSV) antigo com erro detectado. Ele foi recriado com a nova estrutura de colunas.")
                 df_maq = pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
                 if os.path.exists(ARQUIVO_DADOS):
                     os.remove(ARQUIVO_DADOS)
