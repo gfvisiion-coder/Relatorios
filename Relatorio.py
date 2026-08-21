@@ -103,9 +103,22 @@ def main():
         if st.button("🔄 Gerar Relatório de Hoje", type="primary"):
             data_hoje = datetime.now().strftime("%d/%m/%Y")
             
-            # Carrega os dados
-            df_maq = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
-            df_eq = pd.read_csv(ARQUIVO_EQUIPE) if os.path.exists(ARQUIVO_EQUIPE) else pd.DataFrame(columns=["Tipo", "Nome"])
+            # --- CARREGAMENTO COM TRATAMENTO DE ERRO (NOVO) ---
+            try:
+                df_maq = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
+            except pd.errors.ParserError:
+                st.warning("⚠️ Arquivo de operações (CSV) antigo com erro detectado. Ele foi recriado com a nova estrutura de colunas.")
+                df_maq = pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
+                if os.path.exists(ARQUIVO_DADOS):
+                    os.remove(ARQUIVO_DADOS)
+
+            try:
+                df_eq = pd.read_csv(ARQUIVO_EQUIPE) if os.path.exists(ARQUIVO_EQUIPE) else pd.DataFrame(columns=["Tipo", "Nome"])
+            except pd.errors.ParserError:
+                df_eq = pd.DataFrame(columns=["Tipo", "Nome"])
+                if os.path.exists(ARQUIVO_EQUIPE):
+                    os.remove(ARQUIVO_EQUIPE)
+            # ----------------------------------------------------
             
             # Verifica se as colunas novas existem em bases antigas para evitar erros
             if 'Operador' not in df_maq.columns:
