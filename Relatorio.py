@@ -52,7 +52,8 @@ def main():
     st.markdown("<p style='text-align: center; color: #8B5CF6 !important; font-weight: bold; margin-top: -15px;'>CONTROLE DE PLANTA</p>", unsafe_allow_html=True)
     st.divider()
     
-    aba_afc, aba_rtf, aba_equipe, aba_relatorio = st.tabs(["⚙️ AFC", "⚙️ RTF", "👥 EQUIPE", "📋 RELATÓRIO FINAL"])
+    # --- ADICIONADO A ABA DE EDIÇÃO AQUI ---
+    aba_afc, aba_rtf, aba_equipe, aba_editar, aba_relatorio = st.tabs(["⚙️ AFC", "⚙️ RTF", "👥 EQUIPE", "✏️ EDITAR", "📋 RELATÓRIO"])
     
     # --- ABA AFC ---
     with aba_afc:
@@ -84,7 +85,7 @@ def main():
                 else:
                     st.error("⚠️ Preencha a máquina, o operador e a hora!")
 
-    # --- ABA EQUIPE (Para Faltas e Treinamentos) ---
+    # --- ABA EQUIPE ---
     with aba_equipe:
         with st.form("form_equipe", clear_on_submit=True):
             st.markdown("### 👥 Gestão de Pessoas (Líder)")
@@ -97,13 +98,66 @@ def main():
                 else:
                     st.error("⚠️ Por favor, digite o nome do colaborador!")
 
+    # --- ABA EDITAR (NOVIDADE) ---
+    with aba_editar:
+        st.markdown("### ✏️ Corrigir ou Excluir Dados")
+        st.caption("Você pode alterar os textos diretamente nas tabelas abaixo. Para apagar uma linha, selecione a caixa à esquerda e aperte **Delete**. Não esqueça de clicar em 'Salvar'!")
+        
+        # Edição de Máquinas
+        st.markdown("#### ⚙️ Registros de Operações")
+        if os.path.exists(ARQUIVO_DADOS):
+            try:
+                df_maq = pd.read_csv(ARQUIVO_DADOS)
+                if 'Operador' not in df_maq.columns:
+                    df_maq['Operador'] = ""
+                
+                # Tabela editável
+                df_maq_editado = st.data_editor(df_maq, num_rows="dynamic", use_container_width=True, key="edit_maq")
+                
+                if st.button("💾 Salvar Alterações nas Operações"):
+                    df_maq_editado.to_csv(ARQUIVO_DADOS, index=False)
+                    st.success("Dados de operações corrigidos com sucesso!")
+            except Exception as e:
+                st.error("Erro ao ler os dados das máquinas.")
+        else:
+            st.info("Nenhuma máquina registrada ainda.")
+            
+        st.divider()
+        
+        # Edição de Equipe
+        st.markdown("#### 👥 Registros da Equipe")
+        if os.path.exists(ARQUIVO_EQUIPE):
+            try:
+                df_eq = pd.read_csv(ARQUIVO_EQUIPE)
+                df_eq_editado = st.data_editor(df_eq, num_rows="dynamic", use_container_width=True, key="edit_eq")
+                
+                if st.button("💾 Salvar Alterações na Equipe"):
+                    df_eq_editado.to_csv(ARQUIVO_EQUIPE, index=False)
+                    st.success("Dados da equipe corrigidos com sucesso!")
+            except Exception as e:
+                st.error("Erro ao ler os dados da equipe.")
+        else:
+            st.info("Nenhum colaborador registrado ainda.")
+            
+        st.divider()
+        
+        # Botão para Zerar tudo (Novo Turno)
+        with st.expander("⚠️ ZERAR TODOS OS DADOS (FIM DE TURNO)"):
+            st.warning("Atenção: Isso irá apagar **todos** os registros atuais. Só clique aqui se quiser iniciar os relatórios de um novo turno.")
+            if st.button("🗑️ APAGAR TUDO E REINICIAR", type="primary", use_container_width=True):
+                if os.path.exists(ARQUIVO_DADOS):
+                    os.remove(ARQUIVO_DADOS)
+                if os.path.exists(ARQUIVO_EQUIPE):
+                    os.remove(ARQUIVO_EQUIPE)
+                st.success("✨ Todos os dados foram apagados! O sistema está pronto para um novo turno.")
+                st.rerun() # Recarrega a página automaticamente
+
     # --- ABA RELATÓRIO FINAL ---
     with aba_relatorio:
         st.markdown("### 📋 Gerador de Relatório para WhatsApp/Email")
         if st.button("🔄 Gerar Relatório de Hoje", type="primary"):
             data_hoje = datetime.now().strftime("%d/%m/%Y")
             
-            # --- CARREGAMENTO COM TRATAMENTO DE ERRO (NOVO) ---
             try:
                 df_maq = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
             except pd.errors.ParserError:
@@ -118,13 +172,10 @@ def main():
                 df_eq = pd.DataFrame(columns=["Tipo", "Nome"])
                 if os.path.exists(ARQUIVO_EQUIPE):
                     os.remove(ARQUIVO_EQUIPE)
-            # ----------------------------------------------------
             
-            # Verifica se as colunas novas existem em bases antigas para evitar erros
             if 'Operador' not in df_maq.columns:
                 df_maq['Operador'] = ""
             
-            # Filtra os dados
             manutencao = df_maq[df_maq['Status'] == 'MANUTENÇÃO']['Maquina'].tolist()
             rtf_setup = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'].isin(['PREPARAÇÃO', 'SEQUÊNCIA']))]
             rtf_prod = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'] == 'PRODUZINDO')]
@@ -134,7 +185,6 @@ def main():
             treinamento = df_eq[df_eq['Tipo'] == 'Operador em Treinamento']['Nome'].tolist()
             ausencias = df_eq[df_eq['Tipo'] == 'Ausência / Falta']['Nome'].tolist()
             
-            # Monta o texto gigante
             texto_final = f"PLANTA AFIACAO {data_hoje}\n"
             texto_final += "MAQUINAS EM MANUTENÇAO\n\n"
             texto_final += "\n".join(manutencao) if manutencao else "N/A"
@@ -162,7 +212,6 @@ def main():
             texto_final += "\n\nAusências\n"
             texto_final += "\n".join(ausencias) if ausencias else "N/A"
             
-            # Mostra na tela num formato fácil de copiar
             st.code(texto_final, language="text")
 
 if __name__ == "__main__":
