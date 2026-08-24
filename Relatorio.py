@@ -277,7 +277,7 @@ def tela_login():
     st.markdown("<p style='text-align: center; color: #A1A1AA; font-size: 12px; margin-bottom: 30px;'>Insira seu código de credencial e identificação</p>", unsafe_allow_html=True)
     
     with st.container():
-        cod = st.text_input("Código de Acesso:", type="password", placeholder="Ex: 1123, 1234, 1010...")
+        cod = st.text_input("Código de Acesso:", type="password", placeholder="Digite seu codigo de Acesso")
         nome = st.text_input("Nome do Colaborador / RE:", placeholder="Digite seu nome...")
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         
@@ -315,7 +315,7 @@ def tela_menu():
     
     if perfil == 'tecnico':
         if st.button("📋 RELATÓRIO GERAL CONSOLIDADO", use_container_width=True, type="primary"): mudar_tela('relatorio')
-        if st.button("🔍 CHECK-UP DE ANOMALIAS GERAL", use_container_width=True): mudar_tela('checkup')
+        if st.button("🔍 CHECK-UP DE INCIDENCIAS GERAL", use_container_width=True): mudar_tela('checkup')
         if st.button("✏️ GERENCIAR BANCO DE DADOS", use_container_width=True): mudar_tela('editar')
     else:
         if st.session_state['setor_usuario'] == 'AFC':
@@ -323,7 +323,7 @@ def tela_menu():
         else:
             if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True, type="primary"): mudar_tela('rtf')
             
-        if st.button("🔍 CHECK-UP DE ANOMALIAS", use_container_width=True): mudar_tela('checkup')
+        if st.button("🔍 CHECK-UP DE INCIDENCIAS", use_container_width=True): mudar_tela('checkup')
         if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
         if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
         if st.button("📋 RELATÓRIO DE TURNO", use_container_width=True): mudar_tela('relatorio')
@@ -348,7 +348,7 @@ def render_grid_vertical(lista_maquinas, setor, status_dict):
 
 def tela_checkup():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
-    st.markdown("#### 🔍 Check-up de Anomalias na Planta")
+    st.markdown("#### 🔍 Check-up de incidencias na Planta")
     st.markdown("<p style='font-size: 11px; color: #A1A1AA;'>Monitore equipamentos parados, em preparação ou manutenção.</p>", unsafe_allow_html=True)
     st.divider()
     
