@@ -15,11 +15,11 @@ CSS_APP = """
     label { color: #A1A1AA !important; font-size: 13px !important; font-weight: 600 !important; }
     
     /* Botões do Menu e Grid */
-    button[kind="secondary"] { background-color: #202024 !important; color: #E4E4E7 !important; border: 1px solid #323238 !important; border-radius: 8px !important; transition: 0.2s; font-weight: bold !important; height: 55px !important; font-size: 14px !important;}
+    button[kind="secondary"] { background-color: #202024 !important; color: #E4E4E7 !important; border: 1px solid #323238 !important; border-radius: 8px !important; transition: 0.2s; font-weight: bold !important; height: 50px !important; font-size: 13px !important;}
     button[kind="secondary"]:hover { border-color: #14B8A6 !important; background-color: #27272A !important; }
     
     /* Botões de Ação Principal */
-    div[data-testid="stFormSubmitButton"] > button, button[kind="primary"] { background-color: #0D9488 !important; color: white !important; border: none !important; border-radius: 8px !important; height: 50px !important; font-weight: bold !important; }
+    div[data-testid="stFormSubmitButton"] > button, button[kind="primary"] { background-color: #0D9488 !important; color: white !important; border: none !important; border-radius: 8px !important; height: 45px !important; font-weight: bold !important; }
     div[data-testid="stFormSubmitButton"] > button:hover, button[kind="primary"]:hover { background-color: #0F766E !important; }
     
     /* Inputs */
@@ -115,7 +115,6 @@ def modal_apontamento(maq_id, setor):
     if step_key not in st.session_state:
         st.session_state[step_key] = 1
 
-    # Exibe o status atual detalhado
     if info:
         if "PREPARAÇÃO" in status_atual or "SEQUÊNCIA" in status_atual:
             st.info(f"🟡 **Status Atual:** Em preparação desde as **{hora_atual}**.\n\n👤 **Operador:** {operador_atual}")
@@ -132,7 +131,6 @@ def modal_apontamento(maq_id, setor):
         
     st.divider()
 
-    # ETAPA 1: Pergunta se deseja alterar / se voltou a rodar
     if st.session_state[step_key] == 1:
         if "MANUTENÇÃO" in status_atual:
             st.markdown("⚠️ **Esta máquina está em manutenção.**")
@@ -148,7 +146,6 @@ def modal_apontamento(maq_id, setor):
         if col2.button("❌ Não", key=f"nao_{maq_id}", use_container_width=True):
             st.rerun()
 
-    # ETAPA 2: Formulário de alteração profissional
     elif st.session_state[step_key] == 2:
         with st.form(f"form_alt_{maq_id}"):
             status = st.selectbox("Selecione o Novo Status:", ["🟢 PRODUZINDO", "🟡 PREPARAÇÃO", "🛠️ MANUTENÇÃO", "🔴 PARADA"])
@@ -227,10 +224,10 @@ def tela_menu():
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("⚙️ MAPA AFIAÇÃO", use_container_width=True): mudar_tela('afc')
+        if st.button("⚙️ CÉLULAS AFIAÇÃO", use_container_width=True): mudar_tela('afc')
         if st.button("👥 GESTÃO DE EQUIPE", use_container_width=True): mudar_tela('equipe')
     with col2:
-        if st.button("⚙️ MAPA RETÍFICA", use_container_width=True): mudar_tela('rtf')
+        if st.button("⚙️ CÉLULAS RETÍFICA", use_container_width=True): mudar_tela('rtf')
         if st.button("✏️ CORRIGIR DADOS", use_container_width=True): mudar_tela('editar')
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -254,60 +251,54 @@ def render_grid_matricial(matriz, setor, status_dict):
                 
                 label_botao = f"{icone} {maq}"
                 if cols[i].button(label_botao, key=f"btn_{setor}_{maq}", use_container_width=True):
-                    # Reseta o step do pop-up ao abrir
                     st.session_state[f"step_{maq}"] = 1
                     modal_apontamento(maq, setor)
 
 def tela_afc():
     if st.button("⬅️ Voltar"): mudar_tela('menu')
-    st.markdown("### 🗺️ Mapa da Afiação")
+    st.markdown("### 🗂️ Células de Afiação")
     st.caption("🟢 Produzindo | 🟡 Setup | 🔴 Parada | 🛠️ Manutenção | ⚪ Sem apontamento")
     st.divider()
     
     status_dict = ler_status_atual()
     
-    col_esq, col_dir = st.columns(2)
+    # ORGANIZADO POR CÉLULAS COMPACTAS
+    st.markdown("#### 🔵 Célula 1 (Fileiras 6 a 8)")
+    celula_1 = [
+        ["30-161", "29-078", "8-247", "6-868"],
+        ["32-081", "31-969", "4-427", "9-088"]
+    ]
+    render_grid_matricial(celula_1, "AFC", status_dict)
     
-    with col_esq:
-        st.markdown("<h5 style='text-align: center; color: #14B8A6;'>Bloco Esquerdo</h5>", unsafe_allow_html=True)
-        layout_esq = [
-            ["30-161", "29-078"],
-            ["32-081", "31-969"],
-            ["34-132", "33-160"],
-            ["36-084", "35-131"],
-            ["38-596", "37-892"],
-            ["40-142", "39-905"],
-            ["", "41-141"]
-        ]
-        render_grid_matricial(layout_esq, "AFC", status_dict)
+    st.markdown("#### 🔵 Célula 2 (Fileiras 29 a 30 / Meio)")
+    celula_2 = [
+        ["34-132", "33-160", "10-812", "7-743"],
+        ["36-084", "35-131", "12-367", "11-365"]
+    ]
+    render_grid_matricial(celula_2, "AFC", status_dict)
 
-    with col_dir:
-        st.markdown("<h5 style='text-align: center; color: #14B8A6;'>Bloco Direito</h5>", unsafe_allow_html=True)
-        layout_dir = [
-            ["8-247", "6-868"],
-            ["4-427", "9-088"],
-            ["10-812", "7-743"],
-            ["12-367", "11-365"],
-            ["14-967", "13-964"],
-            ["16-975", "15-973"],
-            ["18-957", "17-140"],
-            ["20-774", "19-760"],
-            ["22-813", "21-206"],
-            ["24-761", "23-165"],
-            ["26-635", "25-209"],
-            ["28-432", "27-431"]
-        ]
-        render_grid_matricial(layout_dir, "AFC", status_dict)
+    st.markdown("#### 🔵 Célula 3 (Fileiras Finais)")
+    celula_3 = [
+        ["38-596", "37-892", "14-967", "13-964"],
+        ["40-142", "39-905", "16-975", "15-973"],
+        ["", "41-141", "18-957", "17-140"],
+        ["", "", "20-774", "19-760"],
+        ["", "", "22-813", "21-206"],
+        ["", "", "24-761", "23-165"],
+        ["", "", "26-635", "25-209"],
+        ["", "", "28-432", "27-431"]
+    ]
+    render_grid_matricial(celula_3, "AFC", status_dict)
 
 def tela_rtf():
     if st.button("⬅️ Voltar"): mudar_tela('menu')
-    st.markdown("### 🗺️ Mapa da Retífica")
+    st.markdown("### 🗂️ Células de Retífica")
     st.caption("🟢 Produzindo | 🟡 Setup | 🔴 Parada | 🛠️ Manutenção | ⚪ Sem apontamento")
     st.divider()
     
     status_dict = ler_status_atual()
     
-    st.markdown("#### Centerless")
+    st.markdown("#### ⚫ Centerless")
     layout_centerless = [
         ["6-6J1", "17-6J1"]
     ]
@@ -317,8 +308,8 @@ def tela_rtf():
     
     st.divider()
     
-    st.markdown("#### Retíficas Padrão")
-    layout_rtf = [
+    st.markdown("#### 🟣 Célula Principal de Retíficas")
+    celula_rtf = [
         ["30-786", "", "", ""], 
         ["32-918", "29-785", "4-425", "3-426"],
         ["34-842", "31-806", "7-267", "5-903"],
@@ -333,7 +324,7 @@ def tela_rtf():
         ["", "", "26-260", "25-258"],
         ["", "", "28-954", "27-917"]
     ]
-    render_grid_matricial(layout_rtf, "RTF", status_dict)
+    render_grid_matricial(celula_rtf, "RTF", status_dict)
 
 def tela_equipe():
     if st.button("⬅️ Voltar"): mudar_tela('menu')
