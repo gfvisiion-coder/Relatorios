@@ -7,7 +7,7 @@ import time
 # --- CONFIGURAÇÃO BASE DO APP ---
 st.set_page_config(page_title="App MES - Planta", page_icon="📱", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CSS DEFINITIVO PARA MOBILE (FORÇA LADO A LADO E IMPEDE EMPILHAMENTO) ---
+# --- CSS PARA LAYOUT VERTICAL E BOTÕES COMPACTOS NO CELULAR ---
 CSS_APP = """
 <style>
     .stApp { background-color: #121214 !important; }
@@ -15,41 +15,24 @@ CSS_APP = """
     label { color: #A1A1AA !important; font-size: 11px !important; font-weight: 600 !important; }
     
     .block-container { 
-        padding-top: 0.3rem !important; 
-        padding-bottom: 0.3rem !important; 
-        padding-left: 0.2rem !important; 
-        padding-right: 0.2rem !important; 
+        padding-top: 0.4rem !important; 
+        padding-bottom: 0.4rem !important; 
+        padding-left: 0.4rem !important; 
+        padding-right: 0.4rem !important; 
         max-width: 100% !important; 
     }
     
-    /* FORÇAR AS COLUNAS DO STREAMLIT A FICAREM LADO A LADO NO CELULAR */
-    div[data-testid="stHorizontalBlock"] { 
-        display: flex !important;
-        flex-direction: row !important; 
-        flex-wrap: nowrap !important; 
-        gap: 2px !important;
-        width: 100% !important;
-    }
-    
-    div[data-testid="column"] { 
-        flex: 1 1 0% !important; 
-        min-width: 0 !important; 
-        padding: 0px !important;
-        max-width: 100% !important;
-    }
-    
-    /* BOTÕES COMPACTOS LADO A LADO */
+    /* BOTÕES VERTICAIS E COMPACTOS PARA FACILITAR O TOQUE NO CELULAR */
     button[kind="secondary"] { 
         background-color: #202024 !important; 
         color: #E4E4E7 !important; 
         border: 1px solid #323238 !important; 
-        border-radius: 4px !important; 
+        border-radius: 6px !important; 
         font-weight: bold !important; 
-        height: 40px !important; 
-        font-size: 10px !important;
+        height: 42px !important; 
+        font-size: 12px !important;
         width: 100% !important;
-        padding: 0px !important;
-        white-space: nowrap !important;
+        margin-bottom: 4px !important;
     }
     button[kind="secondary"]:hover { border-color: #14B8A6 !important; background-color: #27272A !important; }
     
@@ -58,8 +41,8 @@ CSS_APP = """
         color: white !important; 
         border: none !important; 
         border-radius: 6px !important; 
-        height: 38px !important; 
-        font-size: 11px !important; 
+        height: 42px !important; 
+        font-size: 12px !important; 
         font-weight: bold !important; 
         width: 100% !important;
     }
@@ -68,9 +51,9 @@ CSS_APP = """
         background-color: #202024 !important; 
         border: 1px solid #323238 !important; 
         border-radius: 6px !important; 
-        min-height: 28px !important; 
+        min-height: 32px !important; 
     }
-    input, select, textarea { color: white !important; font-size: 11px !important; }
+    input, select, textarea { color: white !important; font-size: 12px !important; }
     header { visibility: hidden; }
 </style>
 """
@@ -273,30 +256,28 @@ def tela_menu():
         if st.button("⚙️ RETÍFICA", use_container_width=True): mudar_tela('rtf')
         if st.button("✏️ EDITAR", use_container_width=True): mudar_tela('editar')
 
-    st.markdown("<div style='margin-top: 5px;'></div>", unsafe_allow_html=True)
+    data_atual = datetime.now().strftime("%d/%m/%Y")
+    st.markdown(f"<p style='text-align:center; color:#71717A; font-size:11px; margin-top:10px;'>Data: {data_atual}</p>", unsafe_allow_html=True)
     if st.button("📋 RELATÓRIO DE TURNO", use_container_width=True, type="primary"): mudar_tela('relatorio')
-    
-    st.markdown("<div style='margin-top: 5px;'></div>", unsafe_allow_html=True)
     if st.button("🚪 Sair (Logout)", use_container_width=True):
         st.session_state['operador'] = ''
         mudar_tela('login')
 
-def render_grid_matricial(matriz, setor, status_dict):
-    for linha in matriz:
-        cols = st.columns(len(linha))
-        for i, maq in enumerate(linha):
-            if maq == "":
-                cols[i].write("") 
-            else:
-                chave_busca = f"{setor} {maq}"
-                status_atual = status_dict.get(chave_busca, "")
-                icone = MAPA_STATUS.get(status_atual, "⚪")
-                
-                label_botao = f"{icone}{maq}"
-                if cols[i].button(label_botao, key=f"btn_{setor}_{maq}", use_container_width=True):
-                    st.session_state['maq_ativa'] = maq
-                    st.session_state['setor_ativo'] = setor
-                    st.rerun()
+# RENDERIZAÇÃO EM LISTA VERTICAL (UM ABAIXO DO OUTRO) PARA CELULAR NÃO CORTAR NADA
+def render_grid_vertical(lista_maquinas, setor, status_dict):
+    for maq in lista_maquinas:
+        if maq == "":
+            st.write("")
+        else:
+            chave_busca = f"{setor} {maq}"
+            status_atual = status_dict.get(chave_busca, "")
+            icone = MAPA_STATUS.get(status_atual, "⚪")
+            
+            label_botao = f"{icone} Máquina {maq}"
+            if st.button(label_botao, key=f"btn_vert_{setor}_{maq}", use_container_width=True):
+                st.session_state['maq_ativa'] = maq
+                st.session_state['setor_ativo'] = setor
+                st.rerun()
 
 def tela_afc():
     if st.button("⬅️ Menu"): mudar_tela('menu')
@@ -308,11 +289,10 @@ def tela_afc():
         painel_controle_maquina(st.session_state['maq_ativa'], 'AFC')
     
     if st.session_state['celula_selecionada'] is None:
-        col1, col2 = st.columns(2)
-        if col1.button("📌 Célula 1 (Esquerda)", use_container_width=True):
+        if st.button("📌 Célula 1 (Bloco Esquerdo)", use_container_width=True):
             st.session_state['celula_selecionada'] = 'celula_1'
             st.rerun()
-        if col2.button("📌 Célula 2 (Direita)", use_container_width=True):
+        if st.button("📌 Célula 2 (Bloco Direito)", use_container_width=True):
             st.session_state['celula_selecionada'] = 'celula_2'
             st.rerun()
     else:
@@ -322,23 +302,25 @@ def tela_afc():
             st.rerun()
             
         if st.session_state['celula_selecionada'] == 'celula_1':
-            st.markdown("**Célula 1**")
-            render_grid_matricial([
-                ["30-161", "29-078"], ["32-081", "31-969"],
-                ["34-132", "33-160"], ["36-084", "35-131"],
-                ["38-596", "37-892"], ["40-142", "39-905"], ["", "41-141"]
-            ], "AFC", status_dict)
+            st.markdown("**Célula 1 (Esquerda)**")
+            maquinas_c1 = [
+                "30-161", "29-078", "32-081", "31-969",
+                "34-132", "33-160", "36-084", "35-131",
+                "38-596", "37-892", "40-142", "39-905", "41-141"
+            ]
+            render_grid_vertical(maquinas_c1, "AFC", status_dict)
             
         elif st.session_state['celula_selecionada'] == 'celula_2':
-            st.markdown("**Célula 2**")
-            render_grid_matricial([
-                ["8-247", "6-868"], ["4-427", "9-088"],
-                ["10-812", "7-743"], ["12-367", "11-365"],
-                ["14-967", "13-964"], ["16-975", "15-973"],
-                ["18-957", "17-140"], ["20-774", "19-760"],
-                ["22-813", "21-206"], ["24-761", "23-165"],
-                ["26-635", "25-209"], ["28-432", "27-431"]
-            ], "AFC", status_dict)
+            st.markdown("**Célula 2 (Direita)**")
+            maquinas_c2 = [
+                "8-247", "6-868", "4-427", "9-088",
+                "10-812", "7-743", "12-367", "11-365",
+                "14-967", "13-964", "16-975", "15-973",
+                "18-957", "17-140", "20-774", "19-760",
+                "22-813", "21-206", "24-761", "23-165",
+                "26-635", "25-209", "28-432", "27-431"
+            ]
+            render_grid_vertical(maquinas_c2, "AFC", status_dict)
 
 def tela_rtf():
     if st.button("⬅️ Menu"): mudar_tela('menu')
@@ -350,11 +332,10 @@ def tela_rtf():
         painel_controle_maquina(st.session_state['maq_ativa'], 'RTF')
     
     if st.session_state['celula_selecionada'] is None:
-        col1, col2 = st.columns(2)
-        if col1.button("⚫ Centerless", use_container_width=True):
+        if st.button("⚫ Centerless", use_container_width=True):
             st.session_state['celula_selecionada'] = 'cent'
             st.rerun()
-        if col2.button("🟣 Retíficas Padrão", use_container_width=True):
+        if st.button("🟣 Retíficas Padrão", use_container_width=True):
             st.session_state['celula_selecionada'] = 'rtf_padrao'
             st.rerun()
     else:
@@ -365,19 +346,21 @@ def tela_rtf():
             
         if st.session_state['celula_selecionada'] == 'cent':
             st.markdown("**Centerless**")
-            render_grid_matricial([["6-6J1", "17-6J1"]], "RTF", status_dict)
+            render_grid_vertical(["6-6J1", "17-6J1"], "RTF", status_dict)
             
         elif st.session_state['celula_selecionada'] == 'rtf_padrao':
             st.markdown("**Retíficas Padrão**")
-            render_grid_matricial([
-                ["30-786", "", "", ""], ["32-918", "29-785", "4-425", "3-426"],
-                ["34-842", "31-806", "7-267", "5-903"], ["36-854", "33-807", "9-815", "8-086"],
-                ["38-881", "35-885", "11-363", "10-817"], ["40-912", "37-857", "13-969", "12-962"],
-                ["42-885", "39-856", "15-977", "14-971"], ["", "", "18-925", "16-183"], 
-                ["", "", "20-927", "19-926"], ["", "", "22-916", "21-270"],
-                ["", "", "24-259", "23-753"], ["", "", "26-260", "25-258"],
-                ["", "", "28-954", "27-917"]
-            ], "RTF", status_dict)
+            maquinas_rtf_padrao = [
+                "30-786", "32-918", "29-785", "4-425", "3-426",
+                "34-842", "31-806", "7-267", "5-903", "36-854",
+                "33-807", "9-815", "8-086", "38-881", "35-885",
+                "11-363", "10-817", "40-912", "37-857", "13-969",
+                "12-962", "42-885", "39-856", "15-977", "14-971",
+                "18-925", "16-183", "20-927", "19-926", "22-916",
+                "21-270", "24-259", "23-753", "26-260", "25-258",
+                "28-954", "27-917"
+            ]
+            render_grid_vertical(maquinas_rtf_padrao, "RTF", status_dict)
 
 def tela_equipe():
     if st.button("⬅️ Menu"): mudar_tela('menu')
