@@ -5,15 +5,12 @@ import os
 import time
 
 # --- CONFIGURAÇÃO BASE DO APP ---
-st.set_page_config(page_title="MES Enterprise | Planta Industrial", page_icon="🏭", layout="centered", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="App MES - Planta", page_icon="📱", layout="centered", initial_sidebar_state="collapsed")
 
 # --- DESIGN SYSTEM: CSS INDUSTRIAL PREMIUM ---
 CSS_APP = """
 <style>
-    /* Cores de Fundo Globais */
     .stApp { background-color: #09090B !important; }
-    
-    /* Tipografia Global */
     h1, h2, h3, h4, h5, p, span, div[data-testid="stMarkdownContainer"] { 
         color: #F4F4F5 !important; 
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important; 
@@ -21,7 +18,6 @@ CSS_APP = """
     
     label { color: #A1A1AA !important; font-size: 11px !important; font-weight: 600 !important; text-transform: uppercase; letter-spacing: 0.5px; }
     
-    /* Layout Fluido Compacto */
     .block-container { 
         padding-top: 0.6rem !important; 
         padding-bottom: 0.6rem !important; 
@@ -30,7 +26,6 @@ CSS_APP = """
         max-width: 100% !important; 
     }
     
-    /* Botões Padrão (Secundários / Células / Menu) */
     button[kind="secondary"] { 
         background-color: #18181B !important; 
         color: #EC4899 !important; 
@@ -50,7 +45,6 @@ CSS_APP = """
         color: #2DD4BF !important;
     }
     
-    /* Botões de Ação Principal (Primários) */
     div[data-testid="stFormSubmitButton"] > button, button[kind="primary"] { 
         background: linear-gradient(135deg, #0D9488 0%, #0F766E 100%) !important; 
         color: white !important; 
@@ -66,7 +60,6 @@ CSS_APP = """
         background: linear-gradient(135deg, #0F766E 0%, #115E59 100%) !important;
     }
     
-    /* Inputs de Formulários Modernos */
     div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, div[data-baseweb="textarea"] > div { 
         background-color: #18181B !important; 
         border: 1px solid #3F3F46 !important; 
@@ -75,7 +68,6 @@ CSS_APP = """
     }
     input, select, textarea { color: #FAFAFA !important; font-size: 13px !important; }
     
-    /* Containers Estilizados */
     div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"] {
         background-color: #121214;
         border: 1px solid #27272A;
@@ -208,7 +200,7 @@ def painel_controle_maquina(maq_id, setor):
                 st.session_state['maq_ativa'] = None
                 del st.session_state[flow_key]
                 st.rerun()
-            if st.button("🟡 PREPARAÇÃO", key=f"st_prep_{maq_id}", use_container_width=True):
+            if st.button("🟡 PREPARAÇÃO / SEQUÊNCIA", key=f"st_prep_{maq_id}", use_container_width=True):
                 st.session_state[flow_key] = "detalhe_prep"
                 st.rerun()
             if st.button("🛠️ MANUTENÇÃO", key=f"st_man_{maq_id}", use_container_width=True):
@@ -222,20 +214,34 @@ def painel_controle_maquina(maq_id, setor):
 
         elif st.session_state[flow_key] == "detalhe_prep":
             with st.form(f"form_prep_{maq_id}"):
-                st.markdown("⚙️ **Parâmetros de Preparação**")
-                tipo_prep = st.radio("Setup:", ["HASTE", "GUIA"], horizontal=True)
-                troca_diametro = False
-                if tipo_prep == "HASTE":
-                    troca_diametro = st.toggle("📐 Troca de Diâmetro?")
-                troca_rebolo = st.toggle("🔄 Troca de Rebolo?")
+                st.markdown("⚙️ **Configuração de Preparação / Sequência**")
+                
+                if setor == "AFC":
+                    is_preparacao = st.checkbox("⚙️ É Preparação?", value=True)
+                    is_sequencia = st.checkbox("🔄 É Sequência?", value=False)
+                    troca_rebolo = st.toggle("🔄 Troca de Rebolo?")
+                else:
+                    tipo_prep = st.radio("Setup:", ["HASTE", "GUIA"], horizontal=True)
+                    troca_diametro = False
+                    if tipo_prep == "HASTE":
+                        troca_diametro = st.toggle("📐 Troca de Diâmetro?")
+                    troca_rebolo = st.toggle("🔄 Troca de Rebolo?")
                 
                 proximo_turno_num = "2° Turno" if "1" in st.session_state['turno'] else ("3° Turno" if "2" in st.session_state['turno'] else "1° Turno")
                 ficar_proximo = st.radio(f"Vai ficar para o {proximo_turno_num} terminar?", ["Não", "Sim"], horizontal=True)
                 
                 if st.form_submit_button("💾 Salvar Configuração", type="primary"):
-                    st_final = f"PREPARAÇÃO - {tipo_prep}"
-                    if tipo_prep == "HASTE" and troca_diametro: st_final += " (C/ Diâmetro)"
-                    if troca_rebolo: st_final += " (C/ Rebolo)"
+                    if setor == "AFC":
+                        status_partes = []
+                        if is_preparacao: status_partes.append("PREPARAÇÃO")
+                        if is_sequencia: status_partes.append("SEQUÊNCIA")
+                        st_final = " + ".join(status_partes) if status_partes else "PREPARAÇÃO"
+                        if troca_rebolo: st_final += " (C/ Rebolo)"
+                    else:
+                        st_final = f"PREPARAÇÃO - {tipo_prep}"
+                        if tipo_prep == "HASTE" and troca_diametro: st_final += " (C/ Diâmetro)"
+                        if troca_rebolo: st_final += " (C/ Rebolo)"
+
                     if ficar_proximo == "Sim": st_final += f" [Fica para {proximo_turno_num}]"
                     
                     salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": datetime.now().strftime("%H:%M")}, ARQUIVO_DADOS)
@@ -269,7 +275,7 @@ def tela_login():
     st.markdown("<p style='text-align: center; color: #A1A1AA; font-size: 12px; margin-bottom: 30px;'>Insira seu código de credencial e identificação</p>", unsafe_allow_html=True)
     
     with st.container():
-        cod = st.text_input("Código de Acesso:", type="password", placeholder="")
+        cod = st.text_input("Código de Acesso:", type="password", placeholder="Ex: 1123, 1234, 1010...")
         nome = st.text_input("Nome do Colaborador / RE:", placeholder="Digite seu nome...")
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         
@@ -501,29 +507,52 @@ def tela_relatorio():
         df_maq = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
         if not df_maq.empty: df_maq = df_maq.drop_duplicates(subset=['Maquina'], keep='last')
         
-        texto = f"🏭 PLANTA INDUSTRIAL UNIFICADA | {data_hoje} | {st.session_state['turno']}\n"
-        texto += "="*40 + "\n\n"
+        # Montagem do relatório estritamente no formato visual profissional solicitado
+        texto = f"*PLANTA AFIACAO E RETIFICA {data_hoje}*\n\n"
         
-        texto += "⚙️ SETOR DE AFIAÇÃO (AFC):\n"
-        afc_rows = df_maq[df_maq['Setor'] == 'AFC']
-        if afc_rows.empty: texto += "  • Nenhum apontamento.\n"
+        # Manutenção
+        texto += "*MAQUINAS EM MANUTENÇAO*\n\n"
+        manutencao_rows = df_maq[df_maq['Status'].str.contains('MANUTENÇÃO', na=False)]
+        if manutencao_rows.empty:
+            texto += "N/A\n\n"
         else:
-            for _, row in afc_rows.iterrows():
-                texto += f"  • {row['Maquina']} ➔ {row['Status']} [{row['Hora']}]\n"
-                
-        texto += "\n⚙️ SETOR DE RETÍFICA (RTF):\n"
-        rtf_rows = df_maq[df_maq['Setor'] == 'RTF']
-        if rtf_rows.empty: texto += "  • Nenhum apontamento.\n"
-        else:
-            for _, row in rtf_rows.iterrows():
-                texto += f"  • {row['Maquina']} ➔ {row['Status']} [{row['Hora']}]\n"
-                
-        if concluidos.strip():
-            texto += f"\n✔️ CONCLUÍDOS:\n{concluidos.strip()}\n"
-        if obs.strip():
-            texto += f"\n📝 OBSERVAÇÕES:\n{obs.strip()}\n"
+            for _, row in manutencao_rows.iterrows():
+                num_maq = row['Maquina'].replace("AFC ", "").replace("RTF ", "")
+                motivo = row['Status'].replace("MANUTENÇÃO - Motivo: ", "")
+                texto += f"{num_maq} - MANUTENÇÃO - {row['Hora']} - {row.get('Operador', 'OPERADOR')} ({motivo})\n"
+            texto += "\n"
+
+        # Preparações / Ajustes (Dividido perfeitamente conforme solicitado)
+        texto += "*PREPARAÇÕES/AJUSTES*\n\n"
         
+        # RETIFICAS
+        texto += "*RETIFICAS*\n\n"
+        rtf_prep = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA', na=False))]
+        if rtf_prep.empty:
+            texto += "N/A\n\n"
+        else:
+            for _, row in rtf_prep.iterrows():
+                num_maq = row['Maquina'].replace("RTF ", "")
+                op = row.get('Operador', 'OPERADOR')
+                status_limpo = row['Status'].upper()
+                texto += f"{num_maq} - {status_limpo} - {row['Hora']} - {op}\n"
+            texto += "\n"
+
+        # AFIADORAS
+        texto += "*AFIADORAS*\n\n"
+        afc_prep = df_maq[(df_maq['Setor'] == 'AFC') & (df_maq['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA', na=False))]
+        if afc_prep.empty:
+            texto += "N/A\n\n"
+        else:
+            for _, row in afc_prep.iterrows():
+                num_maq = row['Maquina'].replace("AFC ", "")
+                op = row.get('Operador', 'OPERADOR')
+                status_limpo = row['Status'].upper()
+                texto += f"{num_maq} - {status_limpo} - {row['Hora']} - {op}\n"
+            texto += "\n"
+
         st.code(texto, language="text")
+        
         if encerrar:
             if os.path.exists(ARQUIVO_DADOS): os.remove(ARQUIVO_DADOS)
             if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
