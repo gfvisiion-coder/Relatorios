@@ -152,7 +152,6 @@ def salvar_csv(dados, arquivo):
 #        PAINEL DE CONTROLE DA MÁQUINA
 # ==========================================
 def painel_controle_maquina(maq_id, setor):
-    # Comando JavaScript para rolar a página automaticamente para o topo ao abrir o painel
     st.markdown("""
         <script>
             window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -224,25 +223,21 @@ def painel_controle_maquina(maq_id, setor):
                 st.markdown("⚙️ **Configuração de Preparação / Sequência**")
                 
                 if setor == "AFC":
-                    is_preparacao = st.checkbox("⚙️ É Preparação?", value=True)
-                    is_sequencia = st.checkbox("🔄 É Sequência?", value=False)
-                    troca_rebolo = st.toggle("🔄 Troca de Rebolo?")
+                    tipo_afc = st.radio("Selecione o Status:", ["PREPARAÇÃO", "SEQUÊNCIA"], horizontal=True)
+                    troca_rebolo = st.toggle("Troca de Rebolo")
                 else:
                     tipo_prep = st.radio("Setup:", ["HASTE", "GUIA"], horizontal=True)
                     troca_diametro = False
                     if tipo_prep == "HASTE":
-                        troca_diametro = st.toggle("📐 Troca de Diâmetro?")
-                    troca_rebolo = st.toggle("🔄 Troca de Rebolo?")
+                        troca_diametro = st.toggle("Troca de Diâmetro")
+                    troca_rebolo = st.toggle("Troca de Rebolo")
                 
                 proximo_turno_num = "2° Turno" if "1" in st.session_state['turno'] else ("3° Turno" if "2" in st.session_state['turno'] else "1° Turno")
                 ficar_proximo = st.radio(f"Vai ficar para o {proximo_turno_num} terminar?", ["Não", "Sim"], horizontal=True)
                 
                 if st.form_submit_button("💾 Salvar Configuração", type="primary"):
                     if setor == "AFC":
-                        status_partes = []
-                        if is_preparacao: status_partes.append("PREPARAÇÃO")
-                        if is_sequencia: status_partes.append("SEQUÊNCIA")
-                        st_final = " + ".join(status_partes) if status_partes else "PREPARAÇÃO"
+                        st_final = tipo_afc
                         if troca_rebolo: st_final += " (C/ Rebolo)"
                     else:
                         st_final = f"PREPARAÇÃO - {tipo_prep}"
@@ -282,7 +277,7 @@ def tela_login():
     st.markdown("<p style='text-align: center; color: #A1A1AA; font-size: 12px; margin-bottom: 30px;'>Insira seu código de credencial e identificação</p>", unsafe_allow_html=True)
     
     with st.container():
-        cod = st.text_input("Código de Acesso:", type="password", placeholder="Digite seu codigo de Acesso")
+        cod = st.text_input("Código de Acesso:", type="password", placeholder="Ex: 1123, 1234, 1010...")
         nome = st.text_input("Nome do Colaborador / RE:", placeholder="Digite seu nome...")
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         
