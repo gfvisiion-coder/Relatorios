@@ -7,7 +7,7 @@ import time
 # --- CONFIGURAÇÃO BASE DO APP ---
 st.set_page_config(page_title="App MES - Planta", page_icon="📱", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CSS RESPONSIVO DEFINITIVO PARA MOBILE (SEM VAZAR PARA A DIREITA) ---
+# --- CSS DEFINITIVO PARA MOBILE (FORÇA LADO A LADO E IMPEDE EMPILHAMENTO) ---
 CSS_APP = """
 <style>
     .stApp { background-color: #121214 !important; }
@@ -17,20 +17,18 @@ CSS_APP = """
     .block-container { 
         padding-top: 0.3rem !important; 
         padding-bottom: 0.3rem !important; 
-        padding-left: 0.3rem !important; 
-        padding-right: 0.3rem !important; 
+        padding-left: 0.2rem !important; 
+        padding-right: 0.2rem !important; 
         max-width: 100% !important; 
-        overflow-x: hidden !important;
     }
     
-    /* CONTROLE TOTAL DE GRID PARA NÃO VAZAR PARA A DIREITA */
+    /* FORÇAR AS COLUNAS DO STREAMLIT A FICAREM LADO A LADO NO CELULAR */
     div[data-testid="stHorizontalBlock"] { 
         display: flex !important;
         flex-direction: row !important; 
         flex-wrap: nowrap !important; 
         gap: 2px !important;
         width: 100% !important;
-        max-width: 100% !important;
     }
     
     div[data-testid="column"] { 
@@ -40,20 +38,18 @@ CSS_APP = """
         max-width: 100% !important;
     }
     
-    /* BOTÕES COMPACTOS QUE CABEM NA TELA DO CELULAR */
+    /* BOTÕES COMPACTOS LADO A LADO */
     button[kind="secondary"] { 
         background-color: #202024 !important; 
         color: #E4E4E7 !important; 
         border: 1px solid #323238 !important; 
         border-radius: 4px !important; 
         font-weight: bold !important; 
-        height: 36px !important; 
+        height: 40px !important; 
         font-size: 10px !important;
         width: 100% !important;
         padding: 0px !important;
         white-space: nowrap !important;
-        overflow: hidden !important;
-        text-overflow: ellipsis !important;
     }
     button[kind="secondary"]:hover { border-color: #14B8A6 !important; background-color: #27272A !important; }
     
@@ -205,7 +201,6 @@ def painel_controle_maquina(maq_id, setor):
                         
                 troca_rebolo = st.toggle("🔄 Troca Rebolo?")
                 
-                # Se estiver produzindo, a hora é automática se deixada em branco
                 hora_placeholder = "Automático (Produzindo)" if "PRODUZINDO" in status else "Ex: 06:30"
                 hora = st.text_input("⏰ Hora do Evento:", placeholder=hora_placeholder)
                 
@@ -369,9 +364,11 @@ def tela_rtf():
             st.rerun()
             
         if st.session_state['celula_selecionada'] == 'cent':
+            st.markdown("**Centerless**")
             render_grid_matricial([["6-6J1", "17-6J1"]], "RTF", status_dict)
             
         elif st.session_state['celula_selecionada'] == 'rtf_padrao':
+            st.markdown("**Retíficas Padrão**")
             render_grid_matricial([
                 ["30-786", "", "", ""], ["32-918", "29-785", "4-425", "3-426"],
                 ["34-842", "31-806", "7-267", "5-903"], ["36-854", "33-807", "9-815", "8-086"],
