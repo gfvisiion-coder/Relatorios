@@ -40,15 +40,22 @@ st.markdown(CSS_APP, unsafe_allow_html=True)
 ARQUIVO_DADOS = "banco_operacao.csv"
 ARQUIVO_EQUIPE = "banco_equipe.csv"
 
-# --- GERENCIAMENTO DE ESTADO (NAVEGAÇÃO) ---
+# --- GERENCIAMENTO DE ESTADO (NAVEGAÇÃO E VARIÁVEIS) ---
 if 'tela_atual' not in st.session_state:
     st.session_state['tela_atual'] = 'login'
 if 'operador' not in st.session_state:
     st.session_state['operador'] = ''
+if 'maq_selecionada_afc' not in st.session_state:
+    st.session_state['maq_selecionada_afc'] = None
+if 'maq_selecionada_rtf' not in st.session_state:
+    st.session_state['maq_selecionada_rtf'] = None
 
 def mudar_tela(nome_tela):
     st.session_state['tela_atual'] = nome_tela
     st.rerun()
+
+def set_maquina(setor, maq):
+    st.session_state[f'maq_selecionada_{setor}'] = maq
 
 # --- FUNÇÃO DE SALVAMENTO INTELIGENTE ---
 def salvar_csv(dados, arquivo):
@@ -125,21 +132,56 @@ def tela_afc():
     st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("### Apontamento - Afiação")
-    with st.form("form_afc"):
-        num_maq = st.text_input("NÚMERO DA MÁQUINA (Ex: 33)")
-        status = st.selectbox("STATUS ATUAL", ["PREPARAÇÃO", "SEQUÊNCIA", "PRODUZINDO", "MANUTENÇÃO", "PARADA"])
-        troca_rebolo = st.toggle("🔄 Troca de Rebolo?")
-        hora = st.text_input("HORA DO EVENTO", placeholder="Ex: 06:30")
-        
-        if st.form_submit_button("SALVAR DADOS", use_container_width=True):
-            if num_maq and hora:
-                status_final = f"{status} (C/ Troca Rebolo)" if troca_rebolo else status
-                salvar_csv({"Setor": "AFC", "Maquina": f"AFC {num_maq.strip().upper()}", "Operador": st.session_state['operador'], "Status": status_final, "Hora": hora}, ARQUIVO_DADOS)
-                st.success("✅ Salvo com sucesso!")
-                time.sleep(1)
-                mudar_tela('menu')
-            else:
-                st.error("⚠️ Preencha a Máquina e a Hora!")
+    
+    maquinas_afc = [
+        "30-161", "32-081", "34-132", "36-084", "38-596", "40-142",
+        "29-078", "31-969", "33-160", "35-131", "37-892", "39-905", "41-141",
+        "8-247", "4-427", "10-812", "12-367", "14-967", "16-975", "18-957",
+        "20-774", "22-813", "24-761", "26-635", "28-432", "6-868", "9-088",
+        "7-743", "11-365", "13-964", "15-973", "17-140", "19-760", "21-206",
+        "23-165", "25-209", "27-431"
+    ]
+    
+    st.markdown("#### 1. Selecione a Máquina:")
+    
+    cols = st.columns(4)
+    for i, maq in enumerate(maquinas_afc):
+        tipo_btn = "primary" if st.session_state['maq_selecionada_afc'] == maq else "secondary"
+        cols[i % 4].button(
+            maq, 
+            key=f"btn_afc_{maq}", 
+            on_click=set_maquina, 
+            args=('afc', maq), 
+            type=tipo_btn, 
+            use_container_width=True
+        )
+    
+    st.divider()
+    
+    st.markdown("#### 2. Detalhes do Apontamento:")
+    status = st.selectbox("STATUS ATUAL", ["PREPARAÇÃO", "SEQUÊNCIA", "PRODUZINDO", "MANUTENÇÃO", "PARADA"])
+    troca_rebolo = st.toggle("🔄 Troca de Rebolo?")
+    hora = st.text_input("HORA DO EVENTO", placeholder="Ex: 06:30")
+    
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("SALVAR DADOS", type="primary", use_container_width=True):
+        maq_selecionada = st.session_state['maq_selecionada_afc']
+        if maq_selecionada and hora:
+            status_final = f"{status} (C/ Troca Rebolo)" if troca_rebolo else status
+            salvar_csv({
+                "Setor": "AFC", 
+                "Maquina": f"AFC {maq_selecionada}", 
+                "Operador": st.session_state['operador'], 
+                "Status": status_final, 
+                "Hora": hora
+            }, ARQUIVO_DADOS)
+            
+            st.success(f"✅ Salvo com sucesso! Máquina {maq_selecionada}")
+            st.session_state['maq_selecionada_afc'] = None 
+            time.sleep(1.5)
+            mudar_tela('menu')
+        else:
+            st.error("⚠️ Selecione uma Máquina no painel acima e preencha a Hora!")
 
 def tela_rtf():
     st.markdown('<div class="btn-voltar">', unsafe_allow_html=True)
@@ -147,7 +189,48 @@ def tela_rtf():
     st.markdown('</div>', unsafe_allow_html=True)
     
     st.markdown("### Apontamento - Retífica")
-    num_maq_rtf = st.text_input("NÚMERO DA MÁQUINA (Ex: 10)")
+    
+    maquinas_rtf = [
+        "30-786", "32-918", "34-842", "36-854", "38-881", "40-912", "42-885",
+        "29-785", "31-806", "33-807", "35-885", "37-857", "39-856", "4-425",
+        "7-267", "9-815", "11-363", "13-969", "15-977", "18-925", "20-927",
+        "22-916", "24-259", "26-260", "28-954", "3-426", "5-903", "8-086",
+        "10-817", "12-962", "14-971", "16-183", "19-926", "21-270", "23-753",
+        "25-258", "27-917"
+    ]
+    maquinas_centerless = ["6-6J1", "17-6J1"]
+    
+    st.markdown("#### 1. Selecione a Máquina:")
+    
+    st.caption("Retíficas:")
+    cols_rtf = st.columns(4)
+    for i, maq in enumerate(maquinas_rtf):
+        tipo_btn = "primary" if st.session_state['maq_selecionada_rtf'] == maq else "secondary"
+        cols_rtf[i % 4].button(
+            maq, 
+            key=f"btn_rtf_{maq}", 
+            on_click=set_maquina, 
+            args=('rtf', maq), 
+            type=tipo_btn, 
+            use_container_width=True
+        )
+    
+    st.caption("Centerless:")
+    cols_cent = st.columns(4)
+    for i, maq in enumerate(maquinas_centerless):
+        tipo_btn = "primary" if st.session_state['maq_selecionada_rtf'] == maq else "secondary"
+        cols_cent[i % 4].button(
+            maq, 
+            key=f"btn_rtf_cent_{maq}", 
+            on_click=set_maquina, 
+            args=('rtf', maq), 
+            type=tipo_btn, 
+            use_container_width=True
+        )
+
+    st.divider()
+
+    st.markdown("#### 2. Detalhes do Apontamento:")
     status_rtf = st.selectbox("STATUS ATUAL", ["PREPARAÇÃO", "PRODUZINDO", "MANUTENÇÃO", "PARADA"])
     troca_rebolo_rtf = st.toggle("🔄 Troca de Rebolo?")
     hora_rtf = st.text_input("HORA DO EVENTO", placeholder="Ex: 06:50")
@@ -161,19 +244,28 @@ def tela_rtf():
             
     st.markdown("<br>", unsafe_allow_html=True)
     if st.button("SALVAR DADOS", type="primary", use_container_width=True):
-        if num_maq_rtf and hora_rtf:
+        maq_selecionada = st.session_state['maq_selecionada_rtf']
+        if maq_selecionada and hora_rtf:
             status_final = status_rtf
             if status_rtf == "PREPARAÇÃO":
                 status_final += f" - {tipo_prep}"
                 if tipo_prep == "HASTE" and troca_diametro: status_final += " (C/ Troca Diâmetro)"
             if troca_rebolo_rtf: status_final += " (C/ Troca Rebolo)"
             
-            salvar_csv({"Setor": "RTF", "Maquina": f"RTF {num_maq_rtf.strip().upper()}", "Operador": st.session_state['operador'], "Status": status_final, "Hora": hora_rtf}, ARQUIVO_DADOS)
-            st.success("✅ Salvo com sucesso!")
-            time.sleep(1)
+            salvar_csv({
+                "Setor": "RTF", 
+                "Maquina": f"RTF {maq_selecionada}", 
+                "Operador": st.session_state['operador'], 
+                "Status": status_final, 
+                "Hora": hora_rtf
+            }, ARQUIVO_DADOS)
+            
+            st.success(f"✅ Salvo com sucesso! Máquina {maq_selecionada}")
+            st.session_state['maq_selecionada_rtf'] = None 
+            time.sleep(1.5)
             mudar_tela('menu')
         else:
-            st.error("⚠️ Preencha a Máquina e a Hora!")
+            st.error("⚠️ Selecione uma Máquina no painel acima e preencha a Hora!")
 
 def tela_equipe():
     st.markdown('<div class="btn-voltar">', unsafe_allow_html=True)
