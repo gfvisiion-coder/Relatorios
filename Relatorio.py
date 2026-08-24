@@ -5,7 +5,7 @@ import os
 import time
 
 # --- CONFIGURAÇÃO BASE DO APP ---
-st.set_page_config(page_title="App MES - Planta", page_icon="📱", layout="centered", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Relatorio - Setor Afiação", page_icon="📱", layout="centered", initial_sidebar_state="collapsed")
 
 # Fuso horário correto do Brasil (GMT-3)
 FUSO_BR = timezone(timedelta(hours=-3))
@@ -321,7 +321,7 @@ def painel_controle_maquina(maq_id, setor):
 # ==========================================
 
 def tela_login():
-    st.markdown("<h2 style='text-align: center; color: #14B8A6 !important; margin-top: 30px;'>🏭 MES ENTERPRISE</h2>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #14B8A6 !important; margin-top: 30px;'>🏭 RELATORIO AFIAÇÃO</h2>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #A1A1AA; font-size: 12px; margin-bottom: 30px;'>Insira seu código de credencial e identificação</p>", unsafe_allow_html=True)
     
     with st.container():
