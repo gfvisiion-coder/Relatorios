@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
 import time
 
@@ -57,7 +57,7 @@ CSS_APP = """
         box-shadow: 0 4px 12px rgba(13, 148, 136, 0.3);
     }
     div[data-testid="stFormSubmitButton"] > button:hover {
-        background: linear-gradient(135deg, #0F766E 0%, #115E59 100%) !important;
+        background: linear-gradient(135deg, #0F766E 100%, #115E59 100%) !important;
     }
     
     div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, div[data-baseweb="textarea"] > div { 
@@ -122,26 +122,19 @@ def ler_status_atual():
     try:
         df = pd.read_csv(ARQUIVO_DADOS)
         status_calculado = {}
-        agora = datetime.now()
+        agora_str = datetime.now().strftime("%H:%M")
         
-        # Agrupa pelo último registro de cada máquina
         df_ultimo = df.drop_duplicates(subset=['Maquina'], keep='last')
         for _, row in df_ultimo.iterrows():
             maq = row['Maquina']
             st_raw = str(row['Status'])
-            hora_reg = str(row.get('HoraRegistro', row.get('Hora', '')))
             
-            # Verifica se é uma preparação agendada futura
             if "[AGENDADO:" in st_raw:
                 try:
-                    hora_alvo_str = st_raw.split("[AGENDADO:")[1].split("]")[0]
-                    # Compara horário alvo com horário atual
-                    t_alvo = datetime.strptime(hora_alvo_str, "%H:%M").time()
-                    t_atual = agora.time()
-                    if t_atual < t_alvo:
-                        status_calculado[maq] = f"🔵 PRODUZINDO (PREPARAÇÃO AGENDADA PARA {hora_alvo_str})"
+                    hora_alvo_str = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
+                    if agora_str < hora_alvo_str:
+                        status_calculado[maq] = f"PRODUZINDO (PREPARAÇÃO AGENDADA PARA {hora_alvo_str})"
                     else:
-                        # O horário chegou, assume o status real de preparação
                         status_calculado[maq] = st_raw.split(" [AGENDADO:")[0]
                 except:
                     status_calculado[maq] = st_raw
@@ -262,7 +255,6 @@ def painel_controle_maquina(maq_id, setor):
             with st.form(f"form_prep_{maq_id}"):
                 st.markdown("⚙️ **Configuração de Preparação / Agendamento**")
                 
-                # Campo para definir o horário em que a máquina vai parar/entrar em preparação
                 hora_futura = st.text_input("⏰ Horário programado para iniciar (Ex: 14:30):", value=datetime.now().strftime("%H:%M"))
                 
                 if setor == "AFC":
@@ -289,7 +281,6 @@ def painel_controle_maquina(maq_id, setor):
 
                     if ficar_proximo == "Sim": st_final += f" [Fica para {proximo_turno_num}]"
                     
-                    # Adiciona a tag de agendamento temporal
                     if hora_futura.strip():
                         st_final += f" [AGENDADO:{hora_futura.strip()}]"
                     
@@ -324,7 +315,7 @@ def tela_login():
     st.markdown("<p style='text-align: center; color: #A1A1AA; font-size: 12px; margin-bottom: 30px;'>Insira seu código de credencial e identificação</p>", unsafe_allow_html=True)
     
     with st.container():
-        cod = st.text_input("Digite seu codigo de Acesso:", type="password", placeholder="Digite aqui seu codigo de Acesso")
+        cod = st.text_input("Digite seu codigo de Acesso:", type="password", placeholder="Ex: 1123, 1234, 1010...")
         nome = st.text_input("Nome do Colaborador / RE:", placeholder="Digite seu nome...")
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         
@@ -606,7 +597,6 @@ def tela_relatorio():
         st.code(texto, language="text")
         
         if encerrar:
-            # ATENÇÃO: Mantém o banco de dados preservado para o próximo turno conforme solicitado (as máquinas continuam com seus estados salvos)
             st.success("✨ Turno encerrado e relatório gerado com sucesso!")
 
 # --- ROTEADOR ---
