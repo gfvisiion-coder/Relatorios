@@ -132,17 +132,23 @@ def main():
         with st.form("form_afc", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
-                maq = st.text_input("NOME DA MÁQUINA", placeholder="Ex: AFC 33")
+                # Pede apenas o número
+                num_maq = st.text_input("NÚMERO DA MÁQUINA AFC", placeholder="Ex: 33")
                 status = st.selectbox("STATUS ATUAL", ["PREPARAÇÃO", "SEQUÊNCIA", "PRODUZINDO", "MANUTENÇÃO", "PARADA"])
+                # Toggle profissional
+                troca_rebolo = st.toggle("🔄 Houve Troca de Rebolo?")
             with col2:
                 operador = st.text_input("NOME DO PREPARADOR / OPERADOR", placeholder="Digite o nome completo")
                 hora = st.text_input("HORA DO EVENTO", placeholder="Ex: 06:30")
             
             st.markdown("<br>", unsafe_allow_html=True)
             if st.form_submit_button("Registrar Evento AFC", use_container_width=True):
-                if maq and hora and operador:
-                    salvar_csv({"Setor": "AFC", "Maquina": maq.upper(), "Operador": operador.upper(), "Status": status, "Hora": hora}, ARQUIVO_DADOS)
-                    st.success(f"✅ {maq.upper()} registrada como {status} às {hora}!")
+                if num_maq and hora and operador:
+                    maq_nome = f"AFC - {num_maq.strip().upper()}"
+                    status_final = f"{status} (Com Troca de Rebolo)" if troca_rebolo else status
+                    
+                    salvar_csv({"Setor": "AFC", "Maquina": maq_nome, "Operador": operador.upper(), "Status": status_final, "Hora": hora}, ARQUIVO_DADOS)
+                    st.success(f"✅ {maq_nome} registrada como {status_final} às {hora}!")
                 else:
                     st.error("⚠️ Preencha todos os campos obrigatórios (Máquina, Operador e Hora)!")
 
@@ -152,17 +158,21 @@ def main():
         with st.form("form_rtf", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
-                maq = st.text_input("NOME DA MÁQUINA", placeholder="Ex: RTF 10")
-                status = st.selectbox("STATUS ATUAL", ["PREPARAÇÃO", "SEQUÊNCIA", "PRODUZINDO", "MANUTENÇÃO", "PARADA"])
+                # Pede apenas o número
+                num_maq = st.text_input("NÚMERO DA MÁQUINA RTF", placeholder="Ex: 10")
+                # Separação Haste/Guia direto no status
+                status = st.selectbox("STATUS ATUAL", ["PREPARAÇÃO - HASTE", "PREPARAÇÃO - GUIA", "PRODUZINDO", "MANUTENÇÃO", "PARADA"])
             with col2:
                 operador = st.text_input("NOME DO PREPARADOR / OPERADOR", placeholder="Digite o nome completo")
                 hora = st.text_input("HORA DO EVENTO", placeholder="Ex: 06:50")
             
             st.markdown("<br>", unsafe_allow_html=True)
             if st.form_submit_button("Registrar Evento RTF", use_container_width=True):
-                if maq and hora and operador:
-                    salvar_csv({"Setor": "RTF", "Maquina": maq.upper(), "Operador": operador.upper(), "Status": status, "Hora": hora}, ARQUIVO_DADOS)
-                    st.success(f"✅ {maq.upper()} registrada como {status} às {hora}!")
+                if num_maq and hora and operador:
+                    maq_nome = f"RTF - {num_maq.strip().upper()}"
+                    
+                    salvar_csv({"Setor": "RTF", "Maquina": maq_nome, "Operador": operador.upper(), "Status": status, "Hora": hora}, ARQUIVO_DADOS)
+                    st.success(f"✅ {maq_nome} registrada como {status} às {hora}!")
                 else:
                     st.error("⚠️ Preencha todos os campos obrigatórios (Máquina, Operador e Hora)!")
 
@@ -257,10 +267,11 @@ def main():
             
             if 'Operador' not in df_maq.columns: df_maq['Operador'] = ""
             
+            # Filtros atualizados para capturar os novos status com Toggle (AFC) e Haste/Guia (RTF)
             manutencao = df_maq[df_maq['Status'] == 'MANUTENÇÃO']['Maquina'].tolist()
-            rtf_setup = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'].isin(['PREPARAÇÃO', 'SEQUÊNCIA']))]
+            rtf_setup = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'].str.contains('PREPARAÇÃO', na=False))]
             rtf_prod = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'] == 'PRODUZINDO')]
-            afc_setup = df_maq[(df_maq['Setor'] == 'AFC') & (df_maq['Status'].isin(['PREPARAÇÃO', 'SEQUÊNCIA']))]
+            afc_setup = df_maq[(df_maq['Setor'] == 'AFC') & (df_maq['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA', na=False))]
             paradas = df_maq[df_maq['Status'] == 'PARADA']['Maquina'].tolist()
             
             treinamento = df_eq[df_eq['Tipo'] == 'Operador em Treinamento']['Nome'].tolist()
