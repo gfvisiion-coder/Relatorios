@@ -264,64 +264,41 @@ def tela_afc():
     
     status_dict = ler_status_atual()
     
-    # Se nenhuma célula foi escolhida, mostra os botões de seleção de célula
     if st.session_state['celula_selecionada'] is None:
         col1, col2 = st.columns(2)
-        if col1.button("📌 Célula 1", use_container_width=True):
+        if col1.button("📌 Célula 1 (Bloco Esquerdo)", use_container_width=True):
             st.session_state['celula_selecionada'] = 'celula_1'
             st.rerun()
-        if col2.button("📌 Célula 2", use_container_width=True):
+        if col2.button("📌 Célula 2 (Bloco Direito: 8 a 28 / 6 a 27)", use_container_width=True):
             st.session_state['celula_selecionada'] = 'celula_2'
             st.rerun()
-            
-        col3, col4 = st.columns(2)
-        if col3.button("📌 Célula 3", use_container_width=True):
-            st.session_state['celula_selecionada'] = 'celula_3'
-            st.rerun()
-        if col4.button("📌 Célula 4", use_container_width=True):
-            st.session_state['celula_selecionada'] = 'celula_4'
-            st.rerun()
     else:
-        # Botão para voltar para a seleção de células
         if st.button("⬅️ Trocar de Célula"):
             st.session_state['celula_selecionada'] = None
             st.rerun()
             
         st.divider()
         
-        # Exibe apenas a célula escolhida em formato compacto preenchendo a tela
         if st.session_state['celula_selecionada'] == 'celula_1':
-            st.markdown("#### Célula 1")
-            matriz = [
-                ["8-247", "6-868"],
-                ["4-427", "9-088"],
-                ["10-812", "7-743"],
-                ["", ""]
-            ]
-            render_grid_matricial(matriz, "AFC", status_dict)
-            
-        elif st.session_state['celula_selecionada'] == 'celula_2':
-            st.markdown("#### Célula 2")
-            matriz = [
+            st.markdown("#### Célula 1 (Bloco Esquerdo)")
+            matriz_esq = [
                 ["30-161", "29-078"],
                 ["32-081", "31-969"],
-                ["34-132", "33-160"]
-            ]
-            render_grid_matricial(matriz, "AFC", status_dict)
-            
-        elif st.session_state['celula_selecionada'] == 'celula_3':
-            st.markdown("#### Célula 3")
-            matriz = [
+                ["34-132", "33-160"],
                 ["36-084", "35-131"],
                 ["38-596", "37-892"],
                 ["40-142", "39-905"],
                 ["", "41-141"]
             ]
-            render_grid_matricial(matriz, "AFC", status_dict)
+            render_grid_matricial(matriz_esq, "AFC", status_dict)
             
-        elif st.session_state['celula_selecionada'] == 'celula_4':
-            st.markdown("#### Célula 4 (Demais Máquinas)")
-            matriz = [
+        elif st.session_state['celula_selecionada'] == 'celula_2':
+            st.markdown("#### Célula 2 (Bloco Direito Completo)")
+            # Da máquina 8 até 28 na esquerda e 6 até 27 na direita exatamente como na imagem
+            matriz_dir = [
+                ["8-247", "6-868"],
+                ["4-427", "9-088"],
+                ["10-812", "7-743"],
                 ["12-367", "11-365"],
                 ["14-967", "13-964"],
                 ["16-975", "15-973"],
@@ -332,7 +309,7 @@ def tela_afc():
                 ["26-635", "25-209"],
                 ["28-432", "27-431"]
             ]
-            render_grid_matricial(matriz, "AFC", status_dict)
+            render_grid_matricial(matriz_dir, "AFC", status_dict)
 
 def tela_rtf():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
@@ -347,16 +324,8 @@ def tela_rtf():
         if col1.button("⚫ Centerless", use_container_width=True):
             st.session_state['celula_selecionada'] = 'cent'
             st.rerun()
-        if col2.button("🟣 Retíficas Bloco A", use_container_width=True):
-            st.session_state['celula_selecionada'] = 'rtf_1'
-            st.rerun()
-            
-        col3, col4 = st.columns(2)
-        if col3.button("🟣 Retíficas Bloco B", use_container_width=True):
-            st.session_state['celula_selecionada'] = 'rtf_2'
-            st.rerun()
-        if col4.button("🟣 Retíficas Bloco C", use_container_width=True):
-            st.session_state['celula_selecionada'] = 'rtf_3'
+        if col2.button("🟣 Retíficas Padrão", use_container_width=True):
+            st.session_state['celula_selecionada'] = 'rtf_padrao'
             st.rerun()
     else:
         if st.button("⬅️ Trocar de Célula"):
@@ -370,27 +339,15 @@ def tela_rtf():
             matriz = [["6-6J1", "17-6J1"]]
             render_grid_matricial(matriz, "RTF", status_dict)
             
-        elif st.session_state['celula_selecionada'] == 'rtf_1':
-            st.markdown("#### Bloco A")
+        elif st.session_state['celula_selecionada'] == 'rtf_padrao':
+            st.markdown("#### Retíficas Padrão")
             matriz = [
                 ["30-786", "", "", ""], 
                 ["32-918", "29-785", "4-425", "3-426"],
-                ["34-842", "31-806", "7-267", "5-903"]
-            ]
-            render_grid_matricial(matriz, "RTF", status_dict)
-            
-        elif st.session_state['celula_selecionada'] == 'rtf_2':
-            st.markdown("#### Bloco B")
-            matriz = [
+                ["34-842", "31-806", "7-267", "5-903"],
                 ["36-854", "33-807", "9-815", "8-086"],
                 ["38-881", "35-885", "11-363", "10-817"],
-                ["40-912", "37-857", "13-969", "12-962"]
-            ]
-            render_grid_matricial(matriz, "RTF", status_dict)
-            
-        elif st.session_state['celula_selecionada'] == 'rtf_3':
-            st.markdown("#### Bloco C")
-            matriz = [
+                ["40-912", "37-857", "13-969", "12-962"],
                 ["42-885", "39-856", "15-977", "14-971"],
                 ["", "", "18-925", "16-183"], 
                 ["", "", "20-927", "19-926"],
