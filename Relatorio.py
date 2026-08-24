@@ -292,14 +292,15 @@ def main():
             
             if 'Operador' not in df_maq.columns: df_maq['Operador'] = ""
             
-            manutencao = df_maq[df_maq['Status'].str.contains('MANUTENÇÃO', na=False)]['Maquina'].tolist()
+            # --- CORREÇÃO APLICADA AQUI (Blindagem com dropna e astype) ---
+            manutencao = df_maq[df_maq['Status'].str.contains('MANUTENÇÃO', na=False)]['Maquina'].dropna().astype(str).tolist()
             rtf_setup = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'].str.contains('PREPARAÇÃO', na=False))]
             rtf_prod = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'].str.contains('PRODUZINDO', na=False))]
             afc_setup = df_maq[(df_maq['Setor'] == 'AFC') & (df_maq['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA', na=False))]
-            paradas = df_maq[df_maq['Status'].str.contains('PARADA', na=False)]['Maquina'].tolist()
+            paradas = df_maq[df_maq['Status'].str.contains('PARADA', na=False)]['Maquina'].dropna().astype(str).tolist()
             
-            treinamento = df_eq[df_eq['Tipo'] == 'Operador em Treinamento']['Nome'].tolist()
-            ausencias = df_eq[df_eq['Tipo'] == 'Ausência / Falta']['Nome'].tolist()
+            treinamento = df_eq[df_eq['Tipo'] == 'Operador em Treinamento']['Nome'].dropna().astype(str).tolist()
+            ausencias = df_eq[df_eq['Tipo'] == 'Ausência / Falta']['Nome'].dropna().astype(str).tolist()
             
             texto_final = f"🏭 PLANTA AFIAÇÃO - {data_hoje}\n"
             texto_final += "="*40 + "\n\n"
