@@ -7,7 +7,7 @@ import time
 # --- CONFIGURAÇÃO BASE DO APP ---
 st.set_page_config(page_title="App MES - Planta", page_icon="📱", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CSS PARA LAYOUT VERTICAL E BOTÕES COLORIDOS NO CELULAR ---
+# --- CSS COMPACTO PARA MOBILE ---
 CSS_APP = """
 <style>
     .stApp { background-color: #121214 !important; }
@@ -74,12 +74,14 @@ if 'tela_atual' not in st.session_state:
     st.session_state['tela_atual'] = 'login'
 if 'operador' not in st.session_state:
     st.session_state['operador'] = ''
+if 'turno' not in st.session_state:
+    st.session_state['turno'] = ''
+if 'setor_usuario' not in st.session_state:
+    st.session_state['setor_usuario'] = ''
 if 'celula_selecionada' not in st.session_state:
     st.session_state['celula_selecionada'] = None
 if 'maq_ativa' not in st.session_state:
     st.session_state['maq_ativa'] = None
-if 'setor_ativo' not in st.session_state:
-    st.session_state['setor_ativo'] = None
 
 def mudar_tela(nome_tela):
     st.session_state['tela_atual'] = nome_tela
@@ -135,12 +137,11 @@ def painel_controle_maquina(maq_id, setor):
         info = obter_info_maquina(maq_id, setor)
         status_atual = info.get('Status', 'PRODUZINDO') if info else 'PRODUZINDO'
         hora_atual = info.get('Hora', '--:--') if info else ''
-        operador_atual = info.get('Operador', 'Não informado') if info else ''
         
         limpo_status = status_atual.split(" - ")[0].replace("🟢 ", "").replace("🟡 ", "").replace("🛠️ ", "").replace("🔴 ", "")
         
         if limpo_status == "PRODUZINDO":
-            st.success(f"🟢 Produzindo (Op: {operador_atual})")
+            st.success(f"🟢 Produzindo")
         elif limpo_status == "PARADA":
             st.error(f"🔴 Parada desde {hora_atual}")
         elif limpo_status == "MANUTENÇÃO":
@@ -161,59 +162,65 @@ def painel_controle_maquina(maq_id, setor):
                     del st.session_state[flow_key]
                 st.rerun()
             if c2.button("❌ Não", key=f"n_{maq_id}", use_container_width=True):
-                st.session_state[flow_key] = "formulario"
+                st.session_state[flow_key] = "mudanca_status"
                 st.rerun()
                 
-        elif st.session_state[flow_key] == "formulario":
+        elif st.session_state[flow_key] == "mudanca_status":
             st.markdown("##### Qual o status dela agora?")
-            with st.form(f"form_real_{maq_id}"):
-                novo_status = st.radio("Selecione:", ["🟢 PRODUZINDO", "🟡 PREPARAÇÃO", "🛠️ MANUTENÇÃO", "🔴 PARADA"])
-                
-                motivo = ""
-                if "MANUTENÇÃO" in novo_status:
-                    motivo = st.text_input("📝 Motivo:", placeholder="Ex: Quebra...")
-                    
-                tipo_prep = None
+            if st.button("🟢 PRODUZINDO", key=f"st_prod_{maq_id}", use_container_width=True):
+                salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": "PRODUZINDO", "Hora": datetime.now().strftime("%H:%M")}, ARQUIVO_DADOS)
+                st.session_state['maq_ativa'] = None
+                del st.session_state[flow_key]
+                st.rerun()
+            if st.button("🟡 PREPARAÇÃO", key=f"st_prep_{maq_id}", use_container_width=True):
+                st.session_state[flow_key] = "detalhe_prep"
+                st.rerun()
+            if st.button("🛠️ MANUTENÇÃO", key=f"st_man_{maq_id}", use_container_width=True):
+                st.session_state[flow_key] = "detalhe_man"
+                st.rerun()
+            if st.button("🔴 PARADA", key=f"st_par_{maq_id}", use_container_width=True):
+                salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": "PARADA", "Hora": datetime.now().strftime("%H:%M")}, ARQUIVO_DADOS)
+                st.session_state['maq_ativa'] = None
+                del st.session_state[flow_key]
+                st.rerun()
+
+        elif st.session_state[flow_key] == "detalhe_prep":
+            with st.form(f"form_prep_{maq_id}"):
+                st.write("Detalhes da Preparação:")
+                tipo_prep = st.radio("Setup:", ["HASTE", "GUIA"], horizontal=True)
                 troca_diametro = False
-                if setor == "RTF" and "PREPARAÇÃO" in novo_status:
-                    tipo_prep = st.radio("Setup:", ["HASTE", "GUIA"], horizontal=True)
-                    if tipo_prep == "HASTE":
-                        troca_diametro = st.toggle("📐 Troca Diâmetro?")
-                        
+                if tipo_prep == "HASTE":
+                    troca_diametro = st.toggle("📐 Troca Diâmetro?")
                 troca_rebolo = st.toggle("🔄 Troca Rebolo?")
-                hora = st.text_input("⏰ Hora:", value=datetime.now().strftime("%H:%M"))
                 
-                col_b1, col_b2 = st.columns(2)
-                if col_b1.form_submit_button("⬅️ Voltar"):
-                    st.session_state[flow_key] = "pergunta"
-                    st.rerun()
+                # Pergunta de passagem de turno caso continue em preparação
+                proximo_turno_num = "2° Turno" if "1" in st.session_state['turno'] else ("3° Turno" if "2" in st.session_state['turno'] else "1° Turno")
+                ficar_proximo = st.radio(f"Vai ficar para o {proximo_turno_num} terminar?", ["Não", "Sim"], horizontal=True)
+                
+                if st.form_submit_button("💾 Salvar Preparação", type="primary"):
+                    st_final = f"PREPARAÇÃO - {tipo_prep}"
+                    if tipo_prep == "HASTE" and troca_diametro: st_final += " (C/ Diâmetro)"
+                    if troca_rebolo: st_final += " (C/ Rebolo)"
+                    if ficar_proximo == "Sim": st_final += f" [Fica para {proximo_turno_num}]"
                     
-                if col_b2.form_submit_button("💾 Salvar", type="primary"):
-                    if "MANUTENÇÃO" in novo_status and not motivo.strip():
-                        st.error("⚠️ Informe o motivo!")
-                    elif not hora.strip():
-                        st.error("⚠️ Preencha a hora!")
+                    salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": datetime.now().strftime("%H:%M")}, ARQUIVO_DADOS)
+                    st.session_state['maq_ativa'] = None
+                    del st.session_state[flow_key]
+                    st.success("✅ Salvo!")
+                    time.sleep(0.5)
+                    st.rerun()
+
+        elif st.session_state[flow_key] == "detalhe_man":
+            with st.form(f"form_man_{maq_id}"):
+                motivo = st.text_input("📝 Motivo da Manutenção (Obrigatório):", placeholder="Ex: Quebra...")
+                if st.form_submit_button("💾 Salvar Manutenção", type="primary"):
+                    if not motivo.strip():
+                        st.error("Informe o motivo!")
                     else:
-                        st_limpo = novo_status.replace("🟢 ", "").replace("🟡 ", "").replace("🛠️ ", "").replace("🔴 ", "")
-                        status_final = st_limpo
-                        if setor == "RTF" and "PREPARAÇÃO" in novo_status:
-                            status_final += f" - {tipo_prep}"
-                            if tipo_prep == "HASTE" and troca_diametro: status_final += " (C/ Diâmetro)"
-                        if troca_rebolo: status_final += " (C/ Rebolo)"
-                        if motivo: status_final += f" - Motivo: {motivo}"
-                        
-                        salvar_csv({
-                            "Setor": setor, 
-                            "Maquina": f"{setor} {maq_id}", 
-                            "Operador": st.session_state['operador'], 
-                            "Status": status_final, 
-                            "Hora": hora
-                        }, ARQUIVO_DADOS)
-                        
-                        if flow_key in st.session_state:
-                            del st.session_state[flow_key]
+                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": f"MANUTENÇÃO - Motivo: {motivo}", "Hora": datetime.now().strftime("%H:%M")}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
-                        st.success("✅ Atualizado!")
+                        del st.session_state[flow_key]
+                        st.success("✅ Salvo!")
                         time.sleep(0.5)
                         st.rerun()
 
@@ -223,77 +230,44 @@ def painel_controle_maquina(maq_id, setor):
 
 def tela_login():
     st.markdown("<h3 style='text-align: center; color: #14B8A6 !important; margin-top: 20px;'>🏭 App MES</h3>", unsafe_allow_html=True)
-    nome = st.text_input("Seu Nome ou RE:", placeholder="Digite aqui...")
+    st.markdown("<p style='text-align: center; color: #A1A1AA; font-size: 11px;'>Digite o código de acesso (ex: 1123, 1234, etc.)</p>", unsafe_allow_html=True)
+    
+    cod = st.text_input("Código de Acesso:", type="password", placeholder="Digite o código...")
+    nome = st.text_input("Seu Nome ou RE:", placeholder="Seu nome...")
+    
     if st.button("ENTRAR NO SISTEMA", use_container_width=True, type="primary"):
-        if nome:
+        codigos_validos = {
+            "1123": ("1° TURNO", "AFC", "Afiação"),
+            "1234": ("1° TURNO", "RTF", "Retífica"),
+            "2123": ("2° TURNO", "AFC", "Afiação"),
+            "2234": ("2° TURNO", "RTF", "Retífica"),
+            "3123": ("3° TURNO", "AFC", "Afiação"),
+            "3234": ("3° TURNO", "RTF", "Retífica")
+        }
+        
+        if cod in codigos_validos and nome:
+            st.session_state['turno'], st.session_state['setor_usuario'], setor_nome = codigos_validos[cod]
             st.session_state['operador'] = nome.upper()
             mudar_tela('menu')
         else:
-            st.error("⚠️ Obrigatório.")
+            st.error("⚠️ Código inválido ou Nome em branco.")
 
 def tela_menu():
-    st.markdown(f"<p style='margin:0px;'><b>Olá, {st.session_state['operador']} 👋</b></p>", unsafe_allow_html=True)
+    st.markdown(f"<p style='margin:0px;'><b>{st.session_state['operador']}</b> | {st.session_state['turno']} | Setor: <b>{'Afiação' if st.session_state['setor_usuario']=='AFC' else 'Retífica'}</b></p>", unsafe_allow_html=True)
     st.divider()
     
-    # --- TELA DE CHECK-UP RÁPIDO NA HOME ---
-    st.markdown("##### 🔍 Check-up de Anomalias (Paradas / Manutenção / Setup)")
-    status_dict = ler_status_atual()
-    
-    # Lista todas as máquinas com problemas (tudo que não for PRODUZINDO ou vazio)
-    maquinas_com_problema = []
-    
-    # Lista completa de todas as máquinas da fábrica para checagem padrão
-    todas_afc = [
-        "30-161", "29-078", "32-081", "31-969", "34-132", "33-160", "36-084", "35-131",
-        "38-596", "37-892", "40-142", "39-905", "41-141", "8-247", "6-868", "4-427", "9-088",
-        "10-812", "7-743", "12-367", "11-365", "14-967", "13-964", "16-975", "15-973",
-        "18-957", "17-140", "20-774", "19-760", "22-813", "21-206", "24-761", "23-165",
-        "26-635", "25-209", "28-432", "27-431"
-    ]
-    todas_rtf = [
-        "6-6J1", "17-6J1", "30-786", "32-918", "29-785", "4-425", "3-426",
-        "34-842", "31-806", "7-267", "5-903", "36-854", "33-807", "9-815", "8-086",
-        "38-881", "35-885", "11-363", "10-817", "40-912", "37-857", "13-969",
-        "12-962", "42-885", "39-856", "15-977", "14-971", "18-925", "16-183",
-        "20-927", "19-926", "22-916", "21-270", "24-259", "23-753", "26-260",
-        "25-258", "28-954", "27-917"
-    ]
-    
-    for m in todas_afc:
-        st_val = status_dict.get(f"AFC {m}", "PRODUZINDO")
-        if "PRODUZINDO" not in st_val:
-            maquinas_com_problema.append(("AFC", m, st_val))
-            
-    for m in todas_rtf:
-        st_val = status_dict.get(f"RTF {m}", "PRODUZINDO")
-        if "PRODUZINDO" not in st_val:
-            maquinas_com_problema.append(("RTF", m, st_val))
-            
-    if st.session_state['maq_ativa'] and st.session_state['setor_ativo']:
-        painel_controle_maquina(st.session_state['maq_ativa'], st.session_state['setor_ativo'])
-        st.divider()
-
-    if not maquinas_com_problema:
-        st.success("🟢 Todas as máquinas estão produzindo normalmente!")
+    # Exibe o botão do setor liberado pelo código
+    if st.session_state['setor_usuario'] == 'AFC':
+        if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True, type="primary"): mudar_tela('afc')
     else:
-        for setor_m, maq_m, st_m in maquinas_com_problema:
-            icone = MAPA_STATUS.get(st_m.split(" - ")[0], "⚠️")
-            if st.button(f"{icone} {setor_m} {maq_m} - {st_m}", key=f"chk_{setor_m}_{maq_m}", use_container_width=True):
-                st.session_state['maq_ativa'] = maq_m
-                st.session_state['setor_ativo'] = setor_m
-                st.rerun()
-                
-    st.divider()
+        if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True, type="primary"): mudar_tela('rtf')
+        
+    if st.button("🔍 CHECK-UP DE ANOMALIAS (PARADAS / SETUP)", use_container_width=True): mudar_tela('checkup')
+    if st.button("👥 EQUIPE", use_container_width=True): mudar_tela('equipe')
+    if st.button("✏️ EDITAR DADOS", use_container_width=True): mudar_tela('editar')
+    if st.button("📋 RELATÓRIO DE TURNO", use_container_width=True): mudar_tela('relatorio')
     
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("⚙️ AFIAÇÃO", use_container_width=True): mudar_tela('afc')
-        if st.button("👥 EQUIPE", use_container_width=True): mudar_tela('equipe')
-    with col2:
-        if st.button("⚙️ RETÍFICA", use_container_width=True): mudar_tela('rtf')
-        if st.button("✏️ EDITAR", use_container_width=True): mudar_tela('editar')
-
-    if st.button("📋 RELATÓRIO DE TURNO", use_container_width=True, type="primary"): mudar_tela('relatorio')
+    st.markdown("<br>", unsafe_allow_html=True)
     if st.button("🚪 Sair (Logout)", use_container_width=True):
         st.session_state['operador'] = ''
         mudar_tela('login')
@@ -311,6 +285,52 @@ def render_grid_vertical(lista_maquinas, setor, status_dict):
             if st.button(label_botao, key=f"btn_vert_{setor}_{maq}", use_container_width=True):
                 st.session_state['maq_ativa'] = maq
                 st.session_state['setor_ativo'] = setor
+                st.rerun()
+
+def tela_checkup():
+    if st.button("⬅️ Menu"): mudar_tela('menu')
+    st.markdown("##### 🔍 Check-up de Anomalias")
+    
+    status_dict = ler_status_atual()
+    setor_atual = st.session_state['setor_usuario']
+    
+    todas_afc = [
+        "30-161", "29-078", "32-081", "31-969", "34-132", "33-160", "36-084", "35-131",
+        "38-596", "37-892", "40-142", "39-905", "41-141", "8-247", "6-868", "4-427", "9-088",
+        "10-812", "7-743", "12-367", "11-365", "14-967", "13-964", "16-975", "15-973",
+        "18-957", "17-140", "20-774", "19-760", "22-813", "21-206", "24-761", "23-165",
+        "26-635", "25-209", "28-432", "27-431"
+    ]
+    todas_rtf = [
+        "6-6J1", "17-6J1", "30-786", "32-918", "29-785", "4-425", "3-426",
+        "34-842", "31-806", "7-267", "5-903", "36-854", "33-807", "9-815", "8-086",
+        "38-881", "35-885", "11-363", "10-817", "40-912", "37-857", "13-969",
+        "12-962", "42-885", "39-856", "15-977", "14-971", "18-925", "16-183",
+        "20-927", "19-926", "22-916", "21-270", "24-259", "23-753", "26-260",
+        "25-258", "28-954", "27-917"
+    ]
+    
+    maquinas_com_problema = []
+    lista_alvo = todas_afc if setor_atual == "AFC" else todas_rtf
+    
+    for m in lista_alvo:
+        st_val = status_dict.get(f"{setor_atual} {m}", "PRODUZINDO")
+        if "PRODUZINDO" not in st_val:
+            maquinas_com_problema.append((setor_atual, m, st_val))
+            
+    if st.session_state['maq_ativa'] and st.session_state['setor_ativo']:
+        painel_controle_maquina(st.session_state['maq_ativa'], st.session_state['setor_ativo'])
+        st.divider()
+
+    if not maquinas_com_problema:
+        st.success("🟢 Nenhuma anomalia no seu setor neste momento!")
+    else:
+        st.write("Clique na máquina para atualizar o status:")
+        for setor_m, maq_m, st_m in maquinas_com_problema:
+            icone = MAPA_STATUS.get(st_m.split(" - ")[0], "⚠️")
+            if st.button(f"{icone} {setor_m} {maq_m} - {st_m}", key=f"chk_{setor_m}_{maq_m}", use_container_width=True):
+                st.session_state['maq_ativa'] = maq_m
+                st.session_state['setor_ativo'] = setor_m
                 st.rerun()
 
 def tela_afc():
@@ -335,15 +355,12 @@ def tela_afc():
             st.rerun()
             
         if st.session_state['celula_selecionada'] == 'celula_1':
-            st.markdown("**Célula 1 (Esquerda)**")
             render_grid_vertical([
                 "30-161", "29-078", "32-081", "31-969",
                 "34-132", "33-160", "36-084", "35-131",
                 "38-596", "37-892", "40-142", "39-905", "41-141"
             ], "AFC", status_dict)
-            
         elif st.session_state['celula_selecionada'] == 'celula_2':
-            st.markdown("**Célula 2 (Direita)**")
             render_grid_vertical([
                 "8-247", "6-868", "4-427", "9-088",
                 "10-812", "7-743", "12-367", "11-365",
@@ -375,11 +392,8 @@ def tela_rtf():
             st.rerun()
             
         if st.session_state['celula_selecionada'] == 'cent':
-            st.markdown("**Centerless**")
             render_grid_vertical(["6-6J1", "17-6J1"], "RTF", status_dict)
-            
         elif st.session_state['celula_selecionada'] == 'rtf_padrao':
-            st.markdown("**Retíficas Padrão**")
             render_grid_vertical([
                 "30-786", "32-918", "29-785", "4-425", "3-426",
                 "34-842", "31-806", "7-267", "5-903", "36-854",
@@ -414,8 +428,7 @@ def tela_editar():
 
 def tela_relatorio():
     if st.button("⬅️ Menu"): mudar_tela('menu')
-    st.markdown("##### Fechamento")
-    turno = st.selectbox("Turno:", ["1° TURNO", "2° TURNO", "3° TURNO"])
+    st.markdown("##### Fechamento de Turno")
     concluidos = st.text_area("Concluídos:", height=50)
     obs = st.text_area("Obs:", height=50)
     
@@ -428,7 +441,7 @@ def tela_relatorio():
         df_maq = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
         if not df_maq.empty: df_maq = df_maq.drop_duplicates(subset=['Maquina'], keep='last')
         
-        texto = f"🏭 PLANTA | {data_hoje} | {turno}\n\n"
+        texto = f"🏭 PLANTA | {data_hoje} | {st.session_state['turno']}\n\n"
         for _, row in df_maq.iterrows():
             texto += f"- {row['Maquina']}: {row['Status']} ({row['Hora']})\n"
         
@@ -441,6 +454,7 @@ def tela_relatorio():
 # --- ROTEADOR ---
 if st.session_state['tela_atual'] == 'login': tela_login()
 elif st.session_state['tela_atual'] == 'menu': tela_menu()
+elif st.session_state['tela_atual'] == 'checkup': tela_checkup()
 elif st.session_state['tela_atual'] == 'afc': tela_afc()
 elif st.session_state['tela_atual'] == 'rtf': tela_rtf()
 elif st.session_state['tela_atual'] == 'equipe': tela_equipe()
