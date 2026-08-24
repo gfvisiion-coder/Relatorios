@@ -5,54 +5,85 @@ import os
 import time
 
 # --- CONFIGURAÇÃO BASE DO APP ---
-st.set_page_config(page_title="App MES - Planta", page_icon="📱", layout="centered", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="MES Enterprise | Planta Industrial", page_icon="🏭", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CSS COMPACTO PARA MOBILE ---
+# --- DESIGN SYSTEM: CSS INDUSTRIAL PREMIUM ---
 CSS_APP = """
 <style>
-    .stApp { background-color: #121214 !important; }
-    h1, h2, h3, h4, h5, p, span, div[data-testid="stMarkdownContainer"] { color: #F8FAFC !important; font-family: 'Inter', sans-serif !important; }
-    label { color: #A1A1AA !important; font-size: 11px !important; font-weight: 600 !important; }
+    /* Cores de Fundo Globais */
+    .stApp { background-color: #09090B !important; }
     
+    /* Tipografia Global */
+    h1, h2, h3, h4, h5, p, span, div[data-testid="stMarkdownContainer"] { 
+        color: #F4F4F5 !important; 
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important; 
+    }
+    
+    label { color: #A1A1AA !important; font-size: 11px !important; font-weight: 600 !important; text-transform: uppercase; letter-spacing: 0.5px; }
+    
+    /* Layout Fluido Compacto */
     .block-container { 
-        padding-top: 0.4rem !important; 
-        padding-bottom: 0.4rem !important; 
-        padding-left: 0.4rem !important; 
-        padding-right: 0.4rem !important; 
+        padding-top: 0.6rem !important; 
+        padding-bottom: 0.6rem !important; 
+        padding-left: 0.5rem !important; 
+        padding-right: 0.5rem !important; 
         max-width: 100% !important; 
     }
     
+    /* Botões Padrão (Secundários / Células / Menu) */
     button[kind="secondary"] { 
-        background-color: #202024 !important; 
-        color: #E4E4E7 !important; 
-        border: 1px solid #323238 !important; 
-        border-radius: 6px !important; 
-        font-weight: bold !important; 
-        height: 42px !important; 
-        font-size: 12px !important;
+        background-color: #18181B !important; 
+        color: #EC4899 !important; 
+        border: 1px solid #27272A !important; 
+        border-radius: 8px !important; 
+        font-weight: 600 !important; 
+        height: 46px !important; 
+        font-size: 13px !important;
         width: 100% !important;
-        margin-bottom: 4px !important;
+        margin-bottom: 6px !important;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        transition: all 0.2s ease-in-out;
     }
-    button[kind="secondary"]:hover { border-color: #14B8A6 !important; background-color: #27272A !important; }
+    button[kind="secondary"]:hover { 
+        border-color: #14B8A6 !important; 
+        background-color: #27272A !important; 
+        color: #2DD4BF !important;
+    }
     
+    /* Botões de Ação Principal (Primários) */
     div[data-testid="stFormSubmitButton"] > button, button[kind="primary"] { 
-        background-color: #0D9488 !important; 
+        background: linear-gradient(135deg, #0D9488 0%, #0F766E 100%) !important; 
         color: white !important; 
         border: none !important; 
-        border-radius: 6px !important; 
-        height: 42px !important; 
-        font-size: 12px !important; 
-        font-weight: bold !important; 
+        border-radius: 8px !important; 
+        height: 46px !important; 
+        font-size: 13px !important; 
+        font-weight: 700 !important; 
         width: 100% !important;
+        box-shadow: 0 4px 12px rgba(13, 148, 136, 0.3);
+    }
+    div[data-testid="stFormSubmitButton"] > button:hover {
+        background: linear-gradient(135deg, #0F766E 0%, #115E59 100%) !important;
     }
     
+    /* Inputs de Formulários Modernos */
     div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, div[data-baseweb="textarea"] > div { 
-        background-color: #202024 !important; 
-        border: 1px solid #323238 !important; 
-        border-radius: 6px !important; 
-        min-height: 32px !important; 
+        background-color: #18181B !important; 
+        border: 1px solid #3F3F46 !important; 
+        border-radius: 8px !important; 
+        min-height: 38px !important; 
     }
-    input, select, textarea { color: white !important; font-size: 12px !important; }
+    input, select, textarea { color: #FAFAFA !important; font-size: 13px !important; }
+    
+    /* Containers Estilizados */
+    div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"] {
+        background-color: #121214;
+        border: 1px solid #27272A;
+        border-radius: 12px;
+        padding: 12px;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+    }
+
     header { visibility: hidden; }
 </style>
 """
@@ -78,6 +109,8 @@ if 'turno' not in st.session_state:
     st.session_state['turno'] = ''
 if 'setor_usuario' not in st.session_state:
     st.session_state['setor_usuario'] = ''
+if 'perfil' not in st.session_state:
+    st.session_state['perfil'] = '' 
 if 'celula_selecionada' not in st.session_state:
     st.session_state['celula_selecionada'] = None
 if 'maq_ativa' not in st.session_state:
@@ -127,10 +160,10 @@ def salvar_csv(dados, arquivo):
 #        PAINEL DE CONTROLE DA MÁQUINA
 # ==========================================
 def painel_controle_maquina(maq_id, setor):
-    with st.container(border=True):
+    with st.container():
         col_t, col_f = st.columns([8, 1])
-        col_t.markdown(f"**⚙️ Máq: {maq_id}**")
-        if col_f.button("❌", key=f"fechar_{maq_id}"):
+        col_t.markdown(f"<h4 style='color: #2DD4BF !important; margin:0;'>⚙️ MÁQUINA: {maq_id}</h4>", unsafe_allow_html=True)
+        if col_f.button("✕", key=f"fechar_{maq_id}"):
             st.session_state['maq_ativa'] = None
             st.rerun()
             
@@ -140,33 +173,36 @@ def painel_controle_maquina(maq_id, setor):
         
         limpo_status = status_atual.split(" - ")[0].replace("🟢 ", "").replace("🟡 ", "").replace("🛠️ ", "").replace("🔴 ", "")
         
+        st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
         if limpo_status == "PRODUZINDO":
-            st.success(f"🟢 Produzindo")
+            st.success("🟢 Status Atual: Operando em Produção")
         elif limpo_status == "PARADA":
-            st.error(f"🔴 Parada desde {hora_atual}")
+            st.error(f"🔴 Status Atual: Paralisada desde {hora_atual}")
         elif limpo_status == "MANUTENÇÃO":
-            st.warning(f"🛠️ Manutenção desde {hora_atual}")
+            st.warning(f"🛠️ Status Atual: Em Manutenção desde {hora_atual}")
         else:
-            st.info(f"🟡 {limpo_status} desde {hora_atual}")
+            st.info(f"🟡 Status Atual: {limpo_status} desde {hora_atual}")
             
         flow_key = f"flow_{maq_id}"
         if flow_key not in st.session_state:
             st.session_state[flow_key] = "pergunta"
             
+        st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
+        
         if st.session_state[flow_key] == "pergunta":
-            st.write(f"Esta máquina ainda está em **{limpo_status}**?")
+            st.markdown(f"<p style='text-align: center; font-weight: 600;'>Esta máquina ainda está em <span style='color: #F43F5E;'>{limpo_status}</span>?</p>", unsafe_allow_html=True)
             c1, c2 = st.columns(2)
-            if c1.button("✅ Sim", key=f"s_{maq_id}", use_container_width=True):
+            if c1.button("✅ Sim, continuar", key=f"s_{maq_id}", use_container_width=True):
                 st.session_state['maq_ativa'] = None
                 if flow_key in st.session_state:
                     del st.session_state[flow_key]
                 st.rerun()
-            if c2.button("❌ Não", key=f"n_{maq_id}", use_container_width=True):
+            if c2.button("❌ Não, alterar", key=f"n_{maq_id}", use_container_width=True):
                 st.session_state[flow_key] = "mudanca_status"
                 st.rerun()
                 
         elif st.session_state[flow_key] == "mudanca_status":
-            st.markdown("##### Qual o status dela agora?")
+            st.markdown("<p style='font-size: 12px; font-weight: bold; color: #14B8A6;'>SELECIONE O NOVO STATUS:</p>", unsafe_allow_html=True)
             if st.button("🟢 PRODUZINDO", key=f"st_prod_{maq_id}", use_container_width=True):
                 salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": "PRODUZINDO", "Hora": datetime.now().strftime("%H:%M")}, ARQUIVO_DADOS)
                 st.session_state['maq_ativa'] = None
@@ -186,18 +222,17 @@ def painel_controle_maquina(maq_id, setor):
 
         elif st.session_state[flow_key] == "detalhe_prep":
             with st.form(f"form_prep_{maq_id}"):
-                st.write("Detalhes da Preparação:")
+                st.markdown("⚙️ **Parâmetros de Preparação**")
                 tipo_prep = st.radio("Setup:", ["HASTE", "GUIA"], horizontal=True)
                 troca_diametro = False
                 if tipo_prep == "HASTE":
-                    troca_diametro = st.toggle("📐 Troca Diâmetro?")
-                troca_rebolo = st.toggle("🔄 Troca Rebolo?")
+                    troca_diametro = st.toggle("📐 Troca de Diâmetro?")
+                troca_rebolo = st.toggle("🔄 Troca de Rebolo?")
                 
-                # Pergunta de passagem de turno caso continue em preparação
                 proximo_turno_num = "2° Turno" if "1" in st.session_state['turno'] else ("3° Turno" if "2" in st.session_state['turno'] else "1° Turno")
                 ficar_proximo = st.radio(f"Vai ficar para o {proximo_turno_num} terminar?", ["Não", "Sim"], horizontal=True)
                 
-                if st.form_submit_button("💾 Salvar Preparação", type="primary"):
+                if st.form_submit_button("💾 Salvar Configuração", type="primary"):
                     st_final = f"PREPARAÇÃO - {tipo_prep}"
                     if tipo_prep == "HASTE" and troca_diametro: st_final += " (C/ Diâmetro)"
                     if troca_rebolo: st_final += " (C/ Rebolo)"
@@ -206,21 +241,22 @@ def painel_controle_maquina(maq_id, setor):
                     salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": datetime.now().strftime("%H:%M")}, ARQUIVO_DADOS)
                     st.session_state['maq_ativa'] = None
                     del st.session_state[flow_key]
-                    st.success("✅ Salvo!")
+                    st.success("✅ Atualizado com sucesso!")
                     time.sleep(0.5)
                     st.rerun()
 
         elif st.session_state[flow_key] == "detalhe_man":
             with st.form(f"form_man_{maq_id}"):
-                motivo = st.text_input("📝 Motivo da Manutenção (Obrigatório):", placeholder="Ex: Quebra...")
-                if st.form_submit_button("💾 Salvar Manutenção", type="primary"):
+                st.markdown("🛠️ **Registro de Manutenção**")
+                motivo = st.text_input("Motivo da Manutenção (Obrigatório):", placeholder="Descreva o problema...")
+                if st.form_submit_button("💾 Registrar Manutenção", type="primary"):
                     if not motivo.strip():
-                        st.error("Informe o motivo!")
+                        st.error("⚠️ O motivo é obrigatório!")
                     else:
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": f"MANUTENÇÃO - Motivo: {motivo}", "Hora": datetime.now().strftime("%H:%M")}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
-                        st.success("✅ Salvo!")
+                        st.success("✅ Registrado!")
                         time.sleep(0.5)
                         st.rerun()
 
@@ -229,69 +265,87 @@ def painel_controle_maquina(maq_id, setor):
 # ==========================================
 
 def tela_login():
-    st.markdown("<h3 style='text-align: center; color: #14B8A6 !important; margin-top: 20px;'>🏭 App MES</h3>", unsafe_allow_html=True)
-    st.markdown("<p style='text-align: center; color: #A1A1AA; font-size: 11px;'>Digite o código de acesso (ex: 1123, 1234, etc.)</p>", unsafe_allow_html=True)
+    st.markdown("<h2 style='text-align: center; color: #14B8A6 !important; margin-top: 30px;'>🏭 MES ENTERPRISE</h2>", unsafe_allow_html=True)
+    st.markdown("<p style='text-align: center; color: #A1A1AA; font-size: 12px; margin-bottom: 30px;'>Insira seu código de credencial e identificação</p>", unsafe_allow_html=True)
     
-    cod = st.text_input("Código de Acesso:", type="password", placeholder="Digite o código...")
-    nome = st.text_input("Seu Nome ou RE:", placeholder="Seu nome...")
-    
-    if st.button("ENTRAR NO SISTEMA", use_container_width=True, type="primary"):
-        codigos_validos = {
-            "1123": ("1° TURNO", "AFC", "Afiação"),
-            "1234": ("1° TURNO", "RTF", "Retífica"),
-            "2123": ("2° TURNO", "AFC", "Afiação"),
-            "2234": ("2° TURNO", "RTF", "Retífica"),
-            "3123": ("3° TURNO", "AFC", "Afiação"),
-            "3234": ("3° TURNO", "RTF", "Retífica")
-        }
+    with st.container():
+        cod = st.text_input("Código de Acesso:", type="password", placeholder="Ex: 1123, 1234, 1010...")
+        nome = st.text_input("Nome do Colaborador / RE:", placeholder="Digite seu nome...")
+        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         
-        if cod in codigos_validos and nome:
-            st.session_state['turno'], st.session_state['setor_usuario'], setor_nome = codigos_validos[cod]
-            st.session_state['operador'] = nome.upper()
-            mudar_tela('menu')
-        else:
-            st.error("⚠️ Código inválido ou Nome em branco.")
+        if st.button("ACESSAR SISTEMA", use_container_width=True, type="primary"):
+            codigos_validos = {
+                "1123": ("1° TURNO", "AFC", "operador"),
+                "2123": ("2° TURNO", "AFC", "operador"),
+                "3123": ("3° TURNO", "AFC", "operador"),
+                "1234": ("1° TURNO", "RTF", "operador"),
+                "2234": ("2° TURNO", "RTF", "operador"),
+                "3234": ("3° TURNO", "RTF", "operador"),
+                "1010": ("1° TURNO", "TECNICO", "tecnico"),
+                "2020": ("2° TURNO", "TECNICO", "tecnico"),
+                "3030": ("3° TURNO", "TECNICO", "tecnico")
+            }
+            
+            if cod in codigos_validos and nome:
+                st.session_state['turno'], st.session_state['setor_usuario'], st.session_state['perfil'] = codigos_validos[cod]
+                st.session_state['operador'] = nome.upper()
+                mudar_tela('menu')
+            else:
+                st.error("⚠️ Credenciais inválidas. Verifique o código.")
 
 def tela_menu():
-    st.markdown(f"<p style='margin:0px;'><b>{st.session_state['operador']}</b> | {st.session_state['turno']} | Setor: <b>{'Afiação' if st.session_state['setor_usuario']=='AFC' else 'Retífica'}</b></p>", unsafe_allow_html=True)
-    st.divider()
+    perfil = st.session_state['perfil']
+    setor_txt = "Técnico (Geral)" if perfil == 'tecnico' else ('Afiação' if st.session_state['setor_usuario']=='AFC' else 'Retífica')
     
-    # Exibe o botão do setor liberado pelo código
-    if st.session_state['setor_usuario'] == 'AFC':
-        if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True, type="primary"): mudar_tela('afc')
+    st.markdown(f"""
+    <div style='background: #18181B; padding: 12px; border-radius: 10px; border-left: 4px solid #14B8A6; margin-bottom: 15px;'>
+        <p style='margin:0; font-size: 13px; color: #A1A1AA;'>Usuário Logado</p>
+        <p style='margin:0; font-size: 16px; font-weight: bold; color: #F4F4F5;'>{st.session_state['operador']}</p>
+        <p style='margin:0; font-size: 12px; color: #2DD4BF;'>{st.session_state['turno']} • {setor_txt}</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    if perfil == 'tecnico':
+        if st.button("📋 RELATÓRIO GERAL CONSOLIDADO", use_container_width=True, type="primary"): mudar_tela('relatorio')
+        if st.button("🔍 CHECK-UP DE ANOMALIAS GERAL", use_container_width=True): mudar_tela('checkup')
+        if st.button("✏️ GERENCIAR BANCO DE DADOS", use_container_width=True): mudar_tela('editar')
     else:
-        if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True, type="primary"): mudar_tela('rtf')
-        
-    if st.button("🔍 CHECK-UP DE ANOMALIAS (PARADAS / SETUP)", use_container_width=True): mudar_tela('checkup')
-    if st.button("👥 EQUIPE", use_container_width=True): mudar_tela('equipe')
-    if st.button("✏️ EDITAR DADOS", use_container_width=True): mudar_tela('editar')
-    if st.button("📋 RELATÓRIO DE TURNO", use_container_width=True): mudar_tela('relatorio')
+        if st.session_state['setor_usuario'] == 'AFC':
+            if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True, type="primary"): mudar_tela('afc')
+        else:
+            if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True, type="primary"): mudar_tela('rtf')
+            
+        if st.button("🔍 CHECK-UP DE ANOMALIAS", use_container_width=True): mudar_tela('checkup')
+        if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
+        if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
+        if st.button("📋 RELATÓRIO DE TURNO", use_container_width=True): mudar_tela('relatorio')
     
-    st.markdown("<br>", unsafe_allow_html=True)
-    if st.button("🚪 Sair (Logout)", use_container_width=True):
+    st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
+    if st.button("🚪 Encerramento de Sessão (Logout)", use_container_width=True):
         st.session_state['operador'] = ''
         mudar_tela('login')
 
 def render_grid_vertical(lista_maquinas, setor, status_dict):
     for maq in lista_maquinas:
-        if maq == "":
-            st.write("")
-        else:
+        if maq != "":
             chave_busca = f"{setor} {maq}"
             status_atual = status_dict.get(chave_busca, "PRODUZINDO")
             icone = MAPA_STATUS.get(status_atual.split(" - ")[0], "🟢")
             
-            label_botao = f"{icone} Máquina {maq} ({status_atual})"
+            label_botao = f"{icone} Máquina {maq} — {status_atual}"
             if st.button(label_botao, key=f"btn_vert_{setor}_{maq}", use_container_width=True):
                 st.session_state['maq_ativa'] = maq
                 st.session_state['setor_ativo'] = setor
                 st.rerun()
 
 def tela_checkup():
-    if st.button("⬅️ Menu"): mudar_tela('menu')
-    st.markdown("##### 🔍 Check-up de Anomalias")
+    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    st.markdown("#### 🔍 Check-up de Anomalias na Planta")
+    st.markdown("<p style='font-size: 11px; color: #A1A1AA;'>Monitore equipamentos parados, em preparação ou manutenção.</p>", unsafe_allow_html=True)
+    st.divider()
     
     status_dict = ler_status_atual()
+    perfil = st.session_state['perfil']
     setor_atual = st.session_state['setor_usuario']
     
     todas_afc = [
@@ -311,49 +365,51 @@ def tela_checkup():
     ]
     
     maquinas_com_problema = []
-    lista_alvo = todas_afc if setor_atual == "AFC" else todas_rtf
-    
-    for m in lista_alvo:
-        st_val = status_dict.get(f"{setor_atual} {m}", "PRODUZINDO")
-        if "PRODUZINDO" not in st_val:
-            maquinas_com_problema.append((setor_atual, m, st_val))
+    setores_alvo = [("AFC", todas_afc), ("RTF", todas_rtf)] if perfil == 'tecnico' else [(setor_atual, todas_afc if setor_atual == "AFC" else todas_rtf)]
+        
+    for s_nome, lista in setores_alvo:
+        for m in lista:
+            st_val = status_dict.get(f"{s_nome} {m}", "PRODUZINDO")
+            if "PRODUZINDO" not in st_val:
+                maquinas_com_problema.append((s_nome, m, st_val))
             
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo']:
         painel_controle_maquina(st.session_state['maq_ativa'], st.session_state['setor_ativo'])
         st.divider()
 
     if not maquinas_com_problema:
-        st.success("🟢 Nenhuma anomalia no seu setor neste momento!")
+        st.success("✨ Ótimo! Nenhuma anomalia registrada no momento.")
     else:
-        st.write("Clique na máquina para atualizar o status:")
+        st.markdown("<p style='font-size: 12px; color: #2DD4BF;'>Toque na máquina para gerenciar o estado:</p>", unsafe_allow_html=True)
         for setor_m, maq_m, st_m in maquinas_com_problema:
             icone = MAPA_STATUS.get(st_m.split(" - ")[0], "⚠️")
-            if st.button(f"{icone} {setor_m} {maq_m} - {st_m}", key=f"chk_{setor_m}_{maq_m}", use_container_width=True):
+            if st.button(f"{icone} {setor_m} {maq_m} — {st_m}", key=f"chk_{setor_m}_{maq_m}", use_container_width=True):
                 st.session_state['maq_ativa'] = maq_m
                 st.session_state['setor_ativo'] = setor_m
                 st.rerun()
 
 def tela_afc():
-    if st.button("⬅️ Menu"): mudar_tela('menu')
-    st.markdown("##### 🗂️ Afiação - Células")
+    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    st.markdown("#### ⚙️ Setor Afiação — Células")
     status_dict = ler_status_atual()
     
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] == 'AFC':
         painel_controle_maquina(st.session_state['maq_ativa'], 'AFC')
     
     if st.session_state['celula_selecionada'] is None:
-        if st.button("📌 Célula 1 (Esquerda)", use_container_width=True):
+        if st.button("📌 Célula 1 (Bloco Esquerdo)", use_container_width=True):
             st.session_state['celula_selecionada'] = 'celula_1'
             st.rerun()
-        if st.button("📌 Célula 2 (Direita)", use_container_width=True):
+        if st.button("📌 Célula 2 (Bloco Direito)", use_container_width=True):
             st.session_state['celula_selecionada'] = 'celula_2'
             st.rerun()
     else:
-        if st.button("⬅️ Voltar Células"):
+        if st.button("⬅️ Trocar de Célula"):
             st.session_state['celula_selecionada'] = None
             st.session_state['maq_ativa'] = None
             st.rerun()
             
+        st.divider()
         if st.session_state['celula_selecionada'] == 'celula_1':
             render_grid_vertical([
                 "30-161", "29-078", "32-081", "31-969",
@@ -371,8 +427,8 @@ def tela_afc():
             ], "AFC", status_dict)
 
 def tela_rtf():
-    if st.button("⬅️ Menu"): mudar_tela('menu')
-    st.markdown("##### 🗂️ Retífica - Células")
+    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    st.markdown("#### ⚙️ Setor Retífica — Células")
     status_dict = ler_status_atual()
     
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] == 'RTF':
@@ -386,11 +442,12 @@ def tela_rtf():
             st.session_state['celula_selecionada'] = 'rtf_padrao'
             st.rerun()
     else:
-        if st.button("⬅️ Voltar Células"):
+        if st.button("⬅️ Trocar de Célula"):
             st.session_state['celula_selecionada'] = None
             st.session_state['maq_ativa'] = None
             st.rerun()
             
+        st.divider()
         if st.session_state['celula_selecionada'] == 'cent':
             render_grid_vertical(["6-6J1", "17-6J1"], "RTF", status_dict)
         elif st.session_state['celula_selecionada'] == 'rtf_padrao':
@@ -406,50 +463,71 @@ def tela_rtf():
             ], "RTF", status_dict)
 
 def tela_equipe():
-    if st.button("⬅️ Menu"): mudar_tela('menu')
-    st.markdown("##### Equipe")
-    with st.form("form_equipe", clear_on_submit=True):
-        tipo = st.radio("Tipo:", ["Ausência / Falta", "Treinamento"])
-        nome = st.text_input("Nome:")
-        if st.form_submit_button("REGISTRAR", use_container_width=True):
-            if nome:
-                salvar_csv({"Tipo": tipo, "Nome": nome.upper()}, ARQUIVO_EQUIPE)
-                st.success("✅")
+    if st.button("⬅️ Voltar"): mudar_tela('menu')
+    st.markdown("#### 👥 Gestão de Equipe")
+    with st.container():
+        with st.form("form_equipe", clear_on_submit=True):
+            tipo = st.radio("Tipo de Ocorrência:", ["Ausência / Falta", "Treinamento"])
+            nome = st.text_input("Nome do Colaborador:")
+            if st.form_submit_button("REGISTRAR NA EQUIPE", use_container_width=True):
+                if nome:
+                    salvar_csv({"Tipo": tipo, "Nome": nome.upper()}, ARQUIVO_EQUIPE)
+                    st.success("✅ Colaborador registrado com sucesso!")
 
 def tela_editar():
-    if st.button("⬅️ Menu"): mudar_tela('menu')
-    st.markdown("##### Corrigir Dados")
+    if st.button("⬅️ Voltar"): mudar_tela('menu')
+    st.markdown("#### ✏️ Auditoria e Correção de Dados")
     if os.path.exists(ARQUIVO_DADOS):
         df_maq = pd.read_csv(ARQUIVO_DADOS)
         df_editado = st.data_editor(df_maq, num_rows="dynamic", use_container_width=True)
-        if st.button("💾 Salvar", use_container_width=True):
+        if st.button("💾 Salvar Alterações", use_container_width=True, type="primary"):
             df_editado.to_csv(ARQUIVO_DADOS, index=False)
-            st.success("Salvo!")
+            st.success("✨ Banco de dados atualizado!")
+    else:
+        st.info("Nenhum registro encontrado.")
 
 def tela_relatorio():
-    if st.button("⬅️ Menu"): mudar_tela('menu')
-    st.markdown("##### Fechamento de Turno")
-    concluidos = st.text_area("Concluídos:", height=50)
-    obs = st.text_area("Obs:", height=50)
+    if st.button("⬅️ Voltar"): mudar_tela('menu')
+    st.markdown("#### 📋 Fechamento e Relatório de Turno")
+    concluidos = st.text_area("Atividades e Setups Concluídos:", height=70)
+    obs = st.text_area("Observações Gerais:", height=70)
     
     col1, col2 = st.columns(2)
-    gerar = col1.button("👁️ Ver", use_container_width=True)
-    encerrar = col2.button("🛑 ENCERRAR", type="primary", use_container_width=True)
+    gerar = col1.button("👁️ Visualizar", use_container_width=True)
+    encerrar = col2.button("🛑 ENCERRAR TURNO", type="primary", use_container_width=True)
         
     if gerar or encerrar:
         data_hoje = datetime.now().strftime("%d/%m/%Y")
         df_maq = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
         if not df_maq.empty: df_maq = df_maq.drop_duplicates(subset=['Maquina'], keep='last')
         
-        texto = f"🏭 PLANTA | {data_hoje} | {st.session_state['turno']}\n\n"
-        for _, row in df_maq.iterrows():
-            texto += f"- {row['Maquina']}: {row['Status']} ({row['Hora']})\n"
+        texto = f"🏭 PLANTA INDUSTRIAL UNIFICADA | {data_hoje} | {st.session_state['turno']}\n"
+        texto += "="*40 + "\n\n"
+        
+        texto += "⚙️ SETOR DE AFIAÇÃO (AFC):\n"
+        afc_rows = df_maq[df_maq['Setor'] == 'AFC']
+        if afc_rows.empty: texto += "  • Nenhum apontamento.\n"
+        else:
+            for _, row in afc_rows.iterrows():
+                texto += f"  • {row['Maquina']} ➔ {row['Status']} [{row['Hora']}]\n"
+                
+        texto += "\n⚙️ SETOR DE RETÍFICA (RTF):\n"
+        rtf_rows = df_maq[df_maq['Setor'] == 'RTF']
+        if rtf_rows.empty: texto += "  • Nenhum apontamento.\n"
+        else:
+            for _, row in rtf_rows.iterrows():
+                texto += f"  • {row['Maquina']} ➔ {row['Status']} [{row['Hora']}]\n"
+                
+        if concluidos.strip():
+            texto += f"\n✔️ CONCLUÍDOS:\n{concluidos.strip()}\n"
+        if obs.strip():
+            texto += f"\n📝 OBSERVAÇÕES:\n{obs.strip()}\n"
         
         st.code(texto, language="text")
         if encerrar:
             if os.path.exists(ARQUIVO_DADOS): os.remove(ARQUIVO_DADOS)
             if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
-            st.success("Turno encerrado!")
+            st.success("✨ Turno encerrado com sucesso! Dados limpos para a próxima operação.")
 
 # --- ROTEADOR ---
 if st.session_state['tela_atual'] == 'login': tela_login()
