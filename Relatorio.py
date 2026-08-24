@@ -28,7 +28,7 @@ CSS_MES_THEME = """
     }
     
     /* Inputs, Selects e Textareas */
-    div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, div[data-baseweb="textarea"] > div { 
+    div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, div[data-baseweb="textarea"] > div, div[data-testid="stForm"] { 
         background-color: #1E293B !important; 
         border: 1px solid #334155 !important; 
         border-radius: 8px !important; 
@@ -40,15 +40,19 @@ CSS_MES_THEME = """
         box-shadow: 0 0 0 1px #3B82F6 !important;
     }
     
-    /* Formulários (Cards) */
-    div[data-testid="stForm"] { 
-        background-color: #1E293B !important; 
-        border: 1px solid #334155 !important; 
-        border-radius: 12px !important; 
-        padding: 25px !important; 
-        border-top: 4px solid #3B82F6 !important; 
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+    /* Caixa de destaque para a parte dinâmica do RTF */
+    .dynamic-box {
+        background-color: #1E293B;
+        border: 1px solid #3B82F6;
+        border-radius: 8px;
+        padding: 20px;
+        margin-top: 10px;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }
+
+    /* Formulários (Cards) */
+    div[data-testid="stForm"] { padding: 25px !important; border-top: 4px solid #3B82F6 !important; }
     
     /* Botões Principais */
     div[data-testid="stFormSubmitButton"] > button, button[kind="primary"] { 
@@ -79,7 +83,7 @@ CSS_MES_THEME = """
         border-bottom: 2px solid #3B82F6 !important; 
     }
     
-    /* Ocultar cabeçalho padrão do Streamlit */
+    /* Ocultar cabeçalho padrão */
     header {visibility: hidden;}
     
     /* Animação de Loading */
@@ -105,7 +109,6 @@ st.markdown(CSS_MES_THEME, unsafe_allow_html=True)
 ARQUIVO_DADOS = "banco_operacao.csv"
 ARQUIVO_EQUIPE = "banco_equipe.csv"
 
-# Tela de Carregamento
 if 'carregado' not in st.session_state:
     st.markdown("""<div class="loading-screen"><div class="spinner"></div><div class="loading-text">INICIALIZANDO SISTEMA MES...</div></div>""", unsafe_allow_html=True)
     time.sleep(1.2)
@@ -119,11 +122,9 @@ def salvar_csv(dados, arquivo):
         df.to_csv(arquivo, index=False)
 
 def main():
-    # Cabeçalho Refinado
     st.markdown("<h1 style='text-align: center; font-weight: 800; letter-spacing: 1px; font-size: 2.2rem;'>SISTEMA MES</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: #60A5FA !important; font-weight: 500; font-size: 1.1rem; margin-top: -10px; margin-bottom: 30px;'>CONTROLE DE PLANTA - AFIAÇÃO</p>", unsafe_allow_html=True)
     
-    # Abas com Ícones
     aba_afc, aba_rtf, aba_equipe, aba_editar, aba_relatorio = st.tabs(["⚙️ Operação AFC", "⚙️ Operação RTF", "👥 Gestão de Equipe", "✏️ Base de Dados", "📋 Relatório de Turno"])
     
     # --- ABA AFC ---
@@ -132,10 +133,8 @@ def main():
         with st.form("form_afc", clear_on_submit=True):
             col1, col2 = st.columns(2)
             with col1:
-                # Pede apenas o número
                 num_maq = st.text_input("NÚMERO DA MÁQUINA AFC", placeholder="Ex: 33")
                 status = st.selectbox("STATUS ATUAL", ["PREPARAÇÃO", "SEQUÊNCIA", "PRODUZINDO", "MANUTENÇÃO", "PARADA"])
-                # Toggle profissional
                 troca_rebolo = st.toggle("🔄 Houve Troca de Rebolo?")
             with col2:
                 operador = st.text_input("NOME DO PREPARADOR / OPERADOR", placeholder="Digite o nome completo")
@@ -146,35 +145,63 @@ def main():
                 if num_maq and hora and operador:
                     maq_nome = f"AFC - {num_maq.strip().upper()}"
                     status_final = f"{status} (Com Troca de Rebolo)" if troca_rebolo else status
-                    
                     salvar_csv({"Setor": "AFC", "Maquina": maq_nome, "Operador": operador.upper(), "Status": status_final, "Hora": hora}, ARQUIVO_DADOS)
                     st.success(f"✅ {maq_nome} registrada como {status_final} às {hora}!")
                 else:
                     st.error("⚠️ Preencha todos os campos obrigatórios (Máquina, Operador e Hora)!")
 
-    # --- ABA RTF ---
+    # --- ABA RTF (Dinâmica, sem st.form) ---
     with aba_rtf:
         st.markdown("### Lançamento de Status - RTF")
-        with st.form("form_rtf", clear_on_submit=True):
-            col1, col2 = st.columns(2)
-            with col1:
-                # Pede apenas o número
-                num_maq = st.text_input("NÚMERO DA MÁQUINA RTF", placeholder="Ex: 10")
-                # Separação Haste/Guia direto no status
-                status = st.selectbox("STATUS ATUAL", ["PREPARAÇÃO - HASTE", "PREPARAÇÃO - GUIA", "PRODUZINDO", "MANUTENÇÃO", "PARADA"])
-            with col2:
-                operador = st.text_input("NOME DO PREPARADOR / OPERADOR", placeholder="Digite o nome completo")
-                hora = st.text_input("HORA DO EVENTO", placeholder="Ex: 06:50")
-            
-            st.markdown("<br>", unsafe_allow_html=True)
-            if st.form_submit_button("Registrar Evento RTF", use_container_width=True):
-                if num_maq and hora and operador:
-                    maq_nome = f"RTF - {num_maq.strip().upper()}"
-                    
-                    salvar_csv({"Setor": "RTF", "Maquina": maq_nome, "Operador": operador.upper(), "Status": status, "Hora": hora}, ARQUIVO_DADOS)
-                    st.success(f"✅ {maq_nome} registrada como {status} às {hora}!")
-                else:
-                    st.error("⚠️ Preencha todos os campos obrigatórios (Máquina, Operador e Hora)!")
+        st.markdown("<div class='dynamic-box'>", unsafe_allow_html=True) # Efeito visual agrupador
+        
+        col_r1, col_r2 = st.columns(2)
+        with col_r1:
+            num_maq_rtf = st.text_input("NÚMERO DA MÁQUINA RTF", placeholder="Ex: 10", key="rtf_maq")
+            status_rtf = st.selectbox("STATUS ATUAL", ["PREPARAÇÃO", "PRODUZINDO", "MANUTENÇÃO", "PARADA"], key="rtf_status")
+            troca_rebolo_rtf = st.toggle("🔄 Houve Troca de Rebolo?", key="rtf_rebolo")
+        with col_r2:
+            operador_rtf = st.text_input("NOME DO PREPARADOR / OPERADOR", placeholder="Digite o nome completo", key="rtf_op")
+            hora_rtf = st.text_input("HORA DO EVENTO", placeholder="Ex: 06:50", key="rtf_hora")
+
+        # --- Lógica Dinâmica da Preparação ---
+        tipo_prep = None
+        troca_diametro = False
+        
+        if status_rtf == "PREPARAÇÃO":
+            st.divider()
+            st.markdown("#### ⚙️ Detalhes da Preparação")
+            col_p1, col_p2 = st.columns(2)
+            with col_p1:
+                tipo_prep = st.radio("Selecione o tipo:", ["HASTE", "GUIA"], horizontal=True)
+            with col_p2:
+                if tipo_prep == "HASTE":
+                    troca_diametro = st.toggle("📐 Houve Troca de Diâmetro?")
+        
+        st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        if st.button("Registrar Evento RTF", type="primary", use_container_width=True):
+            if num_maq_rtf and hora_rtf and operador_rtf:
+                maq_nome = f"RTF - {num_maq_rtf.strip().upper()}"
+                
+                # Montagem inteligente do texto de status
+                status_final = status_rtf
+                if status_rtf == "PREPARAÇÃO":
+                    status_final += f" - {tipo_prep}"
+                    if tipo_prep == "HASTE" and troca_diametro:
+                        status_final += " (Com Troca de Diâmetro)"
+                
+                if troca_rebolo_rtf:
+                    status_final += " (Com Troca de Rebolo)"
+                
+                salvar_csv({"Setor": "RTF", "Maquina": maq_nome, "Operador": operador_rtf.upper(), "Status": status_final, "Hora": hora_rtf}, ARQUIVO_DADOS)
+                
+                st.success(f"✅ {maq_nome} registrada como {status_final} às {hora_rtf}!")
+                time.sleep(1.5)
+                st.rerun() # Reinicia a página para limpar os campos
+            else:
+                st.error("⚠️ Preencha todos os campos obrigatórios (Máquina, Operador e Hora)!")
 
     # --- ABA EQUIPE ---
     with aba_equipe:
@@ -247,9 +274,7 @@ def main():
         col1, col2 = st.columns([1, 1])
         with col1:
             gerar = st.button("🔄 Gerar Relatório de Hoje", type="primary", use_container_width=True)
-        with col2:
-            st.write("") # Espaçamento para alinhar
-            
+        
         if gerar:
             data_hoje = datetime.now().strftime("%d/%m/%Y")
             
@@ -267,17 +292,15 @@ def main():
             
             if 'Operador' not in df_maq.columns: df_maq['Operador'] = ""
             
-            # Filtros atualizados para capturar os novos status com Toggle (AFC) e Haste/Guia (RTF)
-            manutencao = df_maq[df_maq['Status'] == 'MANUTENÇÃO']['Maquina'].tolist()
+            manutencao = df_maq[df_maq['Status'].str.contains('MANUTENÇÃO', na=False)]['Maquina'].tolist()
             rtf_setup = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'].str.contains('PREPARAÇÃO', na=False))]
-            rtf_prod = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'] == 'PRODUZINDO')]
+            rtf_prod = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'].str.contains('PRODUZINDO', na=False))]
             afc_setup = df_maq[(df_maq['Setor'] == 'AFC') & (df_maq['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA', na=False))]
-            paradas = df_maq[df_maq['Status'] == 'PARADA']['Maquina'].tolist()
+            paradas = df_maq[df_maq['Status'].str.contains('PARADA', na=False)]['Maquina'].tolist()
             
             treinamento = df_eq[df_eq['Tipo'] == 'Operador em Treinamento']['Nome'].tolist()
             ausencias = df_eq[df_eq['Tipo'] == 'Ausência / Falta']['Nome'].tolist()
             
-            # Formatação do texto do relatório
             texto_final = f"🏭 PLANTA AFIAÇÃO - {data_hoje}\n"
             texto_final += "="*40 + "\n\n"
             
@@ -310,7 +333,7 @@ def main():
             texto_final += "\n\nAusências:\n"
             texto_final += "\n".join(ausencias) if ausencias else "N/A"
             
-            st.markdown("#### Pré-visualização do Relatório (Copie e cole no WhatsApp/E-mail)")
+            st.markdown("#### Pré-visualização do Relatório")
             st.code(texto_final, language="text")
 
 if __name__ == "__main__":
