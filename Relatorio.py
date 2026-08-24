@@ -40,7 +40,7 @@ if 'carregado' not in st.session_state:
     time.sleep(1.2)
     st.session_state['carregado'] = True
 
-# --- NOVA LÓGICA DE SALVAR: EVITA DUPLICATAS ---
+# --- LÓGICA DE SALVAR: EVITA DUPLICATAS ---
 def salvar_csv(dados, arquivo):
     df_novo = pd.DataFrame([dados])
     if os.path.exists(arquivo):
@@ -110,10 +110,10 @@ def main():
             st.markdown("#### ⚙️ Detalhes da Preparação")
             col_p1, col_p2 = st.columns(2)
             with col_p1:
-                tipo_prep = st.radio("Selecione o tipo:", ["HASTE", "GUIA"], horizontal=True)
+                tipo_prep = st.radio("Selecione o tipo:", ["HASTE", "GUIA"], horizontal=True, key="rtf_tipo_prep")
             with col_p2:
                 if tipo_prep == "HASTE":
-                    troca_diametro = st.toggle("📐 Houve Troca de Diâmetro?")
+                    troca_diametro = st.toggle("📐 Houve Troca de Diâmetro?", key="rtf_troca_diametro")
         
         st.markdown("</div>", unsafe_allow_html=True)
         
@@ -132,6 +132,13 @@ def main():
                 salvar_csv({"Setor": "RTF", "Maquina": maq_nome, "Operador": operador_rtf.upper(), "Status": status_final, "Hora": hora_rtf}, ARQUIVO_DADOS)
                 st.success(f"✅ {maq_nome} registrada/atualizada com sucesso!")
                 time.sleep(1)
+                
+                # LIMPEZA DA MEMÓRIA DOS CAMPOS RTF
+                chaves_para_limpar = ["rtf_maq", "rtf_status", "rtf_rebolo", "rtf_op", "rtf_hora", "rtf_tipo_prep", "rtf_troca_diametro"]
+                for chave in chaves_para_limpar:
+                    if chave in st.session_state:
+                        del st.session_state[chave]
+                
                 st.rerun() 
             else:
                 st.error("⚠️ Preencha todos os campos obrigatórios!")
