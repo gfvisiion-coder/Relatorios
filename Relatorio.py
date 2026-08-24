@@ -10,7 +10,7 @@ st.set_page_config(page_title="App MES - Planta", page_icon="📱", layout="cent
 # Fuso horário correto do Brasil (GMT-3)
 FUSO_BR = timezone(timedelta(hours=-3))
 
-# --- DESIGN SYSTEM: CSS INDUSTRIAL PREMIUM (TEXTO AJUSTADO PARA O CELULAR) ---
+# --- DESIGN SYSTEM: CSS INDUSTRIAL PREMIUM (VISIBILIDADE TOTAL PC E MOBILE) ---
 CSS_APP = """
 <style>
     .stApp { background-color: #09090B !important; }
@@ -19,7 +19,7 @@ CSS_APP = """
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important; 
     }
     
-    label { color: #A1A1AA !important; font-size: 11px !important; font-weight: 600 !important; text-transform: uppercase; letter-spacing: 0.5px; }
+    label { color: #E4E4E7 !important; font-size: 12px !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 0.5px; }
     
     .block-container { 
         padding-top: 0.6rem !important; 
@@ -31,8 +31,8 @@ CSS_APP = """
     
     button[kind="secondary"] { 
         background-color: #18181B !important; 
-        color: #EC4899 !important; 
-        border: 1px solid #27272A !important; 
+        color: #2DD4BF !important; 
+        border: 1px solid #3F3F46 !important; 
         border-radius: 8px !important; 
         font-weight: 600 !important; 
         height: 46px !important; 
@@ -45,7 +45,7 @@ CSS_APP = """
     button[kind="secondary"]:hover { 
         border-color: #14B8A6 !important; 
         background-color: #27272A !important; 
-        color: #2DD4BF !important;
+        color: #5EEAD4 !important;
     }
     
     div[data-testid="stFormSubmitButton"] > button, button[kind="primary"] { 
@@ -63,14 +63,14 @@ CSS_APP = """
         background: linear-gradient(135deg, #0F766E 100%, #115E59 100%) !important;
     }
     
-    /* INPUTS OTIMIZADOS PARA CELULAR E PC (TEXTO ESCURO NÍTIDO SOB FUNDO CLARO) */
+    /* INPUTS UNIVERSAIS: Fundo cinza escuro corporativo com letras BRANCAS visíveis em qualquer tela */
     div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, div[data-baseweb="textarea"] > div { 
-        background-color: #F4F4F5 !important; 
-        border: 1px solid #3F3F46 !important; 
+        background-color: #27272A !important; 
+        border: 1px solid #52525B !important; 
         border-radius: 8px !important; 
-        min-height: 38px !important; 
+        min-height: 42px !important; 
     }
-    input, select, textarea { color: #18181B !important; font-size: 14px !important; font-weight: 700 !important; }
+    input, select, textarea { color: #FFFFFF !important; font-size: 15px !important; font-weight: 600 !important; }
     
     div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"] {
         background-color: #121214;
