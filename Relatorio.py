@@ -152,6 +152,13 @@ def salvar_csv(dados, arquivo):
 #        PAINEL DE CONTROLE DA MÁQUINA
 # ==========================================
 def painel_controle_maquina(maq_id, setor):
+    # Comando JavaScript para rolar a página automaticamente para o topo ao abrir o painel
+    st.markdown("""
+        <script>
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        </script>
+    """, unsafe_allow_html=True)
+    
     with st.container():
         col_t, col_f = st.columns([8, 1])
         col_t.markdown(f"<h4 style='color: #2DD4BF !important; margin:0;'>⚙️ MÁQUINA: {maq_id}</h4>", unsafe_allow_html=True)
@@ -507,10 +514,8 @@ def tela_relatorio():
         df_maq = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
         if not df_maq.empty: df_maq = df_maq.drop_duplicates(subset=['Maquina'], keep='last')
         
-        # Montagem do relatório estritamente no formato visual profissional solicitado
         texto = f"*PLANTA AFIACAO E RETIFICA {data_hoje}*\n\n"
         
-        # Manutenção
         texto += "*MAQUINAS EM MANUTENÇAO*\n\n"
         manutencao_rows = df_maq[df_maq['Status'].str.contains('MANUTENÇÃO', na=False)]
         if manutencao_rows.empty:
@@ -522,10 +527,8 @@ def tela_relatorio():
                 texto += f"{num_maq} - MANUTENÇÃO - {row['Hora']} - {row.get('Operador', 'OPERADOR')} ({motivo})\n"
             texto += "\n"
 
-        # Preparações / Ajustes (Dividido perfeitamente conforme solicitado)
         texto += "*PREPARAÇÕES/AJUSTES*\n\n"
         
-        # RETIFICAS
         texto += "*RETIFICAS*\n\n"
         rtf_prep = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA', na=False))]
         if rtf_prep.empty:
@@ -538,7 +541,6 @@ def tela_relatorio():
                 texto += f"{num_maq} - {status_limpo} - {row['Hora']} - {op}\n"
             texto += "\n"
 
-        # AFIADORAS
         texto += "*AFIADORAS*\n\n"
         afc_prep = df_maq[(df_maq['Setor'] == 'AFC') & (df_maq['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA', na=False))]
         if afc_prep.empty:
