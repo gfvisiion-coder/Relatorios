@@ -7,72 +7,74 @@ import time
 # --- CONFIGURAÇÃO BASE DO APP ---
 st.set_page_config(page_title="App MES - Planta", page_icon="📱", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CSS MOBILE FIRST (FORÇA O GRID LADO A LADO E ELIMINA O CORTE) ---
+# --- CSS RESPONSIVO DEFINITIVO PARA MOBILE (SEM VAZAR PARA A DIREITA) ---
 CSS_APP = """
 <style>
     .stApp { background-color: #121214 !important; }
     h1, h2, h3, h4, h5, p, span, div[data-testid="stMarkdownContainer"] { color: #F8FAFC !important; font-family: 'Inter', sans-serif !important; }
     label { color: #A1A1AA !important; font-size: 11px !important; font-weight: 600 !important; }
     
-    /* Margens mínimas para aproveitar 100% da tela do celular */
     .block-container { 
-        padding-top: 0.5rem !important; 
-        padding-bottom: 0.5rem !important; 
-        padding-left: 0.4rem !important; 
-        padding-right: 0.4rem !important; 
+        padding-top: 0.3rem !important; 
+        padding-bottom: 0.3rem !important; 
+        padding-left: 0.3rem !important; 
+        padding-right: 0.3rem !important; 
         max-width: 100% !important; 
+        overflow-x: hidden !important;
     }
     
-    /* FORÇAR GRID LADO A LADO SEM EMPILHAR NO CELULAR */
+    /* CONTROLE TOTAL DE GRID PARA NÃO VAZAR PARA A DIREITA */
     div[data-testid="stHorizontalBlock"] { 
         display: flex !important;
         flex-direction: row !important; 
         flex-wrap: nowrap !important; 
-        gap: 4px !important;
+        gap: 2px !important;
         width: 100% !important;
+        max-width: 100% !important;
     }
     
     div[data-testid="column"] { 
         flex: 1 1 0% !important; 
         min-width: 0 !important; 
         padding: 0px !important;
+        max-width: 100% !important;
     }
     
-    /* Botões de Máquinas no Grid Compactos e Lado a Lado */
+    /* BOTÕES COMPACTOS QUE CABEM NA TELA DO CELULAR */
     button[kind="secondary"] { 
         background-color: #202024 !important; 
         color: #E4E4E7 !important; 
         border: 1px solid #323238 !important; 
-        border-radius: 6px !important; 
+        border-radius: 4px !important; 
         font-weight: bold !important; 
-        height: 45px !important; 
-        font-size: 11px !important;
+        height: 36px !important; 
+        font-size: 10px !important;
         width: 100% !important;
-        padding: 2px !important;
+        padding: 0px !important;
         white-space: nowrap !important;
+        overflow: hidden !important;
+        text-overflow: ellipsis !important;
     }
     button[kind="secondary"]:hover { border-color: #14B8A6 !important; background-color: #27272A !important; }
     
-    /* Botões de Ação Principal */
     div[data-testid="stFormSubmitButton"] > button, button[kind="primary"] { 
         background-color: #0D9488 !important; 
         color: white !important; 
         border: none !important; 
         border-radius: 6px !important; 
-        height: 40px !important; 
-        font-size: 12px !important; 
+        height: 38px !important; 
+        font-size: 11px !important; 
         font-weight: bold !important; 
         width: 100% !important;
     }
     
-    /* Inputs */
     div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, div[data-baseweb="textarea"] > div { 
         background-color: #202024 !important; 
         border: 1px solid #323238 !important; 
         border-radius: 6px !important; 
-        min-height: 32px !important; 
+        min-height: 28px !important; 
     }
-    input, select, textarea { color: white !important; font-size: 12px !important; }
+    input, select, textarea { color: white !important; font-size: 11px !important; }
     header { visibility: hidden; }
 </style>
 """
@@ -203,7 +205,7 @@ def painel_controle_maquina(maq_id, setor):
                         
                 troca_rebolo = st.toggle("🔄 Troca Rebolo?")
                 
-                # Se estiver produzindo, a hora assume o horário atual automaticamente se deixada em branco
+                # Se estiver produzindo, a hora é automática se deixada em branco
                 hora_placeholder = "Automático (Produzindo)" if "PRODUZINDO" in status else "Ex: 06:30"
                 hora = st.text_input("⏰ Hora do Evento:", placeholder=hora_placeholder)
                 
@@ -295,7 +297,7 @@ def render_grid_matricial(matriz, setor, status_dict):
                 status_atual = status_dict.get(chave_busca, "")
                 icone = MAPA_STATUS.get(status_atual, "⚪")
                 
-                label_botao = f"{icone} {maq}"
+                label_botao = f"{icone}{maq}"
                 if cols[i].button(label_botao, key=f"btn_{setor}_{maq}", use_container_width=True):
                     st.session_state['maq_ativa'] = maq
                     st.session_state['setor_ativo'] = setor
