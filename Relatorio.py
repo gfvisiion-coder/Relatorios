@@ -7,7 +7,7 @@ import time
 # --- CONFIGURAÇÃO BASE DO APP ---
 st.set_page_config(page_title="App MES - Planta", page_icon="📱", layout="centered", initial_sidebar_state="collapsed")
 
-# --- DESIGN SYSTEM: CSS INDUSTRIAL PREMIUM ---
+# --- DESIGN SYSTEM: CSS INDUSTRIAL PREMIUM (TEXTO AJUSTADO PARA O CELULAR) ---
 CSS_APP = """
 <style>
     .stApp { background-color: #09090B !important; }
@@ -60,13 +60,14 @@ CSS_APP = """
         background: linear-gradient(135deg, #0F766E 100%, #115E59 100%) !important;
     }
     
+    /* INPUTS OTIMIZADOS PARA CELULAR E PC (TEXTO ESCURO NÍTIDO SOB FUNDO CLARO) */
     div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, div[data-baseweb="textarea"] > div { 
-        background-color: #FFFFFF !important; 
+        background-color: #F4F4F5 !important; 
         border: 1px solid #3F3F46 !important; 
         border-radius: 8px !important; 
         min-height: 38px !important; 
     }
-    input, select, textarea { color: #000000 !important; font-size: 13px !important; font-weight: 600 !important; }
+    input, select, textarea { color: #18181B !important; font-size: 14px !important; font-weight: 700 !important; }
     
     div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"] {
         background-color: #121214;
@@ -132,10 +133,13 @@ def ler_status_atual():
             if "[AGENDADO:" in st_raw:
                 try:
                     hora_alvo_str = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
+                    tipo_agendado = st_raw.split(" [AGENDADO:")[0] # Ex: PREPARAÇÃO ou SEQUÊNCIA
+                    
                     if agora_str < hora_alvo_str:
-                        status_calculado[maq] = f"PRODUZINDO (PREPARAÇÃO AGENDADA PARA {hora_alvo_str})"
+                        status_calculado[maq] = f"{tipo_agendado} AGENDADA PARA {hora_alvo_str}"
                     else:
-                        status_calculado[maq] = st_raw.split(" [AGENDADO:")[0]
+                        # O horário chegou ou passou, muda para o status real (amarelo)
+                        status_calculado[maq] = tipo_agendado
                 except:
                     status_calculado[maq] = st_raw
             else:
@@ -202,11 +206,10 @@ def painel_controle_maquina(maq_id, setor):
             timer_str = ""
 
         st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
-        if "PRODUZINDO" in status_atual:
-            if "AGENDADO" in status_atual:
-                st.info(f"🔵 Status: {status_atual}")
-            else:
-                st.success("🟢 Status Atual: Operando em Produção")
+        if "AGENDADO" in status_atual or "AGENDADA" in status_atual:
+            st.info(f"🔵 Status: {status_atual}")
+        elif "PRODUZINDO" in status_atual:
+            st.success("🟢 Status Atual: Operando em Produção")
         elif "PARADA" in status_atual:
             st.error(f"🔴 Status Atual: Paralisada desde {hora_atual}")
         elif "MANUTENÇÃO" in status_atual:
@@ -255,7 +258,7 @@ def painel_controle_maquina(maq_id, setor):
             with st.form(f"form_prep_{maq_id}"):
                 st.markdown("⚙️ **Configuração de Preparação / Agendamento**")
                 
-                hora_futura = st.text_input("⏰ Horário programado para iniciar (Ex: 14:30):", value=datetime.now().strftime("%H:%M"))
+                hora_futura = st.text_input("⏰ Horário programado para iniciar (Ex: 15:30):", value=datetime.now().strftime("%H:%M"))
                 
                 if setor == "AFC":
                     tipo_afc = st.radio("Selecione o Status:", ["PREPARAÇÃO", "SEQUÊNCIA"], horizontal=True)
@@ -377,7 +380,7 @@ def render_grid_vertical(lista_maquinas, setor, status_dict):
             chave_busca = f"{setor} {maq}"
             status_atual = status_dict.get(chave_busca, "PRODUZINDO")
             
-            if "AGENDADO" in status_atual:
+            if "AGENDADO" in status_atual or "AGENDADA" in status_atual:
                 icone = "🔵"
             else:
                 icone = MAPA_STATUS.get(status_atual.split(" - ")[0], "🟢")
@@ -420,7 +423,7 @@ def tela_checkup():
     for s_nome, lista in setores_alvo:
         for m in lista:
             st_val = status_dict.get(f"{s_nome} {m}", "PRODUZINDO")
-            if "PRODUZINDO" not in st_val or "AGENDADO" in st_val:
+            if "PRODUZINDO" not in st_val or "AGENDADO" in st_val or "AGENDADA" in st_val:
                 maquinas_com_problema.append((s_nome, m, st_val))
             
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo']:
@@ -432,7 +435,7 @@ def tela_checkup():
     else:
         st.markdown("<p style='font-size: 12px; color: #2DD4BF;'>Toque na máquina para gerenciar o estado:</p>", unsafe_allow_html=True)
         for setor_m, maq_m, st_m in maquinas_com_problema:
-            if "AGENDADO" in st_m:
+            if "AGENDADO" in st_m or "AGENDADA" in st_m:
                 icone = "🔵"
             else:
                 icone = MAPA_STATUS.get(st_m.split(" - ")[0], "⚠️")
