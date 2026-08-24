@@ -1,3 +1,4 @@
-Setor,Maquina,Status,Hora
-AFC,12-367,PREPARAÇÃO,15:12
-RTF,15-154,PREPARAÇÃO,10:15
+Setor,Maquina,Status,Hora,Operador
+AFC,12-367,PREPARAÇÃO,15:12,
+RTF,15-154,PREPARAÇÃO,10:15,
+AFC,AFC 30-161,PREPARAÇÃO (C/ Troca Rebolo),6:45,GABRIEL
