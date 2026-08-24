@@ -10,96 +10,22 @@ st.set_page_config(page_title="Sistema MES", page_icon="🏭", layout="wide", in
 # 2. CSS Premium (Estilo Corporativo / SaaS)
 CSS_MES_THEME = """
 <style>
-    /* Fundo geral mais suave */
     .stApp { background-color: #0F172A !important; }
-    
-    /* Tipografia e Cores de Texto */
-    h1, h2, h3, p, span, div[data-testid="stMarkdownContainer"] { 
-        color: #F8FAFC !important; 
-        font-family: 'Inter', 'Segoe UI', sans-serif !important; 
-    }
-    
-    /* Labels dos inputs */
-    label { 
-        color: #94A3B8 !important; 
-        font-size: 13px !important; 
-        font-weight: 600 !important; 
-        letter-spacing: 0.5px;
-    }
-    
-    /* Inputs, Selects e Textareas */
-    div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, div[data-baseweb="textarea"] > div, div[data-testid="stForm"] { 
-        background-color: #1E293B !important; 
-        border: 1px solid #334155 !important; 
-        border-radius: 8px !important; 
-        transition: all 0.2s ease;
-    }
+    h1, h2, h3, p, span, div[data-testid="stMarkdownContainer"] { color: #F8FAFC !important; font-family: 'Inter', 'Segoe UI', sans-serif !important; }
+    label { color: #94A3B8 !important; font-size: 13px !important; font-weight: 600 !important; letter-spacing: 0.5px; }
+    div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, div[data-baseweb="textarea"] > div, div[data-testid="stForm"] { background-color: #1E293B !important; border: 1px solid #334155 !important; border-radius: 8px !important; transition: all 0.2s ease; }
     input, select, textarea { color: #F8FAFC !important; -webkit-text-fill-color: #F8FAFC !important; }
-    div[data-baseweb="input"] > div:focus-within, div[data-baseweb="select"] > div:focus-within { 
-        border-color: #3B82F6 !important; 
-        box-shadow: 0 0 0 1px #3B82F6 !important;
-    }
-    
-    /* Caixa de destaque para a parte dinâmica do RTF */
-    .dynamic-box {
-        background-color: #1E293B;
-        border: 1px solid #3B82F6;
-        border-radius: 8px;
-        padding: 20px;
-        margin-top: 10px;
-        margin-bottom: 20px;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    }
-
-    /* Formulários (Cards) */
+    div[data-baseweb="input"] > div:focus-within, div[data-baseweb="select"] > div:focus-within { border-color: #3B82F6 !important; box-shadow: 0 0 0 1px #3B82F6 !important; }
+    .dynamic-box { background-color: #1E293B; border: 1px solid #3B82F6; border-radius: 8px; padding: 20px; margin-top: 10px; margin-bottom: 20px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); }
     div[data-testid="stForm"] { padding: 25px !important; border-top: 4px solid #3B82F6 !important; }
-    
-    /* Botões Principais */
-    div[data-testid="stFormSubmitButton"] > button, button[kind="primary"] { 
-        background-color: #2563EB !important; 
-        color: white !important; 
-        font-weight: 600 !important; 
-        border: none !important; 
-        border-radius: 8px !important; 
-        transition: all 0.2s ease !important; 
-        height: 45px !important; 
-    }
-    div[data-testid="stFormSubmitButton"] > button:hover, button[kind="primary"]:hover { 
-        background-color: #1D4ED8 !important; 
-        transform: translateY(-1px);
-    }
-    
-    /* Abas (Tabs) */
-    button[data-baseweb="tab"] { 
-        background-color: transparent !important; 
-        color: #94A3B8 !important; 
-        font-weight: 600 !important;
-        border: none !important;
-        border-bottom: 2px solid transparent !important;
-        padding-bottom: 10px !important;
-    }
-    button[data-baseweb="tab"][aria-selected="true"] { 
-        color: #3B82F6 !important; 
-        border-bottom: 2px solid #3B82F6 !important; 
-    }
-    
-    /* Ocultar cabeçalho padrão */
+    div[data-testid="stFormSubmitButton"] > button, button[kind="primary"] { background-color: #2563EB !important; color: white !important; font-weight: 600 !important; border: none !important; border-radius: 8px !important; transition: all 0.2s ease !important; height: 45px !important; }
+    div[data-testid="stFormSubmitButton"] > button:hover, button[kind="primary"]:hover { background-color: #1D4ED8 !important; transform: translateY(-1px); }
+    button[data-baseweb="tab"] { background-color: transparent !important; color: #94A3B8 !important; font-weight: 600 !important; border: none !important; border-bottom: 2px solid transparent !important; padding-bottom: 10px !important; }
+    button[data-baseweb="tab"][aria-selected="true"] { color: #3B82F6 !important; border-bottom: 2px solid #3B82F6 !important; }
     header {visibility: hidden;}
-    
-    /* Animação de Loading */
-    .loading-screen { 
-        position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; 
-        background: #0F172A; z-index: 999999; display: flex; flex-direction: column; 
-        justify-content: center; align-items: center; 
-        animation: fadeOut 0.5s forwards; animation-delay: 1.2s; pointer-events: none; 
-    }
-    .spinner { 
-        width: 60px; height: 60px; border-radius: 50%; 
-        border: 3px solid transparent; border-top-color: #3B82F6; border-right-color: #60A5FA; 
-        animation: spin 1s linear infinite; margin-bottom: 20px; 
-    }
+    .loading-screen { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: #0F172A; z-index: 999999; display: flex; flex-direction: column; justify-content: center; align-items: center; animation: fadeOut 0.5s forwards; animation-delay: 1.2s; pointer-events: none; }
+    .spinner { width: 60px; height: 60px; border-radius: 50%; border: 3px solid transparent; border-top-color: #3B82F6; border-right-color: #60A5FA; animation: spin 1s linear infinite; margin-bottom: 20px; }
     .loading-text { color: #60A5FA !important; font-weight: 600; letter-spacing: 1.5px; font-size: 14px; }
-    
     @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     @keyframes fadeOut { to { opacity: 0; visibility: hidden; } }
 </style>
@@ -114,12 +40,24 @@ if 'carregado' not in st.session_state:
     time.sleep(1.2)
     st.session_state['carregado'] = True
 
+# --- NOVA LÓGICA DE SALVAR: EVITA DUPLICATAS ---
 def salvar_csv(dados, arquivo):
-    df = pd.DataFrame([dados])
+    df_novo = pd.DataFrame([dados])
     if os.path.exists(arquivo):
-        df.to_csv(arquivo, mode='a', header=False, index=False)
+        df_existente = pd.read_csv(arquivo)
+        chave = 'Maquina' if 'Maquina' in dados else 'Nome'
+        
+        # Se a máquina/pessoa já existe, atualiza a linha
+        if chave in df_existente.columns and dados[chave] in df_existente[chave].values:
+            idx = df_existente.index[df_existente[chave] == dados[chave]].tolist()[0]
+            for key, value in dados.items():
+                df_existente.at[idx, key] = value
+            df_existente.to_csv(arquivo, index=False)
+        else:
+            # Se não existe, adiciona nova linha
+            df_novo.to_csv(arquivo, mode='a', header=False, index=False)
     else:
-        df.to_csv(arquivo, index=False)
+        df_novo.to_csv(arquivo, index=False)
 
 def main():
     st.markdown("<h1 style='text-align: center; font-weight: 800; letter-spacing: 1px; font-size: 2.2rem;'>SISTEMA MES</h1>", unsafe_allow_html=True)
@@ -146,14 +84,14 @@ def main():
                     maq_nome = f"AFC - {num_maq.strip().upper()}"
                     status_final = f"{status} (Com Troca de Rebolo)" if troca_rebolo else status
                     salvar_csv({"Setor": "AFC", "Maquina": maq_nome, "Operador": operador.upper(), "Status": status_final, "Hora": hora}, ARQUIVO_DADOS)
-                    st.success(f"✅ {maq_nome} registrada como {status_final} às {hora}!")
+                    st.success(f"✅ {maq_nome} registrada/atualizada com sucesso!")
                 else:
-                    st.error("⚠️ Preencha todos os campos obrigatórios (Máquina, Operador e Hora)!")
+                    st.error("⚠️ Preencha todos os campos obrigatórios!")
 
-    # --- ABA RTF (Dinâmica, sem st.form) ---
+    # --- ABA RTF ---
     with aba_rtf:
         st.markdown("### Lançamento de Status - RTF")
-        st.markdown("<div class='dynamic-box'>", unsafe_allow_html=True) # Efeito visual agrupador
+        st.markdown("<div class='dynamic-box'>", unsafe_allow_html=True)
         
         col_r1, col_r2 = st.columns(2)
         with col_r1:
@@ -164,7 +102,6 @@ def main():
             operador_rtf = st.text_input("NOME DO PREPARADOR / OPERADOR", placeholder="Digite o nome completo", key="rtf_op")
             hora_rtf = st.text_input("HORA DO EVENTO", placeholder="Ex: 06:50", key="rtf_hora")
 
-        # --- Lógica Dinâmica da Preparação ---
         tipo_prep = None
         troca_diametro = False
         
@@ -179,29 +116,25 @@ def main():
                     troca_diametro = st.toggle("📐 Houve Troca de Diâmetro?")
         
         st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown("<br>", unsafe_allow_html=True)
         
         if st.button("Registrar Evento RTF", type="primary", use_container_width=True):
             if num_maq_rtf and hora_rtf and operador_rtf:
                 maq_nome = f"RTF - {num_maq_rtf.strip().upper()}"
                 
-                # Montagem inteligente do texto de status
                 status_final = status_rtf
                 if status_rtf == "PREPARAÇÃO":
                     status_final += f" - {tipo_prep}"
                     if tipo_prep == "HASTE" and troca_diametro:
                         status_final += " (Com Troca de Diâmetro)"
-                
                 if troca_rebolo_rtf:
                     status_final += " (Com Troca de Rebolo)"
                 
                 salvar_csv({"Setor": "RTF", "Maquina": maq_nome, "Operador": operador_rtf.upper(), "Status": status_final, "Hora": hora_rtf}, ARQUIVO_DADOS)
-                
-                st.success(f"✅ {maq_nome} registrada como {status_final} às {hora_rtf}!")
-                time.sleep(1.5)
-                st.rerun() # Reinicia a página para limpar os campos
+                st.success(f"✅ {maq_nome} registrada/atualizada com sucesso!")
+                time.sleep(1)
+                st.rerun() 
             else:
-                st.error("⚠️ Preencha todos os campos obrigatórios (Máquina, Operador e Hora)!")
+                st.error("⚠️ Preencha todos os campos obrigatórios!")
 
     # --- ABA EQUIPE ---
     with aba_equipe:
@@ -224,10 +157,9 @@ def main():
     # --- ABA EDITAR ---
     with aba_editar:
         st.markdown("### Corrigir ou Excluir Dados")
-        st.info("💡 **Dica:** Edite as células clicando nelas. Para excluir, selecione a linha clicando na margem esquerda e pressione a tecla **Delete**. Clique em Salvar para aplicar.")
+        st.info("💡 **Dica:** Edite as células clicando nelas. Para excluir, selecione a linha e pressione **Delete**. Clique em Salvar para aplicar.")
         
         col_ed1, col_ed2 = st.columns(2)
-        
         with col_ed1:
             st.markdown("#### ⚙️ Operações Registradas")
             if os.path.exists(ARQUIVO_DADOS):
@@ -238,10 +170,10 @@ def main():
                     if st.button("💾 Atualizar Operações", use_container_width=True):
                         df_maq_editado.to_csv(ARQUIVO_DADOS, index=False)
                         st.success("Dados atualizados!")
-                except Exception as e:
-                    st.error("Erro ao ler os dados das máquinas.")
+                except Exception:
+                    st.error("Erro ao ler os dados.")
             else:
-                st.caption("Nenhuma operação registrada no turno.")
+                st.caption("Nenhuma operação registrada.")
                 
         with col_ed2:
             st.markdown("#### 👥 Equipe Registrada")
@@ -252,47 +184,29 @@ def main():
                     if st.button("💾 Atualizar Equipe", use_container_width=True):
                         df_eq_editado.to_csv(ARQUIVO_EQUIPE, index=False)
                         st.success("Dados atualizados!")
-                except Exception as e:
-                    st.error("Erro ao ler os dados da equipe.")
+                except Exception:
+                    st.error("Erro ao ler os dados.")
             else:
-                st.caption("Nenhum colaborador registrado no turno.")
-                
-        st.divider()
-        with st.expander("⚠️ ZERAR TODOS OS DADOS (FIM DE TURNO)"):
-            st.warning("Esta ação é irreversível. Todos os dados coletados neste turno serão apagados do servidor.")
-            if st.button("🗑️ ENCERRAR TURNO E APAGAR DADOS", type="primary", use_container_width=True):
-                if os.path.exists(ARQUIVO_DADOS): os.remove(ARQUIVO_DADOS)
-                if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
-                st.success("✨ Sistema redefinido e pronto para um novo turno!")
-                time.sleep(1)
-                st.rerun()
+                st.caption("Nenhum colaborador registrado.")
 
     # --- ABA RELATÓRIO FINAL ---
     with aba_relatorio:
         st.markdown("### Exportar Relatório Consolidado")
         
-        col1, col2 = st.columns([1, 1])
+        col1, col2 = st.columns(2)
         with col1:
-            gerar = st.button("🔄 Gerar Relatório de Hoje", type="primary", use_container_width=True)
+            gerar_parcial = st.button("🔄 Gerar Relatório", use_container_width=True)
+        with col2:
+            encerrar_turno = st.button("🛑 Gerar Relatório Final e Encerrar Turno", type="primary", use_container_width=True)
         
-        if gerar:
+        if gerar_parcial or encerrar_turno:
             data_hoje = datetime.now().strftime("%d/%m/%Y")
             
-            try:
-                df_maq = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
-            except pd.errors.ParserError:
-                df_maq = pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
-                if os.path.exists(ARQUIVO_DADOS): os.remove(ARQUIVO_DADOS)
-
-            try:
-                df_eq = pd.read_csv(ARQUIVO_EQUIPE) if os.path.exists(ARQUIVO_EQUIPE) else pd.DataFrame(columns=["Tipo", "Nome"])
-            except pd.errors.ParserError:
-                df_eq = pd.DataFrame(columns=["Tipo", "Nome"])
-                if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
+            df_maq = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
+            df_eq = pd.read_csv(ARQUIVO_EQUIPE) if os.path.exists(ARQUIVO_EQUIPE) else pd.DataFrame(columns=["Tipo", "Nome"])
             
             if 'Operador' not in df_maq.columns: df_maq['Operador'] = ""
             
-            # --- CORREÇÃO APLICADA AQUI (Blindagem com dropna e astype) ---
             manutencao = df_maq[df_maq['Status'].str.contains('MANUTENÇÃO', na=False)]['Maquina'].dropna().astype(str).tolist()
             rtf_setup = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'].str.contains('PREPARAÇÃO', na=False))]
             rtf_prod = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'].str.contains('PRODUZINDO', na=False))]
@@ -336,6 +250,11 @@ def main():
             
             st.markdown("#### Pré-visualização do Relatório")
             st.code(texto_final, language="text")
+            
+            if encerrar_turno:
+                if os.path.exists(ARQUIVO_DADOS): os.remove(ARQUIVO_DADOS)
+                if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
+                st.success("✨ Relatório Final gerado acima! O banco de dados foi limpo e o sistema está pronto para o próximo turno.")
 
 if __name__ == "__main__":
     main()
