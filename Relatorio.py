@@ -269,7 +269,7 @@ def tela_login():
     st.markdown("<p style='text-align: center; color: #A1A1AA; font-size: 12px; margin-bottom: 30px;'>Insira seu código de credencial e identificação</p>", unsafe_allow_html=True)
     
     with st.container():
-        cod = st.text_input("Código de Acesso:", type="password", placeholder="Ex: 1123, 1234, 1010...")
+        cod = st.text_input("Código de Acesso:", type="password", placeholder="")
         nome = st.text_input("Nome do Colaborador / RE:", placeholder="Digite seu nome...")
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         
