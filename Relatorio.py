@@ -7,7 +7,7 @@ import time
 # --- CONFIGURAÇÃO BASE DO APP ---
 st.set_page_config(page_title="App MES - Planta", page_icon="📱", layout="centered", initial_sidebar_state="collapsed")
 
-# --- CSS PREMIUM & FIX PARA MOBILE (GRID LATERAL) ---
+# --- CSS PREMIUM & FIX PARA MOBILE ---
 CSS_APP = """
 <style>
     .stApp { background-color: #121214 !important; }
@@ -15,7 +15,7 @@ CSS_APP = """
     label { color: #A1A1AA !important; font-size: 13px !important; font-weight: 600 !important; }
     
     /* Botões do Menu e Grid */
-    button[kind="secondary"] { background-color: #202024 !important; color: #E4E4E7 !important; border: 1px solid #323238 !important; border-radius: 8px !important; transition: 0.2s; font-weight: bold !important; height: 50px !important; font-size: 13px !important;}
+    button[kind="secondary"] { background-color: #202024 !important; color: #E4E4E7 !important; border: 1px solid #323238 !important; border-radius: 8px !important; transition: 0.2s; font-weight: bold !important; height: 48px !important; font-size: 12px !important;}
     button[kind="secondary"]:hover { border-color: #14B8A6 !important; background-color: #27272A !important; }
     
     /* Botões de Ação Principal */
@@ -27,17 +27,21 @@ CSS_APP = """
     input, select, textarea { color: white !important; }
     header { visibility: hidden; }
 
-    /* FORÇAR GRID LATERAL MESMO NO CELULAR */
+    /* FORÇAR GRID LATERAL NO CELULAR SEM CORTAR */
     @media (max-width: 768px) {
+        .block-container { padding-left: 0.5rem !important; padding-right: 0.5rem !important; }
         div[data-testid="stHorizontalBlock"] { 
             flex-direction: row !important; 
             flex-wrap: nowrap !important; 
+            gap: 4px !important;
         }
         div[data-testid="column"] { 
             width: auto !important; 
             flex: 1 1 0% !important; 
             min-width: 0 !important; 
+            padding: 0px !important;
         }
+        button[kind="secondary"] { padding: 2px !important; font-size: 11px !important; }
     }
 </style>
 """
@@ -133,6 +137,7 @@ def modal_apontamento(maq_id, setor):
         
     st.divider()
 
+    # ETAPA 1: Pergunta se deseja alterar / se voltou a rodar
     if st.session_state[step_key] == 1:
         if "MANUTENÇÃO" in status_atual:
             st.markdown("⚠️ **Esta máquina está em manutenção.**")
@@ -142,64 +147,68 @@ def modal_apontamento(maq_id, setor):
             
         st.write(pergunta)
         col1, col2 = st.columns(2)
+        
+        # Usamos callback para alterar o estado mantendo o diálogo aberto perfeitamente
         if col1.button("✅ Sim", key=f"sim_{maq_id}", use_container_width=True):
             st.session_state[step_key] = 2
             st.rerun()
         if col2.button("❌ Não", key=f"nao_{maq_id}", use_container_width=True):
             st.rerun()
 
+    # ETAPA 2: Formulário interativo para escolher novo status
     elif st.session_state[step_key] == 2:
-        with st.form(f"form_alt_{maq_id}"):
-            status = st.selectbox("Selecione o Novo Status:", ["🟢 PRODUZINDO", "🟡 PREPARAÇÃO", "🛠️ MANUTENÇÃO", "🔴 PARADA"])
+        st.markdown("#### Selecione o Novo Status:")
+        
+        status = st.selectbox("Status:", ["🟢 PRODUZINDO", "🟡 PREPARAÇÃO", "🛠️ MANUTENÇÃO", "🔴 PARADA"], key=f"sel_status_{maq_id}")
+        
+        motivo = ""
+        if "MANUTENÇÃO" in status:
+            motivo = st.text_input("📝 Motivo da Manutenção (Obrigatório):", placeholder="Ex: Quebra de eixo...", key=f"motivo_{maq_id}")
             
-            motivo = ""
-            if "MANUTENÇÃO" in status:
-                motivo = st.text_input("📝 Motivo da Manutenção (Obrigatório):", placeholder="Ex: Quebra de eixo...")
+        tipo_prep = None
+        troca_diametro = False
+        if setor == "RTF" and "PREPARAÇÃO" in status:
+            tipo_prep = st.radio("Tipo de Setup:", ["HASTE", "GUIA"], horizontal=True, key=f"prep_{maq_id}")
+            if tipo_prep == "HASTE":
+                troca_diametro = st.toggle("📐 Troca de Diâmetro?", key=f"diam_{maq_id}")
                 
-            tipo_prep = None
-            troca_diametro = False
-            if setor == "RTF" and "PREPARAÇÃO" in status:
-                tipo_prep = st.radio("Tipo de Setup:", ["HASTE", "GUIA"], horizontal=True)
-                if tipo_prep == "HASTE":
-                    troca_diametro = st.toggle("📐 Troca de Diâmetro?")
-                    
-            troca_rebolo = st.toggle("🔄 Troca de Rebolo?")
-            hora = st.text_input("⏰ Hora do Evento (Ex: 06:30):")
+        troca_rebolo = st.toggle("🔄 Troca de Rebolo?", key=f"rebolo_{maq_id}")
+        hora = st.text_input("⏰ Hora do Evento (Ex: 06:30):", key=f"hora_{maq_id}")
+        
+        col_voltar, col_salvar = st.columns(2)
+        if col_voltar.button("⬅️ Voltar", key=f"voltar_{maq_id}", use_container_width=True):
+            st.session_state[step_key] = 1
+            st.rerun()
             
-            col_voltar, col_salvar = st.columns(2)
-            if col_voltar.form_submit_button("⬅️ Voltar"):
+        if col_salvar.button("💾 Salvar Alteração", key=f"salvar_{maq_id}", type="primary", use_container_width=True):
+            if "MANUTENÇÃO" in status and not motivo.strip():
+                st.error("⚠️ Informe o motivo da manutenção!")
+            elif not hora.strip():
+                st.error("⚠️ Preencha a hora do evento!")
+            else:
+                status_limpo = status.replace("🟢 ", "").replace("🟡 ", "").replace("🛠️ ", "").replace("🔴 ", "")
+                status_final = status_limpo
+                
+                if setor == "RTF" and "PREPARAÇÃO" in status:
+                    status_final += f" - {tipo_prep}"
+                    if tipo_prep == "HASTE" and troca_diametro: status_final += " (C/ Troca Diâmetro)"
+                if troca_rebolo: 
+                    status_final += " (C/ Troca Rebolo)"
+                if motivo: 
+                    status_final += f" - Motivo: {motivo}"
+                
+                salvar_csv({
+                    "Setor": setor, 
+                    "Maquina": f"{setor} {maq_id}", 
+                    "Operador": st.session_state['operador'], 
+                    "Status": status_final, 
+                    "Hora": hora
+                }, ARQUIVO_DADOS)
+                
                 st.session_state[step_key] = 1
+                st.success("✅ Atualizado com sucesso!")
+                time.sleep(1)
                 st.rerun()
-                
-            if col_salvar.form_submit_button("💾 Salvar Alteração", type="primary"):
-                if "MANUTENÇÃO" in status and not motivo.strip():
-                    st.error("⚠️ Informe o motivo da manutenção!")
-                elif not hora.strip():
-                    st.error("⚠️ Preencha a hora do evento!")
-                else:
-                    status_limpo = status.replace("🟢 ", "").replace("🟡 ", "").replace("🛠️ ", "").replace("🔴 ", "")
-                    status_final = status_limpo
-                    
-                    if setor == "RTF" and "PREPARAÇÃO" in status:
-                        status_final += f" - {tipo_prep}"
-                        if tipo_prep == "HASTE" and troca_diametro: status_final += " (C/ Troca Diâmetro)"
-                    if troca_rebolo: 
-                        status_final += " (C/ Troca Rebolo)"
-                    if motivo: 
-                        status_final += f" - Motivo: {motivo}"
-                    
-                    salvar_csv({
-                        "Setor": setor, 
-                        "Maquina": f"{setor} {maq_id}", 
-                        "Operador": st.session_state['operador'], 
-                        "Status": status_final, 
-                        "Hora": hora
-                    }, ARQUIVO_DADOS)
-                    
-                    st.session_state[step_key] = 1
-                    st.success("✅ Atualizado com sucesso!")
-                    time.sleep(1)
-                    st.rerun()
 
 # ==========================================
 #               TELAS DO APP
@@ -269,7 +278,7 @@ def tela_afc():
         if col1.button("📌 Célula 1 (Bloco Esquerdo)", use_container_width=True):
             st.session_state['celula_selecionada'] = 'celula_1'
             st.rerun()
-        if col2.button("📌 Célula 2 (Bloco Direito: 8 a 28 / 6 a 27)", use_container_width=True):
+        if col2.button("📌 Célula 2 (Bloco Direito)", use_container_width=True):
             st.session_state['celula_selecionada'] = 'celula_2'
             st.rerun()
     else:
@@ -294,7 +303,6 @@ def tela_afc():
             
         elif st.session_state['celula_selecionada'] == 'celula_2':
             st.markdown("#### Célula 2 (Bloco Direito Completo)")
-            # Da máquina 8 até 28 na esquerda e 6 até 27 na direita exatamente como na imagem
             matriz_dir = [
                 ["8-247", "6-868"],
                 ["4-427", "9-088"],
