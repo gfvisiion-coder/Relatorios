@@ -527,28 +527,53 @@ def tela_rtf():
             ], "RTF", status_dict)
 
 def tela_equipe():
-    if st.button("⬅️ Voltar"): mudar_tela('menu')
+    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### 👥 Gestão de Equipe")
+    st.markdown("<p style='font-size: 11px; color: #A1A1AA;'>Registre ausências, faltas ou treinamentos no turno.</p>", unsafe_allow_html=True)
+    
     with st.container():
         with st.form("form_equipe", clear_on_submit=True):
-            tipo = st.radio("Tipo de Ocorrência:", ["Ausência / Falta", "Treinamento"])
+            tipo = st.radio("Selecione o Motivo:", ["Ausência / Falta", "Treinamento", "Férias / Atestado"], horizontal=True)
             nome = st.text_input("Nome do Colaborador:")
-            if st.form_submit_button("REGISTRAR NA EQUIPE", use_container_width=True):
+            if st.form_submit_button("💾 REGISTRAR COLABORADOR", type="primary"):
                 if nome:
                     salvar_csv({"Tipo": tipo, "Nome": nome.upper()}, ARQUIVO_EQUIPE)
-                    st.success("✅ Colaborador registrado com sucesso!")
+                    st.success(f"✅ {nome.upper()} registrado como {tipo}!")
+                    time.sleep(0.5)
+                    st.rerun()
+
+    st.divider()
+    st.markdown("##### Registros Atuais do Turno")
+    if os.path.exists(ARQUIVO_EQUIPE):
+        df_eq = pd.read_csv(ARQUIVO_EQUIPE)
+        if not df_eq.empty:
+            st.dataframe(df_eq, use_container_width=True, hide_index=True)
+        else:
+            st.info("Nenhum registro de equipe ativo.")
+    else:
+        st.info("Nenhum registro de equipe ativo.")
 
 def tela_editar():
-    if st.button("⬅️ Voltar"): mudar_tela('menu')
-    st.markdown("#### ✏️ Auditoria e Correção de Dados")
+    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    st.markdown("#### ✏️ Correção de Dados")
+    
+    col_salvar, col_apagar = st.columns([1, 1])
+    
+    if col_apagar.button("🗑️ ZERAR DADOS", use_container_width=True):
+        if os.path.exists(ARQUIVO_DADOS): os.remove(ARQUIVO_DADOS)
+        if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
+        st.success("✅ Sistema resetado e zerado com sucesso!")
+        time.sleep(0.5)
+        st.rerun()
+        
     if os.path.exists(ARQUIVO_DADOS):
         df_maq = pd.read_csv(ARQUIVO_DADOS)
         df_editado = st.data_editor(df_maq, num_rows="dynamic", use_container_width=True)
-        if st.button("💾 Salvar Alterações", use_container_width=True, type="primary"):
+        if col_salvar.button("💾 Salvar Alterações", use_container_width=True, type="primary"):
             df_editado.to_csv(ARQUIVO_DADOS, index=False)
             st.success("✨ Banco de dados atualizado!")
     else:
-        st.info("Nenhum registro encontrado.")
+        st.info("Nenhum apontamento encontrado no sistema.")
 
 def tela_relatorio():
     if st.button("⬅️ Voltar"): mudar_tela('menu')
@@ -603,6 +628,19 @@ def tela_relatorio():
                 status_limpo = row['Status'].upper().split(" [AGENDADO")[0]
                 texto += f"{num_maq} - {status_limpo} - {row['Hora']} - {op}\n"
             texto += "\n"
+
+        # Trazendo o Controle de Equipe para o relatório
+        texto += "*EQUIPE / AUSÊNCIAS*\n\n"
+        if os.path.exists(ARQUIVO_EQUIPE):
+            df_eq = pd.read_csv(ARQUIVO_EQUIPE)
+            if df_eq.empty:
+                texto += "N/A\n\n"
+            else:
+                for _, row in df_eq.iterrows():
+                    texto += f"{row['Nome']} - {row['Tipo'].upper()}\n"
+                texto += "\n"
+        else:
+            texto += "N/A\n\n"
 
         st.code(texto, language="text")
         
