@@ -1,11 +1,14 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 import os
 import time
 
 # --- CONFIGURAÇÃO BASE DO APP ---
 st.set_page_config(page_title="App MES - Planta", page_icon="📱", layout="centered", initial_sidebar_state="collapsed")
+
+# Fuso horário correto do Brasil (GMT-3)
+FUSO_BR = timezone(timedelta(hours=-3))
 
 # --- DESIGN SYSTEM: CSS INDUSTRIAL PREMIUM (TEXTO AJUSTADO PARA O CELULAR) ---
 CSS_APP = """
@@ -123,7 +126,8 @@ def ler_status_atual():
     try:
         df = pd.read_csv(ARQUIVO_DADOS)
         status_calculado = {}
-        agora_str = datetime.now().strftime("%H:%M")
+        agora_br = datetime.now(FUSO_BR)
+        agora_str = agora_br.strftime("%H:%M")
         
         df_ultimo = df.drop_duplicates(subset=['Maquina'], keep='last')
         for _, row in df_ultimo.iterrows():
@@ -133,12 +137,11 @@ def ler_status_atual():
             if "[AGENDADO:" in st_raw:
                 try:
                     hora_alvo_str = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
-                    tipo_agendado = st_raw.split(" [AGENDADO:")[0] # Ex: PREPARAÇÃO ou SEQUÊNCIA
+                    tipo_agendado = st_raw.split(" [AGENDADO:")[0]
                     
                     if agora_str < hora_alvo_str:
                         status_calculado[maq] = f"{tipo_agendado} AGENDADA PARA {hora_alvo_str}"
                     else:
-                        # O horário chegou ou passou, muda para o status real (amarelo)
                         status_calculado[maq] = tipo_agendado
                 except:
                     status_calculado[maq] = st_raw
@@ -196,8 +199,8 @@ def painel_controle_maquina(maq_id, setor):
         # Tratamento do Timer de Manutenção
         if "MANUTENÇÃO" in status_atual and info:
             try:
-                dt_reg = datetime.strptime(f"{datetime.now().strftime('%Y-%m-%d')} {hora_atual}", "%Y-%m-%d %H:%M")
-                tempo_decorrido = datetime.now() - dt_reg
+                dt_reg = datetime.strptime(f"{datetime.now(FUSO_BR).strftime('%Y-%m-%d')} {hora_atual}", "%Y-%m-%d %H:%M")
+                tempo_decorrido = datetime.now(FUSO_BR) - dt_reg.replace(tzinfo=FUSO_BR)
                 minutos = int(tempo_decorrido.total_seconds() // 60)
                 timer_str = f" (Em manutenção há {minutos} min)"
             except:
@@ -238,7 +241,8 @@ def painel_controle_maquina(maq_id, setor):
         elif st.session_state[flow_key] == "mudanca_status":
             st.markdown("<p style='font-size: 12px; font-weight: bold; color: #14B8A6;'>SELECIONE O NOVO STATUS:</p>", unsafe_allow_html=True)
             if st.button("🟢 PRODUZINDO", key=f"st_prod_{maq_id}", use_container_width=True):
-                salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": "PRODUZINDO", "Hora": datetime.now().strftime("%H:%M")}, ARQUIVO_DADOS)
+                hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": "PRODUZINDO", "Hora": hora_br_str}, ARQUIVO_DADOS)
                 st.session_state['maq_ativa'] = None
                 del st.session_state[flow_key]
                 st.rerun()
@@ -249,7 +253,8 @@ def painel_controle_maquina(maq_id, setor):
                 st.session_state[flow_key] = "detalhe_man"
                 st.rerun()
             if st.button("🔴 PARADA", key=f"st_par_{maq_id}", use_container_width=True):
-                salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": "PARADA", "Hora": datetime.now().strftime("%H:%M")}, ARQUIVO_DADOS)
+                hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": "PARADA", "Hora": hora_br_str}, ARQUIVO_DADOS)
                 st.session_state['maq_ativa'] = None
                 del st.session_state[flow_key]
                 st.rerun()
@@ -258,7 +263,7 @@ def painel_controle_maquina(maq_id, setor):
             with st.form(f"form_prep_{maq_id}"):
                 st.markdown("⚙️ **Configuração de Preparação / Agendamento**")
                 
-                hora_futura = st.text_input("⏰ Horário programado para iniciar (Ex: 15:30):", value=datetime.now().strftime("%H:%M"))
+                hora_futura = st.text_input("⏰ Horário programado para iniciar (Ex: 15:30):", value=datetime.now(FUSO_BR).strftime("%H:%M"))
                 
                 if setor == "AFC":
                     tipo_afc = st.radio("Selecione o Status:", ["PREPARAÇÃO", "SEQUÊNCIA"], horizontal=True)
@@ -287,7 +292,8 @@ def painel_controle_maquina(maq_id, setor):
                     if hora_futura.strip():
                         st_final += f" [AGENDADO:{hora_futura.strip()}]"
                     
-                    salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": datetime.now().strftime("%H:%M")}, ARQUIVO_DADOS)
+                    hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                    salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
                     st.session_state['maq_ativa'] = None
                     del st.session_state[flow_key]
                     st.success("✅ Agendado com sucesso!")
@@ -302,7 +308,8 @@ def painel_controle_maquina(maq_id, setor):
                     if not motivo.strip():
                         st.error("⚠️ O motivo é obrigatório!")
                     else:
-                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": f"MANUTENÇÃO - Motivo: {motivo}", "Hora": datetime.now().strftime("%H:%M")}, ARQUIVO_DADOS)
+                        hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": f"MANUTENÇÃO - Motivo: {motivo}", "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
                         st.success("✅ Registrado!")
@@ -554,7 +561,7 @@ def tela_relatorio():
     encerrar = col2.button("🛑 ENCERRAR TURNO", type="primary", use_container_width=True)
         
     if gerar or encerrar:
-        data_hoje = datetime.now().strftime("%d/%m/%Y")
+        data_hoje = datetime.now(FUSO_BR).strftime("%d/%m/%Y")
         df_maq = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
         if not df_maq.empty: df_maq = df_maq.drop_duplicates(subset=['Maquina'], keep='last')
         
