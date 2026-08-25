@@ -620,6 +620,7 @@ def tela_relatorio():
 
         texto += "*PREPARAÇÕES/AJUSTES*\n\n"
         
+        # --- SESSÃO RETÍFICAS ---
         texto += "*RETIFICAS*\n\n"
         rtf_prep = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA', na=False))]
         if rtf_prep.empty:
@@ -627,21 +628,38 @@ def tela_relatorio():
         else:
             for _, row in rtf_prep.iterrows():
                 num_maq = row['Maquina'].replace("RTF ", "")
-                op = row.get('Operador', 'OPERADOR')
-                status_raw = row['Status']
+                status_raw = str(row['Status'])
+                hora_prep = str(row['Hora'])
                 
-                # A hora já vem formatada corretamente do banco
-                hora_prep = row['Hora']
+                # Puxa a hora caso esteja agendada
                 if "[AGENDADO:" in status_raw:
                     try:
                         hora_prep = status_raw.split("[AGENDADO:")[1].split("]")[0].strip()
-                    except:
-                        pass
+                    except: pass
                 
-                status_limpo = status_raw.upper().split(" [AGENDADO")[0]
-                texto += f"{num_maq} - {status_limpo} - {hora_prep} - {op}\n"
-            texto += "\n"
+                # Descobre quem fez a preparação (ou usa o operador logado)
+                nome_operador = str(row.get('Operador', 'OPERADOR')).upper()
+                if "[Prep:" in status_raw:
+                    try:
+                        nome_operador = status_raw.split("[Prep:")[1].split("]")[0].strip().upper()
+                    except: pass
+                
+                # Verifica se fica para o próximo turno
+                fica_turno = ""
+                if "[Fica para" in status_raw:
+                    try:
+                        turno_texto = status_raw.split("[Fica para")[1].split("]")[0].strip().upper()
+                        fica_turno = f" - FICA PARA {turno_texto}"
+                    except: pass
 
+                # Limpa a string de status (Remove o "PREPARAÇÃO - " e tira as tags com colchetes)
+                status_limpo = status_raw.split("[")[0].strip().upper()
+                status_limpo = status_limpo.replace("PREPARAÇÃO - ", "")
+                
+                # Formato final: MAQUINA - STATUS - NOME - HORA
+                texto += f"{num_maq} - {status_limpo} - {nome_operador}{fica_turno} - {hora_prep}\n\n"
+
+        # --- SESSÃO AFIADORAS ---
         texto += "*AFIADORAS*\n\n"
         afc_prep = df_maq[(df_maq['Setor'] == 'AFC') & (df_maq['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA', na=False))]
         if afc_prep.empty:
@@ -649,22 +667,36 @@ def tela_relatorio():
         else:
             for _, row in afc_prep.iterrows():
                 num_maq = row['Maquina'].replace("AFC ", "")
-                op = row.get('Operador', 'OPERADOR')
-                status_raw = row['Status']
+                status_raw = str(row['Status'])
+                hora_prep = str(row['Hora'])
                 
-                # A hora já vem formatada corretamente do banco
-                hora_prep = row['Hora']
+                # Puxa a hora caso esteja agendada
                 if "[AGENDADO:" in status_raw:
                     try:
                         hora_prep = status_raw.split("[AGENDADO:")[1].split("]")[0].strip()
-                    except:
-                        pass
-                        
-                status_limpo = status_raw.upper().split(" [AGENDADO")[0]
-                texto += f"{num_maq} - {status_limpo} - {hora_prep} - {op}\n"
-            texto += "\n"
+                    except: pass
+                
+                # Descobre quem fez a preparação
+                nome_operador = str(row.get('Operador', 'OPERADOR')).upper()
+                if "[Prep:" in status_raw:
+                    try:
+                        nome_operador = status_raw.split("[Prep:")[1].split("]")[0].strip().upper()
+                    except: pass
+                
+                # Verifica se fica para o próximo turno
+                fica_turno = ""
+                if "[Fica para" in status_raw:
+                    try:
+                        turno_texto = status_raw.split("[Fica para")[1].split("]")[0].strip().upper()
+                        fica_turno = f" - FICA PARA {turno_texto}"
+                    except: pass
 
-        # Trazendo o Controle de Equipe para o relatório
+                # Limpa a string de status
+                status_limpo = status_raw.split("[")[0].strip().upper()
+                
+                # Formato final: MAQUINA - STATUS - NOME - HORA
+                texto += f"{num_maq} - {status_limpo} - {nome_operador}{fica_turno} - {hora_prep}\n\n"
+
         texto += "*EQUIPE / AUSÊNCIAS*\n\n"
         if os.path.exists(ARQUIVO_EQUIPE):
             df_eq = pd.read_csv(ARQUIVO_EQUIPE)
