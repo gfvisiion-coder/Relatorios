@@ -88,14 +88,23 @@ st.markdown(CSS_APP, unsafe_allow_html=True)
 ARQUIVO_DADOS = "banco_operacao.csv"
 ARQUIVO_EQUIPE = "banco_equipe.csv"
 
-MAPA_STATUS = {
-    "PRODUZINDO": "🟢",
-    "PREPARAÇÃO": "🟡",
-    "SEQUÊNCIA": "🟡",
-    "MANUTENÇÃO": "🛠️",
-    "PARADA": "🔴",
-    "AGENDADO": "🔵"
-}
+# NOVA LÓGICA DE CORES
+def get_status_icon(status_str):
+    # Se ainda estiver agendado (horário futuro), fica azul
+    if "AGENDADO" in status_str or "AGENDADA" in status_str:
+        return "🔵"
+    # Se já passou do horário (ou não foi agendado) e é sequência, fica rosa/roxo
+    elif "SEQUÊNCIA" in status_str:
+        return "🟣"
+    # Preparação normal fica amarelo
+    elif "PREPARAÇÃO" in status_str:
+        return "🟡"
+    elif "MANUTENÇÃO" in status_str:
+        return "🛠️"
+    elif "PARADA" in status_str:
+        return "🔴"
+    else:
+        return "🟢"
 
 # --- GERENCIAMENTO DE ESTADO ---
 if 'tela_atual' not in st.session_state:
@@ -139,9 +148,11 @@ def ler_status_atual():
                     hora_alvo_str = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
                     tipo_agendado = st_raw.split(" [AGENDADO:")[0]
                     
+                    # Compara horário: se ainda não chegou, coloca "AGENDADA" no nome
                     if agora_str < hora_alvo_str:
                         status_calculado[maq] = f"{tipo_agendado} AGENDADA PARA {hora_alvo_str}"
                     else:
+                        # Se já passou do horário, tira o nome "AGENDADA" e deixa o status real
                         status_calculado[maq] = tipo_agendado
                 except:
                     status_calculado[maq] = st_raw
@@ -211,6 +222,8 @@ def painel_controle_maquina(maq_id, setor):
         st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
         if "AGENDADO" in status_atual or "AGENDADA" in status_atual:
             st.info(f"🔵 Status: {status_atual}")
+        elif "SEQUÊNCIA" in status_atual:
+            st.info(f"🟣 Status Atual: {status_atual} desde {hora_atual}")
         elif "PRODUZINDO" in status_atual:
             st.success("🟢 Status Atual: Operando em Produção")
         elif "PARADA" in status_atual:
@@ -218,7 +231,7 @@ def painel_controle_maquina(maq_id, setor):
         elif "MANUTENÇÃO" in status_atual:
             st.warning(f"🛠️ Status Atual: Em Manutenção desde {hora_atual}{timer_str}")
         else:
-            st.info(f"🟡 Status Atual: {status_atual} desde {hora_atual}")
+            st.warning(f"🟡 Status Atual: {status_atual} desde {hora_atual}")
             
         flow_key = f"flow_{maq_id}"
         if flow_key not in st.session_state:
@@ -261,11 +274,12 @@ def painel_controle_maquina(maq_id, setor):
 
         elif st.session_state[flow_key] == "detalhe_prep":
             with st.form(f"form_prep_{maq_id}"):
-                st.markdown("⚙️ **Configuração de Preparação / Agendamento**")
+                st.markdown("⚙️ **Configuração de Preparação / Sequência**")
                 
-                hora_futura = st.text_input("⏰ Horário programado para iniciar (Ex: 15:30):", value=datetime.now(FUSO_BR).strftime("%H:%M"))
+                # CAMPO NOVO: Define exatamente a hora que vai pro relatório / pro banco
+                hora_relatorio = st.text_input("⏰ Horário (Aparecerá no Relatório):", value=datetime.now(FUSO_BR).strftime("%H:%M"))
+                is_agendado = st.toggle("Marcar como Agendamento Futuro")
                 
-                # NOVO CAMPO: Nome do preparador
                 preparador = st.text_input("🧑‍🔧 Nome de quem vai preparar (Opcional):", placeholder="Ex: João Silva")
                 
                 if setor == "AFC":
@@ -281,7 +295,7 @@ def painel_controle_maquina(maq_id, setor):
                 proximo_turno_num = "2° Turno" if "1" in st.session_state['turno'] else ("3° Turno" if "2" in st.session_state['turno'] else "1° Turno")
                 ficar_proximo = st.radio(f"Vai ficar para o {proximo_turno_num} terminar?", ["Não", "Sim"], horizontal=True)
                 
-                if st.form_submit_button("💾 Salvar Agendamento", type="primary"):
+                if st.form_submit_button("💾 Salvar Registro", type="primary"):
                     if setor == "AFC":
                         st_final = tipo_afc
                         if troca_rebolo: st_final += " (C/ Rebolo)"
@@ -290,20 +304,20 @@ def painel_controle_maquina(maq_id, setor):
                         if tipo_prep == "HASTE" and troca_diametro: st_final += " (C/ Diâmetro)"
                         if troca_rebolo: st_final += " (C/ Rebolo)"
 
-                    # Adiciona o nome do preparador ao status final se foi preenchido
                     if preparador.strip():
                         st_final += f" [Prep: {preparador.strip().upper()}]"
 
                     if ficar_proximo == "Sim": st_final += f" [Fica para {proximo_turno_num}]"
                     
-                    if hora_futura.strip():
-                        st_final += f" [AGENDADO:{hora_futura.strip()}]"
+                    if is_agendado and hora_relatorio.strip():
+                        st_final += f" [AGENDADO:{hora_relatorio.strip()}]"
                     
-                    hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                    salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                    # Salva usando a hora definida pelo usuário
+                    salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
+                    
                     st.session_state['maq_ativa'] = None
                     del st.session_state[flow_key]
-                    st.success("✅ Agendado com sucesso!")
+                    st.success("✅ Registrado com sucesso!")
                     time.sleep(0.5)
                     st.rerun()
 
@@ -394,10 +408,7 @@ def render_grid_vertical(lista_maquinas, setor, status_dict):
             chave_busca = f"{setor} {maq}"
             status_atual = status_dict.get(chave_busca, "PRODUZINDO")
             
-            if "AGENDADO" in status_atual or "AGENDADA" in status_atual:
-                icone = "🔵"
-            else:
-                icone = MAPA_STATUS.get(status_atual.split(" - ")[0], "🟢")
+            icone = get_status_icon(status_atual)
             
             label_botao = f"{icone} Máquina {maq} — {status_atual}"
             if st.button(label_botao, key=f"btn_vert_{setor}_{maq}", use_container_width=True):
@@ -449,10 +460,7 @@ def tela_checkup():
     else:
         st.markdown("<p style='font-size: 12px; color: #2DD4BF;'>Toque na máquina para gerenciar o estado:</p>", unsafe_allow_html=True)
         for setor_m, maq_m, st_m in maquinas_com_problema:
-            if "AGENDADO" in st_m or "AGENDADA" in st_m:
-                icone = "🔵"
-            else:
-                icone = MAPA_STATUS.get(st_m.split(" - ")[0], "⚠️")
+            icone = get_status_icon(st_m)
             
             if st.button(f"{icone} {setor_m} {maq_m} — {st_m}", key=f"chk_{setor_m}_{maq_m}", use_container_width=True):
                 st.session_state['maq_ativa'] = maq_m
@@ -620,8 +628,18 @@ def tela_relatorio():
             for _, row in rtf_prep.iterrows():
                 num_maq = row['Maquina'].replace("RTF ", "")
                 op = row.get('Operador', 'OPERADOR')
-                status_limpo = row['Status'].upper().split(" [AGENDADO")[0]
-                texto += f"{num_maq} - {status_limpo} - {row['Hora']} - {op}\n"
+                status_raw = row['Status']
+                
+                # A hora já vem formatada corretamente do banco
+                hora_prep = row['Hora']
+                if "[AGENDADO:" in status_raw:
+                    try:
+                        hora_prep = status_raw.split("[AGENDADO:")[1].split("]")[0].strip()
+                    except:
+                        pass
+                
+                status_limpo = status_raw.upper().split(" [AGENDADO")[0]
+                texto += f"{num_maq} - {status_limpo} - {hora_prep} - {op}\n"
             texto += "\n"
 
         texto += "*AFIADORAS*\n\n"
@@ -632,8 +650,18 @@ def tela_relatorio():
             for _, row in afc_prep.iterrows():
                 num_maq = row['Maquina'].replace("AFC ", "")
                 op = row.get('Operador', 'OPERADOR')
-                status_limpo = row['Status'].upper().split(" [AGENDADO")[0]
-                texto += f"{num_maq} - {status_limpo} - {row['Hora']} - {op}\n"
+                status_raw = row['Status']
+                
+                # A hora já vem formatada corretamente do banco
+                hora_prep = row['Hora']
+                if "[AGENDADO:" in status_raw:
+                    try:
+                        hora_prep = status_raw.split("[AGENDADO:")[1].split("]")[0].strip()
+                    except:
+                        pass
+                        
+                status_limpo = status_raw.upper().split(" [AGENDADO")[0]
+                texto += f"{num_maq} - {status_limpo} - {hora_prep} - {op}\n"
             texto += "\n"
 
         # Trazendo o Controle de Equipe para o relatório
