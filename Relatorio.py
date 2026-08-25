@@ -265,6 +265,9 @@ def painel_controle_maquina(maq_id, setor):
                 
                 hora_futura = st.text_input("⏰ Horário programado para iniciar (Ex: 15:30):", value=datetime.now(FUSO_BR).strftime("%H:%M"))
                 
+                # NOVO CAMPO: Nome do preparador
+                preparador = st.text_input("🧑‍🔧 Nome de quem vai preparar (Opcional):", placeholder="Ex: João Silva")
+                
                 if setor == "AFC":
                     tipo_afc = st.radio("Selecione o Status:", ["PREPARAÇÃO", "SEQUÊNCIA"], horizontal=True)
                     troca_rebolo = st.toggle("Troca de Rebolo")
@@ -286,6 +289,10 @@ def painel_controle_maquina(maq_id, setor):
                         st_final = f"PREPARAÇÃO - {tipo_prep}"
                         if tipo_prep == "HASTE" and troca_diametro: st_final += " (C/ Diâmetro)"
                         if troca_rebolo: st_final += " (C/ Rebolo)"
+
+                    # Adiciona o nome do preparador ao status final se foi preenchido
+                    if preparador.strip():
+                        st_final += f" [Prep: {preparador.strip().upper()}]"
 
                     if ficar_proximo == "Sim": st_final += f" [Fica para {proximo_turno_num}]"
                     
@@ -317,7 +324,7 @@ def painel_controle_maquina(maq_id, setor):
                         st.rerun()
 
 # ==========================================
-#               TELAS DO APP
+#              TELAS DO APP
 # ==========================================
 
 def tela_login():
