@@ -10,7 +10,7 @@ st.set_page_config(page_title="Relatorio - Setor Afiação", page_icon="📱", l
 # Fuso horário correto do Brasil (GMT-3)
 FUSO_BR = timezone(timedelta(hours=-3))
 
-# --- DESIGN SYSTEM: CSS INDUSTRIAL PREMIUM (VISIBILIDADE TOTAL PC E MOBILE) ---
+# --- DESIGN SYSTEM: CSS INDUSTRIAL PREMIUM ---
 CSS_APP = """
 <style>
     .stApp { background-color: #09090B !important; }
@@ -63,7 +63,6 @@ CSS_APP = """
         background: linear-gradient(135deg, #0F766E 100%, #115E59 100%) !important;
     }
     
-    /* INPUTS UNIVERSAIS: Fundo cinza escuro corporativo com letras BRANCAS visíveis em qualquer tela */
     div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, div[data-baseweb="textarea"] > div { 
         background-color: #27272A !important; 
         border: 1px solid #52525B !important; 
@@ -88,15 +87,13 @@ st.markdown(CSS_APP, unsafe_allow_html=True)
 ARQUIVO_DADOS = "banco_operacao.csv"
 ARQUIVO_EQUIPE = "banco_equipe.csv"
 
-# NOVA LÓGICA DE CORES
 def get_status_icon(status_str):
-    # Se ainda estiver agendado (horário futuro), fica azul
-    if "AGENDADO" in status_str or "AGENDADA" in status_str:
+    if "AGUARDANDO PREPARADOR" in status_str:
+        return "🟠"
+    elif "AGENDADO" in status_str or "AGENDADA" in status_str:
         return "🔵"
-    # Se já passou do horário (ou não foi agendado) e é sequência, fica rosa/roxo
     elif "SEQUÊNCIA" in status_str:
         return "🟣"
-    # Preparação normal fica amarelo
     elif "PREPARAÇÃO" in status_str:
         return "🟡"
     elif "MANUTENÇÃO" in status_str:
@@ -106,7 +103,6 @@ def get_status_icon(status_str):
     else:
         return "🟢"
 
-# --- GERENCIAMENTO DE ESTADO ---
 if 'tela_atual' not in st.session_state:
     st.session_state['tela_atual'] = 'login'
 if 'operador' not in st.session_state:
@@ -128,7 +124,6 @@ def mudar_tela(nome_tela):
     st.session_state['maq_ativa'] = None
     st.rerun()
 
-# --- FUNÇÕES DE DADOS ---
 def ler_status_atual():
     if not os.path.exists(ARQUIVO_DADOS):
         return {}
@@ -148,12 +143,11 @@ def ler_status_atual():
                     hora_alvo_str = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
                     tipo_agendado = st_raw.split(" [AGENDADO:")[0]
                     
-                    # Compara horário: se ainda não chegou, coloca "AGENDADA" no nome
                     if agora_str < hora_alvo_str:
                         status_calculado[maq] = f"{tipo_agendado} AGENDADA PARA {hora_alvo_str}"
                     else:
-                        # Se já passou do horário, tira o nome "AGENDADA" e deixa o status real
-                        status_calculado[maq] = tipo_agendado
+                        # Passou do horário agendado: vira automaticamente AGUARDANDO PREPARADOR
+                        status_calculado[maq] = "AGUARDANDO PREPARADOR"
                 except:
                     status_calculado[maq] = st_raw
             else:
@@ -185,9 +179,6 @@ def salvar_csv(dados, arquivo):
     else:
         df_novo.to_csv(arquivo, index=False)
 
-# ==========================================
-#        PAINEL DE CONTROLE DA MÁQUINA
-# ==========================================
 def painel_controle_maquina(maq_id, setor):
     st.markdown("""
         <script>
@@ -207,23 +198,27 @@ def painel_controle_maquina(maq_id, setor):
         info = obter_info_maquina(maq_id, setor)
         hora_atual = info.get('Hora', '--:--') if info else ''
         
-        # Tratamento do Timer de Manutenção
-        if "MANUTENÇÃO" in status_atual and info:
+        # Tratamento de Timer (Manutenção ou Preparação em andamento)
+        timer_str = ""
+        if ("MANUTENÇÃO" in status_atual or "PREPARAÇÃO" in status_atual or "SEQUÊNCIA" in status_atual) and info:
             try:
                 dt_reg = datetime.strptime(f"{datetime.now(FUSO_BR).strftime('%Y-%m-%d')} {hora_atual}", "%Y-%m-%d %H:%M")
                 tempo_decorrido = datetime.now(FUSO_BR) - dt_reg.replace(tzinfo=FUSO_BR)
                 minutos = int(tempo_decorrido.total_seconds() // 60)
-                timer_str = f" (Em manutenção há {minutos} min)"
+                if "MANUTENÇÃO" in status_atual:
+                    timer_str = f" (Em manutenção há {minutos} min)"
+                else:
+                    timer_str = f" (Em preparação há {minutos} min)"
             except:
                 timer_str = ""
-        else:
-            timer_str = ""
 
         st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
-        if "AGENDADO" in status_atual or "AGENDADA" in status_atual:
+        if "AGUARDANDO PREPARADOR" in status_atual:
+            st.warning(f"🟠 Status Atual: AGUARDANDO PREPARADOR")
+        elif "AGENDADO" in status_atual or "AGENDADA" in status_atual:
             st.info(f"🔵 Status: {status_atual}")
         elif "SEQUÊNCIA" in status_atual:
-            st.info(f"🟣 Status Atual: {status_atual} desde {hora_atual}")
+            st.info(f"🟣 Status Atual: {status_atual} desde {hora_atual}{timer_str}")
         elif "PRODUZINDO" in status_atual:
             st.success("🟢 Status Atual: Operando em Produção")
         elif "PARADA" in status_atual:
@@ -231,7 +226,7 @@ def painel_controle_maquina(maq_id, setor):
         elif "MANUTENÇÃO" in status_atual:
             st.warning(f"🛠️ Status Atual: Em Manutenção desde {hora_atual}{timer_str}")
         else:
-            st.warning(f"🟡 Status Atual: {status_atual} desde {hora_atual}")
+            st.warning(f"🟡 Status Atual: {status_atual} desde {hora_atual}{timer_str}")
             
         flow_key = f"flow_{maq_id}"
         if flow_key not in st.session_state:
@@ -239,6 +234,10 @@ def painel_controle_maquina(maq_id, setor):
             
         st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
         
+        # Se a máquina estiver AGUARDANDO PREPARADOR, o fluxo direciona direto para iniciar
+        if "AGUARDANDO PREPARADOR" in status_atual:
+            st.session_state[flow_key] = "iniciar_prep"
+
         if st.session_state[flow_key] == "pergunta":
             st.markdown(f"<p style='text-align: center; font-weight: 600;'>Esta máquina ainda está com o status atual?</p>", unsafe_allow_html=True)
             c1, c2 = st.columns(2)
@@ -275,12 +274,8 @@ def painel_controle_maquina(maq_id, setor):
         elif st.session_state[flow_key] == "detalhe_prep":
             with st.form(f"form_prep_{maq_id}"):
                 st.markdown("⚙️ **Configuração de Preparação / Sequência**")
-                
-                # CAMPO NOVO: Define exatamente a hora que vai pro relatório / pro banco
-                hora_relatorio = st.text_input("⏰ Horário (Aparecerá no Relatório):", value=datetime.now(FUSO_BR).strftime("%H:%M"))
+                hora_relatorio = st.text_input("⏰ Horário (Aparecerá no Relatório):", value="", placeholder="Ex: 08:30")
                 is_agendado = st.toggle("Marcar como Agendamento Futuro")
-                
-                preparador = st.text_input("🧑‍🔧 Nome de quem vai preparar (Opcional):", placeholder="Ex: João Silva")
                 
                 if setor == "AFC":
                     tipo_afc = st.radio("Selecione o Status:", ["PREPARAÇÃO", "SEQUÊNCIA"], horizontal=True)
@@ -296,30 +291,50 @@ def painel_controle_maquina(maq_id, setor):
                 ficar_proximo = st.radio(f"Vai ficar para o {proximo_turno_num} terminar?", ["Não", "Sim"], horizontal=True)
                 
                 if st.form_submit_button("💾 Salvar Registro", type="primary"):
-                    if setor == "AFC":
-                        st_final = tipo_afc
-                        if troca_rebolo: st_final += " (C/ Rebolo)"
+                    if not hora_relatorio.strip():
+                        st.error("⚠️ O campo de horário é obrigatório!")
                     else:
-                        st_final = f"PREPARAÇÃO - {tipo_prep}"
-                        if tipo_prep == "HASTE" and troca_diametro: st_final += " (C/ Diâmetro)"
-                        if troca_rebolo: st_final += " (C/ Rebolo)"
+                        if setor == "AFC":
+                            st_final = tipo_afc
+                            if troca_rebolo: st_final += " (C/ Rebolo)"
+                        else:
+                            st_final = f"PREPARAÇÃO - {tipo_prep}"
+                            if tipo_prep == "HASTE" and troca_diametro: st_final += " (C/ Diâmetro)"
+                            if troca_rebolo: st_final += " (C/ Rebolo)"
 
-                    if preparador.strip():
-                        st_final += f" [Prep: {preparador.strip().upper()}]"
+                        if ficar_proximo == "Sim": st_final += f" [Fica para {proximo_turno_num}]"
+                        
+                        if is_agendado and hora_relatorio.strip():
+                            st_final += f" [AGENDADO:{hora_relatorio.strip()}]"
+                        else:
+                            # Se não for agendado para o futuro, cai direto em aguardando preparador
+                            st_final = "AGUARDANDO PREPARADOR"
+                        
+                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
+                        
+                        st.session_state['maq_ativa'] = None
+                        del st.session_state[flow_key]
+                        st.success("✅ Registrado com sucesso!")
+                        time.sleep(0.5)
+                        st.rerun()
 
-                    if ficar_proximo == "Sim": st_final += f" [Fica para {proximo_turno_num}]"
-                    
-                    if is_agendado and hora_relatorio.strip():
-                        st_final += f" [AGENDADO:{hora_relatorio.strip()}]"
-                    
-                    # Salva usando a hora definida pelo usuário
-                    salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
-                    
-                    st.session_state['maq_ativa'] = None
-                    del st.session_state[flow_key]
-                    st.success("✅ Registrado com sucesso!")
-                    time.sleep(0.5)
-                    st.rerun()
+        elif st.session_state[flow_key] == "iniciar_prep":
+            with st.form(f"form_iniciar_{maq_id}"):
+                st.markdown("🧑‍🔧 **Iniciar Preparação**")
+                nome_preparador = st.text_input("Nome do Preparador Responsável:", value=st.session_state['operador'], placeholder="Digite seu nome...")
+                
+                if st.form_submit_button("🚀 INICIAR PREPARAÇÃO", type="primary"):
+                    if not nome_preparador.strip():
+                        st.error("⚠️ Informe o nome do preparador!")
+                    else:
+                        hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                        st_andamento = f"PREPARANDO [Prep: {nome_preparador.strip().upper()}]"
+                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                        st.session_state['maq_ativa'] = None
+                        del st.session_state[flow_key]
+                        st.success("✅ Preparação iniciada com timer ativado!")
+                        time.sleep(0.5)
+                        st.rerun()
 
         elif st.session_state[flow_key] == "detalhe_man":
             with st.form(f"form_man_{maq_id}"):
@@ -336,10 +351,6 @@ def painel_controle_maquina(maq_id, setor):
                         st.success("✅ Registrado!")
                         time.sleep(0.5)
                         st.rerun()
-
-# ==========================================
-#              TELAS DO APP
-# ==========================================
 
 def tela_login():
     st.markdown("<h2 style='text-align: center; color: #14B8A6 !important; margin-top: 30px;'>🏭 RELATORIO AFIAÇÃO</h2>", unsafe_allow_html=True)
@@ -392,7 +403,8 @@ def tela_menu():
         else:
             if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True, type="primary"): mudar_tela('rtf')
             
-        if st.button("🔍 INCIDÊNCIAS", use_container_width=True): mudar_tela('checkup')
+        if st.button("🔍 INCIDÊNCIAS DO SETOR", use_container_width=True): mudar_tela('checkup')
+        if st.button("⚡ MINHAS INCIDÊNCIAS", use_container_width=True, type="primary"): mudar_tela('minhas_incidencias')
         if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
         if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
         if st.button("📋 RELATÓRIO DE TURNO", use_container_width=True): mudar_tela('relatorio')
@@ -418,8 +430,8 @@ def render_grid_vertical(lista_maquinas, setor, status_dict):
 
 def tela_checkup():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
-    st.markdown("#### 🔍 Incidências na Planta")
-    st.markdown("<p style='font-size: 11px; color: #A1A1AA;'>Monitore equipamentos parados, em preparação, agendados ou em manutenção.</p>", unsafe_allow_html=True)
+    st.markdown("#### 🔍 Incidências no Setor")
+    st.markdown("<p style='font-size: 11px; color: #A1A1AA;'>Monitore equipamentos parados, aguardando preparador, agendados ou em manutenção.</p>", unsafe_allow_html=True)
     st.divider()
     
     status_dict = ler_status_atual()
@@ -461,8 +473,59 @@ def tela_checkup():
         st.markdown("<p style='font-size: 12px; color: #2DD4BF;'>Toque na máquina para gerenciar o estado:</p>", unsafe_allow_html=True)
         for setor_m, maq_m, st_m in maquinas_com_problema:
             icone = get_status_icon(st_m)
-            
             if st.button(f"{icone} {setor_m} {maq_m} — {st_m}", key=f"chk_{setor_m}_{maq_m}", use_container_width=True):
+                st.session_state['maq_ativa'] = maq_m
+                st.session_state['setor_ativo'] = setor_m
+                st.rerun()
+
+def tela_minhas_incidencias():
+    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    st.markdown(f"#### ⚡ Minhas Incidências — {st.session_state['operador']}")
+    st.markdown("<p style='font-size: 11px; color: #A1A1AA;'>Máquinas que você assumiu para preparação ou que estão sob sua responsabilidade.</p>", unsafe_allow_html=True)
+    st.divider()
+
+    status_dict = ler_status_atual()
+    setor_atual = st.session_state['setor_usuario']
+    nome_usuario = st.session_state['operador']
+
+    todas_afc = [
+        "30-161", "29-078", "32-081", "31-969", "34-132", "33-160", "36-084", "35-131",
+        "38-596", "37-892", "40-142", "39-905", "41-141", "8-247", "6-868", "4-427", "9-088",
+        "10-812", "7-743", "12-367", "11-365", "14-967", "13-964", "16-975", "15-973",
+        "18-957", "17-140", "20-774", "19-760", "22-813", "21-206", "24-761", "23-165",
+        "26-635", "25-209", "28-432", "27-431"
+    ]
+    todas_rtf = [
+        "6-6J1", "17-6J1", "30-786", "32-918", "29-785", "4-425", "3-426",
+        "34-842", "31-806", "7-267", "5-903", "36-854", "33-807", "9-815", "8-086",
+        "38-881", "35-885", "11-363", "10-817", "40-912", "37-857", "13-969",
+        "12-962", "42-885", "39-856", "15-977", "14-971", "18-925", "16-183",
+        "20-927", "19-926", "22-916", "21-270", "24-259", "23-753", "26-260",
+        "25-258", "28-954", "27-917"
+    ]
+    lista_setor = todas_afc if setor_atual == "AFC" else todas_rtf
+
+    minhas_maquinas = []
+    for m in lista_setor:
+        chave = f"{setor_atual} {m}"
+        st_val = status_dict.get(chave, "PRODUZINDO")
+        info = obter_info_maquina(m, setor_atual)
+        
+        # Verifica se o preparador atual está vinculado a esta máquina
+        if info and f"[Prep: {nome_usuario}]" in st_val:
+            minhas_maquinas.append((setor_atual, m, st_val))
+
+    if st.session_state['maq_ativa'] and st.session_state['setor_ativo']:
+        painel_controle_maquina(st.session_state['maq_ativa'], st.session_state['setor_ativo'])
+        st.divider()
+
+    if not minhas_maquinas:
+        st.info("ℹ️ Você não possui nenhuma máquina em preparação no momento.")
+    else:
+        st.markdown("<p style='font-size: 12px; color: #2DD4BF;'>Toque na máquina para gerenciar ou finalizar a preparação:</p>", unsafe_allow_html=True)
+        for setor_m, maq_m, st_m in minhas_maquinas:
+            icone = get_status_icon(st_m)
+            if st.button(f"{icone} {setor_m} {maq_m} — {st_m}", key=f"min_{setor_m}_{maq_m}", use_container_width=True):
                 st.session_state['maq_ativa'] = maq_m
                 st.session_state['setor_ativo'] = setor_m
                 st.rerun()
@@ -620,31 +683,24 @@ def tela_relatorio():
 
         texto += "*PREPARAÇÕES/AJUSTES*\n\n"
         
-        # --- SESSÃO RETÍFICAS ---
-        texto += "*RETIFICAS*\n\n"
-        rtf_prep = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA', na=False))]
-        if rtf_prep.empty:
-            texto += "N/A\n\n"
-        else:
-            for _, row in rtf_prep.iterrows():
-                num_maq = row['Maquina'].replace("RTF ", "")
+        def processar_e_ordenar_setor(df_subset, prefixo_setor):
+            linhas_processadas = []
+            for _, row in df_subset.iterrows():
+                num_maq = row['Maquina'].replace(f"{prefixo_setor} ", "")
                 status_raw = str(row['Status'])
                 hora_prep = str(row['Hora'])
                 
-                # Puxa a hora caso esteja agendada
                 if "[AGENDADO:" in status_raw:
                     try:
                         hora_prep = status_raw.split("[AGENDADO:")[1].split("]")[0].strip()
                     except: pass
                 
-                # Descobre quem fez a preparação (ou usa o operador logado)
                 nome_operador = str(row.get('Operador', 'OPERADOR')).upper()
                 if "[Prep:" in status_raw:
                     try:
                         nome_operador = status_raw.split("[Prep:")[1].split("]")[0].strip().upper()
                     except: pass
                 
-                # Verifica se fica para o próximo turno
                 fica_turno = ""
                 if "[Fica para" in status_raw:
                     try:
@@ -652,50 +708,28 @@ def tela_relatorio():
                         fica_turno = f" - FICA PARA {turno_texto}"
                     except: pass
 
-                # Limpa a string de status (Remove o "PREPARAÇÃO - " e tira as tags com colchetes)
                 status_limpo = status_raw.split("[")[0].strip().upper()
                 status_limpo = status_limpo.replace("PREPARAÇÃO - ", "")
                 
-                # Formato final: MAQUINA - STATUS - NOME - HORA
-                texto += f"{num_maq} - {status_limpo} - {nome_operador}{fica_turno} - {hora_prep}\n\n"
+                linha_formatada = f"{num_maq} - {status_limpo} - {nome_operador}{fica_turno} - {hora_prep}\n\n"
+                linhas_processadas.append((hora_prep if hora_prep != '--' else '00:00', linha_formatada))
+            
+            linhas_processadas.sort(key=lambda x: x[0])
+            return "".join([item[1] for item in linhas_processadas])
 
-        # --- SESSÃO AFIADORAS ---
+        texto += "*RETIFICAS*\n\n"
+        rtf_prep = df_maq[(df_maq['Setor'] == 'RTF') & (df_maq['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA|AGUARDANDO', na=False))]
+        if rtf_prep.empty:
+            texto += "N/A\n\n"
+        else:
+            texto += processar_e_ordenar_setor(rtf_prep, "RTF")
+
         texto += "*AFIADORAS*\n\n"
-        afc_prep = df_maq[(df_maq['Setor'] == 'AFC') & (df_maq['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA', na=False))]
+        afc_prep = df_maq[(df_maq['Setor'] == 'AFC') & (df_maq['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA|AGUARDANDO', na=False))]
         if afc_prep.empty:
             texto += "N/A\n\n"
         else:
-            for _, row in afc_prep.iterrows():
-                num_maq = row['Maquina'].replace("AFC ", "")
-                status_raw = str(row['Status'])
-                hora_prep = str(row['Hora'])
-                
-                # Puxa a hora caso esteja agendada
-                if "[AGENDADO:" in status_raw:
-                    try:
-                        hora_prep = status_raw.split("[AGENDADO:")[1].split("]")[0].strip()
-                    except: pass
-                
-                # Descobre quem fez a preparação
-                nome_operador = str(row.get('Operador', 'OPERADOR')).upper()
-                if "[Prep:" in status_raw:
-                    try:
-                        nome_operador = status_raw.split("[Prep:")[1].split("]")[0].strip().upper()
-                    except: pass
-                
-                # Verifica se fica para o próximo turno
-                fica_turno = ""
-                if "[Fica para" in status_raw:
-                    try:
-                        turno_texto = status_raw.split("[Fica para")[1].split("]")[0].strip().upper()
-                        fica_turno = f" - FICA PARA {turno_texto}"
-                    except: pass
-
-                # Limpa a string de status
-                status_limpo = status_raw.split("[")[0].strip().upper()
-                
-                # Formato final: MAQUINA - STATUS - NOME - HORA
-                texto += f"{num_maq} - {status_limpo} - {nome_operador}{fica_turno} - {hora_prep}\n\n"
+            texto += processar_e_ordenar_setor(afc_prep, "AFC")
 
         texto += "*EQUIPE / AUSÊNCIAS*\n\n"
         if os.path.exists(ARQUIVO_EQUIPE):
@@ -718,6 +752,7 @@ def tela_relatorio():
 if st.session_state['tela_atual'] == 'login': tela_login()
 elif st.session_state['tela_atual'] == 'menu': tela_menu()
 elif st.session_state['tela_atual'] == 'checkup': tela_checkup()
+elif st.session_state['tela_atual'] == 'minhas_incidencias': tela_minhas_incidencias()
 elif st.session_state['tela_atual'] == 'afc': tela_afc()
 elif st.session_state['tela_atual'] == 'rtf': tela_rtf()
 elif st.session_state['tela_atual'] == 'equipe': tela_equipe()
