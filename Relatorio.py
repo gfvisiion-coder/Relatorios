@@ -663,25 +663,89 @@ def tela_relatorio():
     if gerar or encerrar:
         data_hoje = datetime.now(FUSO_BR).strftime("%d/%m/%Y")
         df_completo = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
-        
-        texto = f"*PLANTA AFIACAO E RETIFICA {data_hoje}*\n\n"
-        
-        texto += "*MAQUINAS EM MANUTENÇAO*\n\n"
         df_ultimo_geral = df_completo.drop_duplicates(subset=['Maquina'], keep='last') if not df_completo.empty else df_completo
+        
+        # --- 1. RELATÓRIO PADRÃO (EXATAMENTE COMO ERA ANTES) ---
+        texto_padrao = f"*PLANTA AFIACAO E RETIFICA {data_hoje}*\n\n"
+        
+        texto_padrao += "*MAQUINAS EM MANUTENÇAO*\n\n"
         manutencao_rows = df_ultimo_geral[df_ultimo_geral['Status'].str.contains('MANUTENÇÃO', na=False)]
         if manutencao_rows.empty:
-            texto += "N/A\n\n"
+            texto_padrao += "N/A\n\n"
         else:
             for _, row in manutencao_rows.iterrows():
                 num_maq = row['Maquina'].replace("AFC ", "").replace("RTF ", "")
                 motivo = row['Status'].replace("MANUTENÇÃO - Motivo: ", "")
-                texto += f"{num_maq} - MANUTENÇÃO - {row['Hora']} - {row.get('Operador', 'OPERADOR')} ({motivo})\n"
-            texto += "\n"
+                texto_padrao += f"{num_maq} - MANUTENÇÃO - {row['Hora']} - {row.get('Operador', 'OPERADOR')} ({motivo})\n"
+            texto_padrao += "\n"
 
-        texto += "*PREPARAÇÕES/AJUSTES*\n\n"
+        texto_padrao += "*PREPARAÇÕES/AJUSTES*\n\n"
         
-        def processar_e_ordenar_setor_com_tempos(df_all, df_subset, prefixo_setor):
+        def processar_e_ordenar_setor(df_subset, prefixo_setor):
             linhas_processadas = []
+            for _, row in df_subset.iterrows():
+                num_maq = row['Maquina'].replace(f"{prefixo_setor} ", "")
+                status_raw = str(row['Status'])
+                hora_prep = str(row['Hora'])
+                
+                if "[AGENDADO:" in status_raw:
+                    try:
+                        hora_prep = status_raw.split("[AGENDADO:")[1].split("]")[0].strip()
+                    except: pass
+                
+                nome_operador = str(row.get('Operador', 'OPERADOR')).upper()
+                if "[Prep:" in status_raw:
+                    try:
+                        nome_operador = status_raw.split("[Prep:")[1].split("]")[0].strip().upper()
+                    except: pass
+                
+                fica_turno = ""
+                if "[Fica para" in status_raw:
+                    try:
+                        turno_texto = status_raw.split("[Fica para")[1].split("]")[0].strip().upper()
+                        fica_turno = f" - FICA PARA {turno_texto}"
+                    except: pass
+
+                status_limpo = status_raw.split("[")[0].strip().upper()
+                status_limpo = status_limpo.replace("PREPARAÇÃO - ", "")
+                
+                linha_formatada = f"{num_maq} - {status_limpo} - {nome_operador}{fica_turno} - {hora_prep}\n\n"
+                linhas_processadas.append((hora_prep if hora_prep != '--' else '00:00', linha_formatada))
+            
+            linhas_processadas.sort(key=lambda x: x[0])
+            return "".join([item[1] for item in linhas_processadas])
+
+        texto_padrao += "*RETIFICAS*\n\n"
+        rtf_prep = df_ultimo_geral[(df_ultimo_geral['Setor'] == 'RTF') & (df_ultimo_geral['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA|AGUARDANDO|PREPARANDO', na=False))]
+        if rtf_prep.empty:
+            texto_padrao += "N/A\n\n"
+        else:
+            texto_padrao += processar_e_ordenar_setor(rtf_prep, "RTF")
+
+        texto_padrao += "*AFIADORAS*\n\n"
+        afc_prep = df_ultimo_geral[(df_ultimo_geral['Setor'] == 'AFC') & (df_ultimo_geral['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA|AGUARDANDO|PREPARANDO', na=False))]
+        if afc_prep.empty:
+            texto_padrao += "N/A\n\n"
+        else:
+            texto_padrao += processar_e_ordenar_setor(afc_prep, "AFC")
+
+        texto_padrao += "*EQUIPE / AUSÊNCIAS*\n\n"
+        if os.path.exists(ARQUIVO_EQUIPE):
+            df_eq = pd.read_csv(ARQUIVO_EQUIPE)
+            if df_eq.empty:
+                texto_padrao += "N/A\n\n"
+            else:
+                for _, row in df_eq.iterrows():
+                    texto_padrao += f"{row['Nome']} - {row['Tipo'].upper()}\n"
+                texto_padrao += "\n"
+        else:
+            texto_padrao += "N/A\n\n"
+
+        # --- 2. RELATÓRIO SEPARADO DE TEMPOS DE PREPARAÇÃO ---
+        texto_tempos = f"*RELATÓRIO SEPARADO DE TEMPOS DE PREPARAÇÃO - {data_hoje}*\n\n"
+        
+        def processar_tempos_setor(df_all, df_subset, prefixo_setor):
+            linhas_tempos = []
             for _, row in df_subset.iterrows():
                 maq_completa = row['Maquina']
                 num_maq = maq_completa.replace(f"{prefixo_setor} ", "")
@@ -693,10 +757,7 @@ def tela_relatorio():
                         hora_agenda = status_raw.split("[AGENDADO:")[1].split("]")[0].strip()
                     except: pass
                 
-                # Busca histórico completo da máquina para calcular tempos de espera e duração
                 df_maq_hist = df_all[df_all['Maquina'] == maq_completa]
-                
-                # Procura se houve o momento em que virou PREPARANDO e qual preparador assumiu
                 hora_inicio_prep = None
                 nome_preparador = str(row.get('Operador', 'OPERADOR')).upper()
                 if "[Prep:" in status_raw:
@@ -713,8 +774,6 @@ def tela_relatorio():
                             except: pass
                         hora_inicio_prep = h_row['Hora']
 
-                # Cálculo de tempos caso haja agendamento e início registrados
-                info_tempo_str = ""
                 if hora_agenda and hora_agenda != '--' and hora_inicio_prep:
                     try:
                         t_agenda = datetime.strptime(hora_agenda, "%H:%M")
@@ -722,67 +781,39 @@ def tela_relatorio():
                         delta_espera = int((t_inicio - t_agenda).total_seconds() // 60)
                         if delta_espera < 0: delta_espera = 0
                         
-                        # Simula tempo de execução até o momento atual ou término
                         t_atual = datetime.strptime(datetime.now(FUSO_BR).strftime("%H:%M"), "%H:%M")
                         delta_duracao = int((t_atual - t_inicio).total_seconds() // 60)
-                        if delta_duracao < 0: delta_duracao = 15 # Valor mínimo padrão caso horários cruzem virada
+                        if delta_duracao < 0: delta_duracao = 15
                         
                         horas_dur = delta_duracao // 60
                         mins_dur = delta_duracao % 60
                         duracao_fmt = f"{horas_dur} hora(s) e {mins_dur} minuto(s)" if horas_dur > 0 else f"{mins_dur} minutos"
                         
-                        info_tempo_str = f" -> Ficou parada {delta_espera} min até o preparador iniciar. Levou {duracao_fmt} até concluir - Preparador: {nome_preparador}"
+                        linha_t = f"Máquina {num_maq}: Ficou parada {delta_espera} minuto(s) até o preparador iniciar. Depois de iniciado, levou {duracao_fmt} até concluir.\nPreparador responsável: {nome_preparador}\n\n"
+                        linhas_tempos.append((hora_agenda, linha_t))
                     except:
-                        info_tempo_str = f" -> Preparador: {nome_preparador}"
-                else:
-                    info_tempo_str = f" -> Preparador: {nome_preparador}"
-
-                fica_turno = ""
-                if "[Fica para" in status_raw:
-                    try:
-                        turno_texto = status_raw.split("[Fica para")[1].split("]")[0].strip().upper()
-                        fica_turno = f" - FICA PARA {turno_texto}"
-                    except: pass
-
-                status_limpo = status_raw.split("[")[0].strip().upper()
-                status_limpo = status_limpo.replace("PREPARAÇÃO - ", "")
-                
-                linha_formatada = f"{num_maq} - {status_limpo}{fica_turno} - {hora_agenda}{info_tempo_str}\n\n"
-                linhas_processadas.append((hora_agenda if hora_agenda != '--' else '00:00', linha_formatada))
+                        pass
             
-            linhas_processadas.sort(key=lambda x: x[0])
-            return "".join([item[1] for item in linhas_processadas])
+            linhas_tempos.sort(key=lambda x: x[0])
+            return "".join([item[1] for item in linhas_tempos])
 
-        texto += "*RETIFICAS*\n\n"
-        rtf_prep = df_ultimo_geral[(df_ultimo_geral['Setor'] == 'RTF') & (df_ultimo_geral['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA|AGUARDANDO|PREPARANDO', na=False))]
-        if rtf_prep.empty:
-            texto += "N/A\n\n"
-        else:
-            texto += processar_e_ordenar_setor_com_tempos(df_completo, rtf_prep, "RTF")
+        texto_tempos += "*RETIFICAS*\n\n"
+        rtf_p = processar_tempos_setor(df_completo, rtf_prep, "RTF")
+        texto_tempos += rtf_p if rtf_p else "Nenhuma preparação finalizada/iniciada registrada.\n\n"
 
-        texto += "*AFIADORAS*\n\n"
-        afc_prep = df_ultimo_geral[(df_ultimo_geral['Setor'] == 'AFC') & (df_ultimo_geral['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA|AGUARDANDO|PREPARANDO', na=False))]
-        if afc_prep.empty:
-            texto += "N/A\n\n"
-        else:
-            texto += processar_e_ordenar_setor_com_tempos(df_completo, afc_prep, "AFC")
+        texto_tempos += "*AFIADORAS*\n\n"
+        afc_p = processar_tempos_setor(df_completo, afc_prep, "AFC")
+        texto_tempos += afc_p if afc_p else "Nenhuma preparação finalizada/iniciada registrada.\n\n"
 
-        texto += "*EQUIPE / AUSÊNCIAS*\n\n"
-        if os.path.exists(ARQUIVO_EQUIPE):
-            df_eq = pd.read_csv(ARQUIVO_EQUIPE)
-            if df_eq.empty:
-                texto += "N/A\n\n"
-            else:
-                for _, row in df_eq.iterrows():
-                    texto += f"{row['Nome']} - {row['Tipo'].upper()}\n"
-                texto += "\n"
-        else:
-            texto += "N/A\n\n"
+        # Exibe os dois blocos na tela
+        st.markdown("##### 📄 Relatório Padrão de Turno")
+        st.code(texto_padrao, language="text")
 
-        st.code(texto, language="text")
+        st.markdown("##### ⏱️ Relatório Separado de Tempos de Preparação")
+        st.code(texto_tempos, language="text")
         
         if encerrar:
-            st.success("✨ Turno encerrado e relatório gerado com sucesso!")
+            st.success("✨ Turno encerrado e relatórios gerados com sucesso!")
 
 # --- ROTEADOR ---
 if st.session_state['tela_atual'] == 'login': tela_login()
