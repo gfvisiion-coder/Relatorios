@@ -53,6 +53,7 @@ st.markdown(CSS_APP, unsafe_allow_html=True)
 
 ARQUIVO_DADOS = "banco_operacao.csv"
 ARQUIVO_EQUIPE = "banco_equipe.csv"
+ARQUIVO_HISTORICO = "historico_relatorios.csv"
 
 def get_status_icon(status_str):
     if "AGUARDANDO PREPARADOR" in status_str: return "🟠"
@@ -324,6 +325,7 @@ def tela_menu():
     if perfil == 'tecnico':
         if st.button("📋 RELATÓRIO GERAL CONSOLIDADO", use_container_width=True, type="primary"): mudar_tela('relatorio')
         if st.button("🔍 INCIDÊNCIAS GERAL", use_container_width=True): mudar_tela('checkup')
+        if st.button("📁 HISTÓRICO DE RELATÓRIOS", use_container_width=True): mudar_tela('historico')
         if st.button("✏️ GERENCIAR BANCO DE DADOS", use_container_width=True): mudar_tela('editar')
     else:
         if st.session_state['setor_usuario'] == 'AFC':
@@ -334,8 +336,9 @@ def tela_menu():
         if st.button("🔍 INCIDÊNCIAS DO SETOR", use_container_width=True): mudar_tela('checkup')
         if st.button("⚡ MINHAS INCIDÊNCIAS", use_container_width=True, type="primary"): mudar_tela('minhas_incidencias')
         if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
-        if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
         if st.button("📋 RELATÓRIO DE TURNO", use_container_width=True): mudar_tela('relatorio')
+        if st.button("📁 HISTÓRICO DE RELATÓRIOS", use_container_width=True): mudar_tela('historico')
+        if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
     
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
     if st.button("🚪 Encerramento de Sessão (Logout)", use_container_width=True):
@@ -502,6 +505,25 @@ def tela_editar():
             st.success("✨ Banco de dados atualizado!")
     else: st.info("Nenhum apontamento encontrado no sistema.")
 
+def tela_historico():
+    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    st.markdown("#### 📁 Histórico de Relatórios")
+    
+    if os.path.exists(ARQUIVO_HISTORICO):
+        df_hist = pd.read_csv(ARQUIVO_HISTORICO)
+        if df_hist.empty:
+            st.info("Nenhum relatório salvo no histórico ainda.")
+        else:
+            for idx in reversed(df_hist.index):
+                row = df_hist.loc[idx]
+                with st.expander(f"📅 {row['Data']} - {row['Turno']}"):
+                    st.markdown("##### Relatório Padrão")
+                    st.code(row['Relatorio_Padrao'], language="text")
+                    st.markdown("##### Relatório de Tempos")
+                    st.code(row['Relatorio_Tempos'], language="text")
+    else:
+        st.info("Nenhum relatório salvo no histórico ainda.")
+
 # Funções auxiliares para cálculos de tempo no relatório
 def diff_mins(h_inicio, h_fim):
     try:
@@ -531,6 +553,9 @@ def tela_relatorio():
         df_completo = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
         df_ultimo_geral = df_completo.drop_duplicates(subset=['Maquina'], keep='last') if not df_completo.empty else df_completo
         
+        setup_mask = df_completo['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA|AGUARDANDO|PREPARANDO', na=False)
+        maquinas_com_setup = df_completo[setup_mask]['Maquina'].unique() if not df_completo.empty else []
+
         # --- 1. RELATÓRIO PADRÃO (LIMPO) ---
         texto_padrao = f"*PLANTA AFIACAO E RETIFICA {data_hoje}*\n\n"
         
@@ -540,39 +565,63 @@ def tela_relatorio():
         else:
             for _, row in manutencao_rows.iterrows():
                 num_maq = row['Maquina'].replace("AFC ", "").replace("RTF ", "")
-                motivo = row['Status'].replace("MANUTENÇÃO - Motivo: ", "")
                 texto_padrao += f"{num_maq} - MANUTENÇÃO - {row['Hora']}\n"
             texto_padrao += "\n"
 
         texto_padrao += "*PREPARAÇÕES/AJUSTES*\n\n"
         
-        def processar_padrao(df_subset, prefixo_setor):
+        def processar_padrao(df_all, maquinas, prefixo_setor):
             linhas = []
-            for _, row in df_subset.iterrows():
-                num_maq = row['Maquina'].replace(f"{prefixo_setor} ", "")
-                status_raw = str(row['Status'])
-                hora_prep = str(row['Hora'])
+            for maq in maquinas:
+                if not maq.startswith(prefixo_setor): continue
                 
-                if "[AGENDADO:" in status_raw:
-                    try: hora_prep = status_raw.split("[AGENDADO:")[1].split("]")[0].strip()
-                    except: pass
+                df_maq = df_all[df_all['Maquina'] == maq]
+                ciclo_ativo = False
+                status_limpo = ""
+                hora_prep = ""
+                
+                for _, row in df_maq.iterrows():
+                    st_val = str(row['Status'])
+                    h_val = str(row['Hora'])
+                    
+                    if "PREPARAÇÃO" in st_val or "SEQUÊNCIA" in st_val or "AGUARDANDO" in st_val:
+                        if ciclo_ativo:
+                            num_maq = maq.replace(f"{prefixo_setor} ", "")
+                            linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {status_limpo} - {hora_prep}\n\n"))
+                            
+                        ciclo_ativo = True
+                        hora_prep = h_val
+                        if "[AGENDADO:" in st_val:
+                            try: hora_prep = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
+                            except: pass
+                        s_limpo = st_val.split("[")[0].strip().upper().replace("PREPARAÇÃO - ", "")
+                        status_limpo = s_limpo if s_limpo else "SETUP"
 
-                status_limpo = status_raw.split("[")[0].strip().upper()
-                status_limpo = status_limpo.replace("PREPARAÇÃO - ", "")
-                # AQUI É O RELATÓRIO 1: MAQUINA - STATUS - HORA (Apenas isso, como solicitado)
-                linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {status_limpo} - {hora_prep}\n\n"))
+                    elif "PREPARANDO" in st_val:
+                        if not ciclo_ativo:
+                            ciclo_ativo = True
+                            hora_prep = h_val
+                            status_limpo = "SETUP"
+
+                    elif "PRODUZINDO" in st_val and ciclo_ativo:
+                        num_maq = maq.replace(f"{prefixo_setor} ", "")
+                        linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {status_limpo} - {hora_prep}\n\n"))
+                        ciclo_ativo = False
+                        
+                if ciclo_ativo:
+                    num_maq = maq.replace(f"{prefixo_setor} ", "")
+                    linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {status_limpo} - {hora_prep}\n\n"))
+                    
             linhas.sort(key=lambda x: x[0])
             return "".join([item[1] for item in linhas])
 
         texto_padrao += "*RETIFICAS*\n\n"
-        rtf_prep = df_ultimo_geral[(df_ultimo_geral['Setor'] == 'RTF') & (df_ultimo_geral['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA|AGUARDANDO|PREPARANDO', na=False))]
-        if rtf_prep.empty: texto_padrao += "N/A\n\n"
-        else: texto_padrao += processar_padrao(rtf_prep, "RTF")
+        str_rtf = processar_padrao(df_completo, maquinas_com_setup, "RTF")
+        texto_padrao += str_rtf if str_rtf else "N/A\n\n"
 
         texto_padrao += "*AFIADORAS*\n\n"
-        afc_prep = df_ultimo_geral[(df_ultimo_geral['Setor'] == 'AFC') & (df_ultimo_geral['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA|AGUARDANDO|PREPARANDO', na=False))]
-        if afc_prep.empty: texto_padrao += "N/A\n\n"
-        else: texto_padrao += processar_padrao(afc_prep, "AFC")
+        str_afc = processar_padrao(df_completo, maquinas_com_setup, "AFC")
+        texto_padrao += str_afc if str_afc else "N/A\n\n"
 
         texto_padrao += "*EQUIPE / AUSÊNCIAS*\n\n"
         if os.path.exists(ARQUIVO_EQUIPE):
@@ -586,14 +635,29 @@ def tela_relatorio():
         # --- 2. RELATÓRIO SEPARADO DE TEMPOS E RESPONSÁVEIS ---
         texto_tempos = f"*RELATÓRIO DE DESEMPENHO E TEMPOS - {data_hoje}*\n\n"
         
-        def gerar_relatorio_tempos(df_all, subset_atual, prefixo):
+        def gerar_relatorio_tempos(df_all, maquinas, prefixo):
             texto_saida = []
             
-            # Precisamos extrair todas as maquinas do subset atual
-            for maq in subset_atual['Maquina'].unique():
+            def salvar_ciclo(maq_num, h_agenda, h_inicio, h_assumido, h_fim, p1, p2):
+                if h_inicio is None:
+                    return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Aguardando preparador desde as {h_agenda}.\nPreparador responsável: AGUARDANDO OPERADOR\n\n")
+                
+                h_conclusao = h_fim if h_fim else datetime.now(FUSO_BR).strftime("%H:%M")
+                status_termino = "terminado" if h_fim else "sendo terminado"
+                status_concluiu = "até concluir" if h_fim else "até o momento"
+                
+                if p2 is not None:
+                    t1 = format_tempo(diff_mins(h_inicio, h_assumido))
+                    t2 = format_tempo(diff_mins(h_assumido, h_conclusao))
+                    return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Setup iniciado por {p1} e {status_termino} por {p2}. O primeiro levou {t1} e o segundo levou {t2}.\n\n")
+                else:
+                    t_tot = format_tempo(diff_mins(h_inicio, h_conclusao))
+                    return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Levou {t_tot} {status_concluiu}. Preparador responsável: {p1}.\n\n")
+
+            for maq in maquinas:
+                if not maq.startswith(prefixo): continue
                 df_hist = df_all[df_all['Maquina'] == maq]
                 
-                # Simulador de Ciclo para achar quem iniciou, quem assumiu e horas
                 ciclo_ativo = False
                 hora_agenda = None
                 hora_inicio = None
@@ -606,20 +670,20 @@ def tela_relatorio():
                     st_val = str(h_row['Status'])
                     h_val = str(h_row['Hora'])
                     
-                    if "AGENDADO" in st_val or "PREPARAÇÃO" in st_val or "SEQUÊNCIA" in st_val or "AGUARDANDO" in st_val:
+                    if "PREPARAÇÃO" in st_val or "SEQUÊNCIA" in st_val or "AGUARDANDO" in st_val:
+                        if ciclo_ativo and hora_inicio: 
+                            texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda, hora_inicio, hora_assumido, h_val, prep_1, prep_2))
+                            
                         ciclo_ativo = True
                         hora_agenda = h_val
                         if "[AGENDADO:" in st_val:
                             try: hora_agenda = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
                             except: pass
-                        hora_inicio = None
-                        hora_assumido = None
-                        hora_fim = None
-                        prep_1 = None
-                        prep_2 = None
+                        hora_inicio, hora_assumido, hora_fim, prep_1, prep_2 = None, None, None, None, None
                         
-                    if "PREPARANDO" in st_val:
+                    elif "PREPARANDO" in st_val:
                         ciclo_ativo = True
+                        if not hora_agenda: hora_agenda = h_val
                         if "[Assumido]" in st_val:
                             hora_assumido = h_val
                             try: prep_2 = st_val.split("[Prep:")[1].split("]")[0].strip()
@@ -629,36 +693,24 @@ def tela_relatorio():
                             try: prep_1 = st_val.split("[Prep:")[1].split("]")[0].strip()
                             except: pass
                             
-                    if "PRODUZINDO" in st_val and ciclo_ativo:
+                    elif "PRODUZINDO" in st_val and ciclo_ativo:
                         hora_fim = h_val
+                        texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda, hora_inicio, hora_assumido, hora_fim, prep_1, prep_2))
+                        ciclo_ativo = False
 
-                # Se a máquina tá no escopo, geramos o texto baseando na lógica extraída do ciclo
-                num_m = maq.replace(f"{prefixo} ", "")
-                if hora_inicio is None:
-                    txt_maq = f"Máquina {num_m}: Aguardando preparador desde as {hora_agenda}.\nPreparador responsável: AGUARDANDO OPERADOR\n\n"
-                else:
-                    h_conclusao = hora_fim if hora_fim else datetime.now(FUSO_BR).strftime("%H:%M")
-                    
-                    if prep_2 is not None: # Houve Passagem de Bastão (Assumir Setup)
-                        t1 = format_tempo(diff_mins(hora_inicio, hora_assumido))
-                        t2 = format_tempo(diff_mins(hora_assumido, h_conclusao))
-                        txt_maq = f"Máquina {num_m}: Setup iniciado por {prep_1} e terminado por {prep_2}. O primeiro levou {t1} e o segundo levou {t2}.\n\n"
-                    else: # Setup normal por 1 pessoa
-                        t_tot = format_tempo(diff_mins(hora_inicio, h_conclusao))
-                        txt_maq = f"Máquina {num_m}: Levou {t_tot} até concluir. Preparador responsável: {prep_1}.\n\n"
-                
-                texto_saida.append((hora_agenda if hora_agenda else '00:00', txt_maq))
-                
+                if ciclo_ativo:
+                    texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda, hora_inicio, hora_assumido, None, prep_1, prep_2))
+
             texto_saida.sort(key=lambda x: x[0])
             return "".join([i[1] for i in texto_saida])
 
         texto_tempos += "*RETIFICAS*\n\n"
-        if rtf_prep.empty: texto_tempos += "N/A\n\n"
-        else: texto_tempos += gerar_relatorio_tempos(df_completo, rtf_prep, "RTF")
+        str_t_rtf = gerar_relatorio_tempos(df_completo, maquinas_com_setup, "RTF")
+        texto_tempos += str_t_rtf if str_t_rtf else "Nenhuma preparação registrada.\n\n"
 
         texto_tempos += "*AFIADORAS*\n\n"
-        if afc_prep.empty: texto_tempos += "N/A\n\n"
-        else: texto_tempos += gerar_relatorio_tempos(df_completo, afc_prep, "AFC")
+        str_t_afc = gerar_relatorio_tempos(df_completo, maquinas_com_setup, "AFC")
+        texto_tempos += str_t_afc if str_t_afc else "Nenhuma preparação registrada.\n\n"
 
         # Exibe os dois blocos na tela
         st.markdown("##### 📄 Relatório 1 (Padrão e Limpo)")
@@ -667,13 +719,64 @@ def tela_relatorio():
         st.markdown("##### ⏱️ Relatório 2 (Tempos e Repasses)")
         st.code(texto_tempos, language="text")
         
+        # --- AÇÃO DE ENCERRAR O TURNO ---
         if encerrar:
-            st.success("✨ Turno encerrado e relatórios gerados com sucesso!")
+            # 1. Salvar no Histórico
+            novo_hist = pd.DataFrame([{
+                "Data": data_hoje,
+                "Turno": st.session_state['turno'],
+                "Relatorio_Padrao": texto_padrao,
+                "Relatorio_Tempos": texto_tempos
+            }])
+            if os.path.exists(ARQUIVO_HISTORICO):
+                df_existente = pd.read_csv(ARQUIVO_HISTORICO)
+                df_existente = pd.concat([df_existente, novo_hist], ignore_index=True)
+                df_existente.to_csv(ARQUIVO_HISTORICO, index=False)
+            else:
+                novo_hist.to_csv(ARQUIVO_HISTORICO, index=False)
+            
+            # 2. Limpar banco de operações, preservando as preparações em andamento (Passagem de Bastão)
+            df_novo = []
+            for maq in df_completo['Maquina'].unique():
+                df_maq = df_completo[df_completo['Maquina'] == maq]
+                last_status = str(df_maq.iloc[-1]['Status']).upper()
+                
+                setup_keywords = ["PREPARAÇÃO", "SEQUÊNCIA", "AGUARDANDO", "PREPARANDO", "AGENDADO"]
+                is_in_setup = any(kw in last_status for kw in setup_keywords)
+                
+                if not is_in_setup:
+                    # Se está PRODUZINDO, PARADA ou MANUTENÇÃO, apaga o histórico longo e guarda só o estado atual pro turno 2
+                    df_novo.append(df_maq.iloc[-1:])
+                else:
+                    # Se está em setup, puxa os dados desde o início do setup, pra quem assumir saber o tempo original
+                    last_non_setup_idx = -1
+                    for idx in df_maq.index:
+                        st_val = str(df_maq.loc[idx, 'Status']).upper()
+                        if not any(kw in st_val for kw in setup_keywords):
+                            last_non_setup_idx = idx
+                    
+                    if last_non_setup_idx != -1:
+                        df_novo.append(df_maq.loc[last_non_setup_idx+1:])
+                    else:
+                        df_novo.append(df_maq)
+            
+            if df_novo:
+                df_limpo = pd.concat(df_novo)
+                df_limpo.to_csv(ARQUIVO_DADOS, index=False)
+            
+            # 3. Limpar a Equipe
+            if os.path.exists(ARQUIVO_EQUIPE):
+                os.remove(ARQUIVO_EQUIPE)
+                
+            st.success("✨ Turno encerrado! Relatórios salvos no histórico e banco pronto para o próximo turno.")
+            time.sleep(2)
+            st.rerun()
 
 # --- ROTEADOR ---
 if st.session_state['tela_atual'] == 'login': tela_login()
 elif st.session_state['tela_atual'] == 'menu': tela_menu()
 elif st.session_state['tela_atual'] == 'checkup': tela_checkup()
+elif st.session_state['tela_atual'] == 'historico': tela_historico()
 elif st.session_state['tela_atual'] == 'minhas_incidencias': tela_minhas_incidencias()
 elif st.session_state['tela_atual'] == 'afc': tela_afc()
 elif st.session_state['tela_atual'] == 'rtf': tela_rtf()
