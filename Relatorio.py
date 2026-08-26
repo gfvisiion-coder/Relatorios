@@ -40,7 +40,9 @@ CSS_APP = """
         background-color: #27272A !important; border: 1px solid #52525B !important; 
         border-radius: 8px !important; min-height: 42px !important; 
     }
-    input, select, textarea { color: #FFFFFF !important; font-size: 15px !important; font-weight: 600 !important; }
+    
+    /* TEXTO DIGITÁVEL EM VERMELHO */
+    input, select, textarea { color: #FF4444 !important; font-size: 15px !important; font-weight: 600 !important; }
     
     div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"] {
         background-color: #121214; border: 1px solid #27272A; border-radius: 12px;
@@ -96,7 +98,13 @@ def ler_status_atual():
                     hora_alvo = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
                     tipo_agendado = st_raw.split(" [AGENDADO:")[0]
                     if agora_str < hora_alvo: status_calculado[maq] = f"{tipo_agendado} AGENDADA PARA {hora_alvo}"
-                    else: status_calculado[maq] = "AGUARDANDO PREPARADOR"
+                    else: 
+                        # Mantém a tag de sugestão de preparador se houver
+                        sugestao = ""
+                        if "[Sugerido:" in st_raw:
+                            sug = st_raw.split("[Sugerido:")[1].split("]")[0].strip()
+                            sugestao = f" [Sugerido: {sug}]"
+                        status_calculado[maq] = f"AGUARDANDO PREPARADOR{sugestao}"
                 except: status_calculado[maq] = st_raw
             else:
                 status_calculado[maq] = st_raw
@@ -228,6 +236,7 @@ def painel_controle_maquina(maq_id, setor):
                 st.markdown("⚙️ **Configuração de Preparação / Agendamento**")
                 hora_relatorio = st.text_input("⏰ Horário Alvo (Aparecerá no Relatório):", value="", placeholder="Ex: 12:30")
                 is_agendado = st.toggle("Marcar como Agendamento Futuro", value=True)
+                prep_sugerido = st.text_input("🧑‍🔧 Sugerir Preparador (Opcional):", placeholder="Ex: Lucas")
                 
                 if setor == "AFC":
                     tipo_afc = st.radio("Selecione o Status:", ["PREPARAÇÃO", "SEQUÊNCIA"], horizontal=True)
@@ -238,7 +247,7 @@ def painel_controle_maquina(maq_id, setor):
                     if tipo_prep == "HASTE": troca_diametro = st.toggle("Troca de Diâmetro")
                     troca_rebolo = st.toggle("Troca de Rebolo")
                 
-                if st.form_submit_button("💾 Salvar Agendamento", type="primary"):
+                if st.form_submit_button("💾 Salvar Registro", type="primary"):
                     if not hora_relatorio.strip():
                         st.error("⚠️ O campo de horário é obrigatório!")
                     else:
@@ -249,22 +258,34 @@ def painel_controle_maquina(maq_id, setor):
                             st_final = f"PREPARAÇÃO - {tipo_prep}"
                             if tipo_prep == "HASTE" and troca_diametro: st_final += " (C/ Diâmetro)"
                             if troca_rebolo: st_final += " (C/ Rebolo)"
+                            
+                        if prep_sugerido.strip():
+                            st_final += f" [Sugerido: {prep_sugerido.strip().upper()}]"
 
                         if is_agendado and hora_relatorio.strip():
                             st_final += f" [AGENDADO:{hora_relatorio.strip()}]"
-                        else: st_final = "AGUARDANDO PREPARADOR"
+                        else: 
+                            st_final = f"AGUARDANDO PREPARADOR [Sugerido: {prep_sugerido.strip().upper()}]" if prep_sugerido.strip() else "AGUARDANDO PREPARADOR"
                         
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
-                        st.success("✅ Agendamento registrado com sucesso!")
+                        st.success("✅ Registro salvo com sucesso!")
                         time.sleep(0.5)
                         st.rerun()
 
         elif st.session_state[flow_key] == "iniciar_prep":
             with st.form(f"form_iniciar_{maq_id}"):
                 st.markdown("🧑‍🔧 **Assumir e Iniciar Preparação**")
-                nome_preparador = st.text_input("Nome do Preparador Responsável:", value=st.session_state['operador'], placeholder="Digite seu nome...")
+                
+                # Busca se tem algum nome sugerido
+                sug_nome = ""
+                if "[Sugerido:" in status_atual:
+                    try: sug_nome = status_atual.split("[Sugerido:")[1].split("]")[0].strip()
+                    except: pass
+                    
+                nome_preparador = st.text_input("Qual preparador vai preparar?", value=sug_nome if sug_nome else st.session_state['operador'])
+                
                 if st.form_submit_button("🚀 INICIAR PREPARAÇÃO", type="primary"):
                     if not nome_preparador.strip(): st.error("⚠️ Informe o nome do preparador!")
                     else:
@@ -375,7 +396,7 @@ def tela_checkup():
     for s_nome, lista in setores_alvo:
         for m in lista:
             st_val = status_dict.get(f"{s_nome} {m}", "PRODUZINDO")
-            if "PRODUZINDO" not in st_val or "AGENDADO" in st_val or "AGENDADA" in st_val:
+            if "PRODUZINDO" not in st_val or "AGENDADO" in st_val or "AGENDADA" in st_val or "AGUARDANDO" in st_val:
                 maquinas_com_problema.append((s_nome, m, st_val))
             
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo']:
@@ -642,17 +663,22 @@ def tela_relatorio():
                 if h_inicio is None:
                     return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Aguardando preparador desde as {h_agenda}.\nPreparador responsável: AGUARDANDO OPERADOR\n\n")
                 
+                t_espera = format_tempo(diff_mins(h_agenda, h_inicio)) if h_agenda else "0 minutos"
                 h_conclusao = h_fim if h_fim else datetime.now(FUSO_BR).strftime("%H:%M")
-                status_termino = "terminado" if h_fim else "sendo terminado"
+                status_termino = "finalizado" if h_fim else "sendo finalizado"
                 status_concluiu = "até concluir" if h_fim else "até o momento"
+                
+                txt_maq = f"Máquina {maq_num}: Aguardou {t_espera} até o preparador iniciar.\n"
                 
                 if p2 is not None:
                     t1 = format_tempo(diff_mins(h_inicio, h_assumido))
                     t2 = format_tempo(diff_mins(h_assumido, h_conclusao))
-                    return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Setup iniciado por {p1} e {status_termino} por {p2}. O primeiro levou {t1} e o segundo levou {t2}.\n\n")
+                    txt_maq += f"Setup iniciado por {p1} e {status_termino} por {p2}. O primeiro levou {t1} e o segundo levou {t2}.\n\n"
                 else:
                     t_tot = format_tempo(diff_mins(h_inicio, h_conclusao))
-                    return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Levou {t_tot} {status_concluiu}. Preparador responsável: {p1}.\n\n")
+                    txt_maq += f"Levou {t_tot} {status_concluiu}. Preparador responsável: {p1}.\n\n"
+                    
+                return (h_agenda if h_agenda else '00:00', txt_maq)
 
             for maq in maquinas:
                 if not maq.startswith(prefixo): continue
@@ -739,30 +765,32 @@ def tela_relatorio():
             df_novo = []
             for maq in df_completo['Maquina'].unique():
                 df_maq = df_completo[df_completo['Maquina'] == maq]
-                last_status = str(df_maq.iloc[-1]['Status']).upper()
                 
-                setup_keywords = ["PREPARAÇÃO", "SEQUÊNCIA", "AGUARDANDO", "PREPARANDO", "AGENDADO"]
-                is_in_setup = any(kw in last_status for kw in setup_keywords)
+                # Procura a última vez que a máquina esteve "PRODUZINDO"
+                last_prod_idx = -1
+                for idx in df_maq.index:
+                    if "PRODUZINDO" in str(df_maq.loc[idx, 'Status']).upper():
+                        last_prod_idx = idx
                 
-                if not is_in_setup:
-                    # Se está PRODUZINDO, PARADA ou MANUTENÇÃO, apaga o histórico longo e guarda só o estado atual pro turno 2
-                    df_novo.append(df_maq.iloc[-1:])
-                else:
-                    # Se está em setup, puxa os dados desde o início do setup, pra quem assumir saber o tempo original
-                    last_non_setup_idx = -1
-                    for idx in df_maq.index:
-                        st_val = str(df_maq.loc[idx, 'Status']).upper()
-                        if not any(kw in st_val for kw in setup_keywords):
-                            last_non_setup_idx = idx
-                    
-                    if last_non_setup_idx != -1:
-                        df_novo.append(df_maq.loc[last_non_setup_idx+1:])
+                # Se ela voltou a produzir, apaga tudo de trás e preserva apenas o setup em andamento (se houver)
+                if last_prod_idx != -1:
+                    df_recorte = df_maq.loc[last_prod_idx+1:]
+                    # Só adiciona se sobrou algo depois de PRODUZINDO (ou seja, entrou em novo setup)
+                    if not df_recorte.empty:
+                        df_novo.append(df_recorte)
                     else:
-                        df_novo.append(df_maq)
+                        # Se o último status foi PRODUZINDO, salva apenas a última linha
+                        df_novo.append(df_maq.iloc[-1:])
+                else:
+                    # Se nunca teve "PRODUZINDO" no histórico atual, preserva tudo para o próximo turno
+                    df_novo.append(df_maq)
             
             if df_novo:
                 df_limpo = pd.concat(df_novo)
                 df_limpo.to_csv(ARQUIVO_DADOS, index=False)
+            else:
+                # Segurança caso fique vazio
+                pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"]).to_csv(ARQUIVO_DADOS, index=False)
             
             # 3. Limpar a Equipe
             if os.path.exists(ARQUIVO_EQUIPE):
