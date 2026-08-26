@@ -99,7 +99,6 @@ def ler_status_atual():
                     tipo_agendado = st_raw.split(" [AGENDADO:")[0]
                     if agora_str < hora_alvo: status_calculado[maq] = f"{tipo_agendado} AGENDADA PARA {hora_alvo}"
                     else: 
-                        # Mantém a tag de sugestão de preparador se houver
                         sugestao = ""
                         if "[Sugerido:" in st_raw:
                             sug = st_raw.split("[Sugerido:")[1].split("]")[0].strip()
@@ -278,7 +277,6 @@ def painel_controle_maquina(maq_id, setor):
             with st.form(f"form_iniciar_{maq_id}"):
                 st.markdown("🧑‍🔧 **Assumir e Iniciar Preparação**")
                 
-                # Busca se tem algum nome sugerido
                 sug_nome = ""
                 if "[Sugerido:" in status_atual:
                     try: sug_nome = status_atual.split("[Sugerido:")[1].split("]")[0].strip()
@@ -344,7 +342,11 @@ def tela_menu():
     """, unsafe_allow_html=True)
     
     if perfil == 'tecnico':
-        if st.button("📋 RELATÓRIO GERAL CONSOLIDADO", use_container_width=True, type="primary"): mudar_tela('relatorio')
+        # BOTÕES EXCLUSIVOS DO TÉCNICO PARA ACESSAR SETORES DIRETAMENTE
+        if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True, type="primary"): mudar_tela('afc')
+        if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True, type="primary"): mudar_tela('rtf')
+        
+        if st.button("📋 RELATÓRIO GERAL CONSOLIDADO", use_container_width=True): mudar_tela('relatorio')
         if st.button("🔍 INCIDÊNCIAS GERAL", use_container_width=True): mudar_tela('checkup')
         if st.button("📁 HISTÓRICO DE RELATÓRIOS", use_container_width=True): mudar_tela('historico')
         if st.button("✏️ GERENCIAR BANCO DE DADOS", use_container_width=True): mudar_tela('editar')
@@ -509,12 +511,19 @@ def tela_equipe():
 def tela_editar():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### ✏️ Correção de Dados")
-    col_salvar, col_apagar = st.columns([1, 1])
     
-    if col_apagar.button("🗑️ ZERAR DADOS", use_container_width=True):
+    col_salvar, col_apagar_dados, col_apagar_hist = st.columns([2, 1, 1])
+    
+    if col_apagar_dados.button("🗑️ ZERAR DADOS", use_container_width=True):
         if os.path.exists(ARQUIVO_DADOS): os.remove(ARQUIVO_DADOS)
         if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
-        st.success("✅ Sistema resetado e zerado com sucesso!")
+        st.success("✅ Banco de dados apagado com sucesso!")
+        time.sleep(0.5)
+        st.rerun()
+        
+    if col_apagar_hist.button("🗑️ ZERAR HISTÓRICO", use_container_width=True):
+        if os.path.exists(ARQUIVO_HISTORICO): os.remove(ARQUIVO_HISTORICO)
+        st.success("✅ Histórico de relatórios apagado!")
         time.sleep(0.5)
         st.rerun()
         
@@ -523,7 +532,9 @@ def tela_editar():
         df_editado = st.data_editor(df_maq, num_rows="dynamic", use_container_width=True)
         if col_salvar.button("💾 Salvar Alterações", use_container_width=True, type="primary"):
             df_editado.to_csv(ARQUIVO_DADOS, index=False)
-            st.success("✨ Banco de dados atualizado!")
+            st.success("✨ Banco de dados atualizado! Os status das máquinas foram alterados.")
+            time.sleep(0.5)
+            st.rerun()
     else: st.info("Nenhum apontamento encontrado no sistema.")
 
 def tela_historico():
@@ -766,30 +777,24 @@ def tela_relatorio():
             for maq in df_completo['Maquina'].unique():
                 df_maq = df_completo[df_completo['Maquina'] == maq]
                 
-                # Procura a última vez que a máquina esteve "PRODUZINDO"
                 last_prod_idx = -1
                 for idx in df_maq.index:
                     if "PRODUZINDO" in str(df_maq.loc[idx, 'Status']).upper():
                         last_prod_idx = idx
                 
-                # Se ela voltou a produzir, apaga tudo de trás e preserva apenas o setup em andamento (se houver)
                 if last_prod_idx != -1:
                     df_recorte = df_maq.loc[last_prod_idx+1:]
-                    # Só adiciona se sobrou algo depois de PRODUZINDO (ou seja, entrou em novo setup)
                     if not df_recorte.empty:
                         df_novo.append(df_recorte)
                     else:
-                        # Se o último status foi PRODUZINDO, salva apenas a última linha
                         df_novo.append(df_maq.iloc[-1:])
                 else:
-                    # Se nunca teve "PRODUZINDO" no histórico atual, preserva tudo para o próximo turno
                     df_novo.append(df_maq)
             
             if df_novo:
                 df_limpo = pd.concat(df_novo)
                 df_limpo.to_csv(ARQUIVO_DADOS, index=False)
             else:
-                # Segurança caso fique vazio
                 pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"]).to_csv(ARQUIVO_DADOS, index=False)
             
             # 3. Limpar a Equipe
