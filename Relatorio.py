@@ -224,11 +224,30 @@ def painel_controle_maquina(maq_id, setor):
                 st.session_state[flow_key] = "detalhe_man"
                 st.rerun()
             if st.button("🔴 PARADA", key=f"st_par_{maq_id}", use_container_width=True):
-                hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": "PARADA", "Hora": hora_br_str}, ARQUIVO_DADOS)
-                st.session_state['maq_ativa'] = None
-                del st.session_state[flow_key]
+                st.session_state[flow_key] = "detalhe_parada"
                 st.rerun()
+
+        elif st.session_state[flow_key] == "detalhe_parada":
+            with st.form(f"form_par_{maq_id}"):
+                st.markdown("🔴 **Registro de Máquina Parada**")
+                motivo = st.selectbox("Motivo da Parada:", ["Falta de Operador", "Falta de Material", "Ajuste de Processo", "Manutenção Corretiva", "Outros"])
+                op_faltante = st.text_input("Nome do Operador Faltante (Se aplicável):", placeholder="Ex: João Silva")
+                detalhe = st.text_input("Outros Detalhes (Opcional):")
+                
+                if st.form_submit_button("💾 Registrar Parada", type="primary"):
+                    hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                    mot_final = motivo
+                    if detalhe.strip(): mot_final += f" - {detalhe.strip()}"
+                    if op_faltante.strip() and motivo == "Falta de Operador":
+                        mot_final += f" [Op. Faltante: {op_faltante.strip().upper()}]"
+                        
+                    st_final = f"PARADA - Motivo: {mot_final}"
+                    salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                    st.session_state['maq_ativa'] = None
+                    del st.session_state[flow_key]
+                    st.success("✅ Máquina registrada como PARADA!")
+                    time.sleep(0.5)
+                    st.rerun()
 
         elif st.session_state[flow_key] == "detalhe_prep":
             with st.form(f"form_prep_{maq_id}"):
@@ -342,10 +361,8 @@ def tela_menu():
     """, unsafe_allow_html=True)
     
     if perfil == 'tecnico':
-        # BOTÕES EXCLUSIVOS DO TÉCNICO PARA ACESSAR SETORES DIRETAMENTE
         if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True, type="primary"): mudar_tela('afc')
         if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True, type="primary"): mudar_tela('rtf')
-        
         if st.button("📋 RELATÓRIO GERAL CONSOLIDADO", use_container_width=True): mudar_tela('relatorio')
         if st.button("🔍 INCIDÊNCIAS GERAL", use_container_width=True): mudar_tela('checkup')
         if st.button("📁 HISTÓRICO DE RELATÓRIOS", use_container_width=True): mudar_tela('historico')
@@ -511,7 +528,6 @@ def tela_equipe():
 def tela_editar():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### ✏️ Correção de Dados")
-    
     col_salvar, col_apagar_dados, col_apagar_hist = st.columns([2, 1, 1])
     
     if col_apagar_dados.button("🗑️ ZERAR DADOS", use_container_width=True):
@@ -600,6 +616,16 @@ def tela_relatorio():
                 texto_padrao += f"{num_maq} - MANUTENÇÃO - {row['Hora']}\n"
             texto_padrao += "\n"
 
+        texto_padrao += "*MÁQUINAS PARADAS*\n\n"
+        parada_rows = df_ultimo_geral[df_ultimo_geral['Status'].str.contains('PARADA', na=False)]
+        if parada_rows.empty: texto_padrao += "N/A\n\n"
+        else:
+            for _, row in parada_rows.iterrows():
+                num_maq = row['Maquina'].replace("AFC ", "").replace("RTF ", "")
+                motivo = row['Status'].replace("PARADA - Motivo: ", "")
+                texto_padrao += f"{num_maq} - PARADA - {row['Hora']} ({motivo})\n"
+            texto_padrao += "\n"
+
         texto_padrao += "*PREPARAÇÕES/AJUSTES*\n\n"
         
         def processar_padrao(df_all, maquinas, prefixo_setor):
@@ -672,24 +698,28 @@ def tela_relatorio():
             
             def salvar_ciclo(maq_num, h_agenda, h_inicio, h_assumido, h_fim, p1, p2):
                 if h_inicio is None:
-                    return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Aguardando preparador desde as {h_agenda}.\nPreparador responsável: AGUARDANDO OPERADOR\n\n")
+                    return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Aguardando preparador desde as {h_agenda}.\nPreparador sugerido/responsável: AGUARDANDO OPERADOR\n\n")
                 
                 t_espera = format_tempo(diff_mins(h_agenda, h_inicio)) if h_agenda else "0 minutos"
                 h_conclusao = h_fim if h_fim else datetime.now(FUSO_BR).strftime("%H:%M")
-                status_termino = "finalizado" if h_fim else "sendo finalizado"
-                status_concluiu = "até concluir" if h_fim else "até o momento"
                 
                 txt_maq = f"Máquina {maq_num}: Aguardou {t_espera} até o preparador iniciar.\n"
                 
                 if p2 is not None:
                     t1 = format_tempo(diff_mins(h_inicio, h_assumido))
                     t2 = format_tempo(diff_mins(h_assumido, h_conclusao))
-                    txt_maq += f"Setup iniciado por {p1} e {status_termino} por {p2}. O primeiro levou {t1} e o segundo levou {t2}.\n\n"
+                    if h_fim:
+                        txt_maq += f"Setup finalizado! Iniciado por {p1} e finalizado por {p2}.\nO primeiro levou {t1} e o segundo {t2}.\n\n"
+                    else:
+                        txt_maq += f"Setup EM ANDAMENTO! Iniciado por {p1} e assumido por {p2}.\nO primeiro levou {t1} e o segundo está preparando há {t2} até agora.\n\n"
                 else:
                     t_tot = format_tempo(diff_mins(h_inicio, h_conclusao))
-                    txt_maq += f"Levou {t_tot} {status_concluiu}. Preparador responsável: {p1}.\n\n"
+                    if h_fim:
+                        txt_maq += f"Setup finalizado! Levou {t_tot}. Preparador responsável: {p1}.\n\n"
+                    else:
+                        txt_maq += f"Setup EM ANDAMENTO há {t_tot} até o momento. Preparador responsável: {p1}.\n\n"
                     
-                return (h_agenda if h_agenda else '00:00', txt_maq)
+                return (h_agenda if h_agenda else h_inicio, txt_maq)
 
             for maq in maquinas:
                 if not maq.startswith(prefixo): continue
@@ -704,7 +734,7 @@ def tela_relatorio():
                 prep_2 = None
                 
                 for _, h_row in df_hist.iterrows():
-                    st_val = str(h_row['Status'])
+                    st_val = str(h_row['Status']).upper()
                     h_val = str(h_row['Hora'])
                     
                     if "PREPARAÇÃO" in st_val or "SEQUÊNCIA" in st_val or "AGUARDANDO" in st_val:
@@ -721,13 +751,13 @@ def tela_relatorio():
                     elif "PREPARANDO" in st_val:
                         ciclo_ativo = True
                         if not hora_agenda: hora_agenda = h_val
-                        if "[Assumido]" in st_val:
+                        if "[ASSUMIDO]" in st_val:
                             hora_assumido = h_val
-                            try: prep_2 = st_val.split("[Prep:")[1].split("]")[0].strip()
+                            try: prep_2 = st_val.split("[PREP:")[1].split("]")[0].strip()
                             except: pass
                         else:
                             if hora_inicio is None: hora_inicio = h_val
-                            try: prep_1 = st_val.split("[Prep:")[1].split("]")[0].strip()
+                            try: prep_1 = st_val.split("[PREP:")[1].split("]")[0].strip()
                             except: pass
                             
                     elif "PRODUZINDO" in st_val and ciclo_ativo:
@@ -772,7 +802,7 @@ def tela_relatorio():
             else:
                 novo_hist.to_csv(ARQUIVO_HISTORICO, index=False)
             
-            # 2. Limpar banco de operações, preservando as preparações em andamento (Passagem de Bastão)
+            # 2. Limpar banco de operações, preservando as preparações e paradas em andamento para o Turno 2
             df_novo = []
             for maq in df_completo['Maquina'].unique():
                 df_maq = df_completo[df_completo['Maquina'] == maq]
