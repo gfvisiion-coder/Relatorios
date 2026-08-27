@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timezone, timedelta
 import os
 import time
+import re
 
 # --- CONFIGURAÇÃO BASE DO APP ---
 st.set_page_config(page_title="Relatorio - Setor Afiação", page_icon="📱", layout="centered", initial_sidebar_state="collapsed")
@@ -97,7 +98,8 @@ def ler_status_atual():
                 try:
                     hora_alvo = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
                     tipo_agendado = st_raw.split(" [AGENDADO:")[0]
-                    if agora_str < hora_alvo: status_calculado[maq] = f"{tipo_agendado} AGENDADA PARA {hora_alvo}"
+                    if agora_str < hora_alvo: 
+                        status_calculado[maq] = f"{tipo_agendado} AGENDADA PARA {hora_alvo}"
                     else: 
                         sugestao = ""
                         if "[Sugerido:" in st_raw:
@@ -546,9 +548,19 @@ def tela_editar():
     if os.path.exists(ARQUIVO_DADOS):
         df_maq = pd.read_csv(ARQUIVO_DADOS)
         df_editado = st.data_editor(df_maq, num_rows="dynamic", use_container_width=True)
+        
         if col_salvar.button("💾 Salvar Alterações", use_container_width=True, type="primary"):
+            # Lógica para sincronizar a Hora alterada com o texto de [AGENDADO:] no Status
+            for idx, row in df_editado.iterrows():
+                st_val = str(row['Status'])
+                h_val = str(row['Hora']).strip()
+                if "[AGENDADO:" in st_val:
+                    # Substitui qualquer valor dentro de [AGENDADO:...] pela nova Hora editada
+                    st_val = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{h_val}]", st_val)
+                    df_editado.at[idx, 'Status'] = st_val
+                    
             df_editado.to_csv(ARQUIVO_DADOS, index=False)
-            st.success("✨ Banco de dados atualizado! Os status das máquinas foram alterados.")
+            st.success("✨ Banco de dados atualizado! Os horários e status das máquinas foram alterados e sincronizados.")
             time.sleep(0.5)
             st.rerun()
     else: st.info("Nenhum apontamento encontrado no sistema.")
@@ -674,16 +686,14 @@ def tela_relatorio():
                         if not ciclo_ativo:
                             ciclo_ativo = True
                             hora_prep = h_val
-                        # Regra: Se iniciou a preparação, aparecer "PREPARANDO"
                         status_limpo = "PREPARANDO"
 
-                    # Regra de interrupção (caso mude o status para PRODUZINDO ou PARADA no meio do setup)
                     elif ("PRODUZINDO" in st_val or "PARADA" in st_val) and ciclo_ativo:
                         num_maq = maq.replace(f"{prefixo_setor} ", "")
                         str_prep = f" - {preparador}" if preparador else ""
                         linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_limpo}{str_prep}\n\n"))
                         ciclo_ativo = False
-                        preparador = "" # reseta o preparador para o próximo ciclo
+                        preparador = "" 
                         
                 if ciclo_ativo:
                     num_maq = maq.replace(f"{prefixo_setor} ", "")
