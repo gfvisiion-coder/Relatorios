@@ -169,7 +169,6 @@ def painel_controle_maquina(maq_id, setor):
         if flow_key not in st.session_state: st.session_state[flow_key] = "pergunta"
         st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
         
-        # Redirecionamento para a nova tela de sugerir/assumir se estiver esperando
         if "AGUARDANDO PREPARADOR" in status_atual or "AGENDADO" in status_atual or "AGENDADA" in status_atual:
             st.session_state[flow_key] = "acoes_espera"
         
@@ -312,18 +311,20 @@ def painel_controle_maquina(maq_id, setor):
                 
                 if btn_sugerir:
                     if nome_input.strip():
-                        # Mantem o status original, mas adiciona/atualiza a tag de sugestão
-                        novo_st = status_atual
-                        novo_st = re.sub(r' \[Sugerido:.*?\]', '', novo_st) # Limpa sugestão antiga se houver
-                        novo_st += f" [Sugerido: {nome_input.strip().upper()}]"
+                        # Atualiza a última linha cadastrada ao invés de criar duplicidade
+                        if os.path.exists(ARQUIVO_DADOS):
+                            df_dados = pd.read_csv(ARQUIVO_DADOS)
+                            idx = df_dados[df_dados['Maquina'] == f"{setor} {maq_id}"].index
+                            if not idx.empty:
+                                raw_st = str(df_dados.at[idx[-1], 'Status'])
+                                raw_st = re.sub(r' \[Sugerido:.*?\]', '', raw_st)
+                                raw_st += f" [Sugerido: {nome_input.strip().upper()}]"
+                                df_dados.at[idx[-1], 'Status'] = raw_st
+                                df_dados.to_csv(ARQUIVO_DADOS, index=False)
                         
-                        hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                        hora_salvar = info.get('Hora', hora_br_str) if info else hora_br_str
-                        
-                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": novo_st, "Hora": hora_salvar}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
-                        st.success("✅ Sugestão de preparador salva!")
+                        st.success("✅ Sugestão de preparador atualizada!")
                         time.sleep(0.5)
                         st.rerun()
                     else:
@@ -701,19 +702,14 @@ def tela_relatorio():
                         preparador = prep_atual
 
                     if "PREPARAÇÃO" in st_val or "SEQUÊNCIA" in st_val or "AGUARDANDO" in st_val:
-                        if ciclo_ativo:
-                            num_maq = maq.replace(f"{prefixo_setor} ", "")
-                            str_prep = f" - {preparador}" if preparador else ""
-                            linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_limpo}{str_prep}\n\n"))
-                            
-                        ciclo_ativo = True
-                        hora_prep = h_val
-                        if "[AGENDADO:" in st_val:
-                            try: hora_prep = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
-                            except: pass
-                        
-                        s_limpo = st_val.split("[")[0].strip().upper().replace("PREPARAÇÃO - ", "")
-                        status_limpo = s_limpo if s_limpo else "SETUP"
+                        if not ciclo_ativo: # Bloqueia criação de linhas duplicadas
+                            ciclo_ativo = True
+                            hora_prep = h_val
+                            if "[AGENDADO:" in st_val:
+                                try: hora_prep = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
+                                except: pass
+                            s_limpo = st_val.split("[")[0].strip().upper().replace("PREPARAÇÃO - ", "")
+                            status_limpo = s_limpo if s_limpo else "SETUP"
 
                     elif "PREPARANDO" in st_val:
                         if not ciclo_ativo:
@@ -762,7 +758,7 @@ def tela_relatorio():
             
             def salvar_ciclo(maq_num, h_agenda, h_inicio, h_assumido, h_fim, p1, p2):
                 if h_inicio is None:
-                    return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Aguardando preparador desde as {h_agenda}.\nPreparador sugerido/responsável: AGUARDANDO PREPARADOR\n\n")
+                    return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Aguardando preparador desde as {h_agenda}.\nPreparador sugerido/responsável: AGUARDANDO OPERADOR\n\n")
                 
                 t_espera = format_tempo(diff_mins(h_agenda, h_inicio)) if h_agenda else "0 minutos"
                 h_conclusao = h_fim if h_fim else datetime.now(FUSO_BR).strftime("%H:%M")
@@ -802,15 +798,13 @@ def tela_relatorio():
                     h_val = str(h_row['Hora'])
                     
                     if "PREPARAÇÃO" in st_val or "SEQUÊNCIA" in st_val or "AGUARDANDO" in st_val:
-                        if ciclo_ativo and hora_inicio: 
-                            texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda, hora_inicio, hora_assumido, h_val, prep_1, prep_2))
-                            
-                        ciclo_ativo = True
-                        hora_agenda = h_val
-                        if "[AGENDADO:" in st_val:
-                            try: hora_agenda = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
-                            except: pass
-                        hora_inicio, hora_assumido, hora_fim, prep_1, prep_2 = None, None, None, None, None
+                        if not ciclo_ativo: # Bloqueia criação de linhas duplicadas
+                            ciclo_ativo = True
+                            hora_agenda = h_val
+                            if "[AGENDADO:" in st_val:
+                                try: hora_agenda = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
+                                except: pass
+                            hora_inicio, hora_assumido, hora_fim, prep_1, prep_2 = None, None, None, None, None
                         
                     elif "PREPARANDO" in st_val:
                         ciclo_ativo = True
