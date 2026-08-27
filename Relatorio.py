@@ -637,21 +637,36 @@ def tela_relatorio():
                 ciclo_ativo = False
                 status_limpo = ""
                 hora_prep = ""
+                preparador = ""
                 
                 for _, row in df_maq.iterrows():
                     st_val = str(row['Status'])
                     h_val = str(row['Hora'])
                     
+                    # Extrair o nome do preparador (seja sugerido ou assumido)
+                    prep_atual = ""
+                    if "[Prep:" in st_val:
+                        prep_atual = st_val.split("[Prep:")[1].split("]")[0].strip()
+                    elif "[Sugerido:" in st_val:
+                        prep_atual = st_val.split("[Sugerido:")[1].split("]")[0].strip()
+                    elif "[PREP:" in st_val.upper():
+                        prep_atual = st_val.upper().split("[PREP:")[1].split("]")[0].strip()
+                    
+                    if prep_atual:
+                        preparador = prep_atual
+
                     if "PREPARAÇÃO" in st_val or "SEQUÊNCIA" in st_val or "AGUARDANDO" in st_val:
                         if ciclo_ativo:
                             num_maq = maq.replace(f"{prefixo_setor} ", "")
-                            linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {status_limpo} - {hora_prep}\n\n"))
+                            str_prep = f" - {preparador}" if preparador else ""
+                            linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_limpo}{str_prep}\n\n"))
                             
                         ciclo_ativo = True
                         hora_prep = h_val
                         if "[AGENDADO:" in st_val:
                             try: hora_prep = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
                             except: pass
+                        
                         s_limpo = st_val.split("[")[0].strip().upper().replace("PREPARAÇÃO - ", "")
                         status_limpo = s_limpo if s_limpo else "SETUP"
 
@@ -659,17 +674,23 @@ def tela_relatorio():
                         if not ciclo_ativo:
                             ciclo_ativo = True
                             hora_prep = h_val
-                            status_limpo = "SETUP"
+                        # Regra: Se iniciou a preparação, aparecer "PREPARANDO"
+                        status_limpo = "PREPARANDO"
 
-                    elif "PRODUZINDO" in st_val and ciclo_ativo:
+                    # Regra de interrupção (caso mude o status para PRODUZINDO ou PARADA no meio do setup)
+                    elif ("PRODUZINDO" in st_val or "PARADA" in st_val) and ciclo_ativo:
                         num_maq = maq.replace(f"{prefixo_setor} ", "")
-                        linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {status_limpo} - {hora_prep}\n\n"))
+                        str_prep = f" - {preparador}" if preparador else ""
+                        linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_limpo}{str_prep}\n\n"))
                         ciclo_ativo = False
+                        preparador = "" # reseta o preparador para o próximo ciclo
                         
                 if ciclo_ativo:
                     num_maq = maq.replace(f"{prefixo_setor} ", "")
-                    linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {status_limpo} - {hora_prep}\n\n"))
+                    str_prep = f" - {preparador}" if preparador else ""
+                    linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_limpo}{str_prep}\n\n"))
                     
+            # Ordenação Cronológica (Lexicográfica pelo HH:MM)
             linhas.sort(key=lambda x: x[0])
             return "".join([item[1] for item in linhas])
 
