@@ -130,6 +130,12 @@ def salvar_csv(dados, arquivo):
         df_existente.to_csv(arquivo, index=False)
     else: df_novo.to_csv(arquivo, index=False)
 
+# --- FUNÇÃO DE ORDENAÇÃO CRESCENTE DE MÁQUINAS ---
+def ordenar_maquinas(lista_maquinas):
+    def natural_sort_key(s):
+        return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
+    return sorted(lista_maquinas, key=natural_sort_key)
+
 def painel_controle_maquina(maq_id, setor):
     st.markdown("<script>window.scrollTo({ top: 0, behavior: 'smooth' });</script>", unsafe_allow_html=True)
     
@@ -311,7 +317,6 @@ def painel_controle_maquina(maq_id, setor):
                 
                 if btn_sugerir:
                     if nome_input.strip():
-                        # Atualiza a última linha cadastrada ao invés de criar duplicidade
                         if os.path.exists(ARQUIVO_DADOS):
                             df_dados = pd.read_csv(ARQUIVO_DADOS)
                             idx = df_dados[df_dados['Maquina'] == f"{setor} {maq_id}"].index
@@ -412,7 +417,7 @@ def tela_menu():
         mudar_tela('login')
 
 def render_grid_vertical(lista_maquinas, setor, status_dict):
-    for maq in lista_maquinas:
+    for maq in ordenar_maquinas(lista_maquinas):
         if maq != "":
             chave_busca = f"{setor} {maq}"
             status_atual = status_dict.get(chave_busca, "PRODUZINDO")
@@ -432,8 +437,8 @@ def tela_checkup():
     perfil = st.session_state['perfil']
     setor_atual = st.session_state['setor_usuario']
     
-    todas_afc = ["30-161", "29-078", "32-081", "31-969", "34-132", "33-160", "36-084", "35-131", "38-596", "37-892", "40-142", "39-905", "41-141", "8-247", "6-868", "4-427", "9-088", "10-812", "7-743", "12-367", "11-365", "14-967", "13-964", "16-975", "15-973", "18-957", "17-140", "20-774", "19-760", "22-813", "21-206", "24-761", "23-165", "26-635", "25-209", "28-432", "27-431"]
-    todas_rtf = ["6-6J1", "17-6J1", "30-786", "32-918", "29-785", "4-425", "3-426", "34-842", "31-806", "7-267", "5-903", "36-854", "33-807", "9-815", "8-086", "38-881", "35-885", "11-363", "10-817", "40-912", "37-857", "13-969", "12-962", "42-885", "39-856", "15-977", "14-971", "18-925", "16-183", "20-927", "19-926", "22-916", "21-270", "24-259", "23-753", "26-260", "25-258", "28-954", "27-917"]
+    todas_afc = ordenar_maquinas(["30-161", "29-078", "32-081", "31-969", "34-132", "33-160", "36-084", "35-131", "38-596", "37-892", "40-142", "39-905", "41-141", "8-247", "6-868", "4-427", "9-088", "10-812", "7-743", "12-367", "11-365", "14-967", "13-964", "16-975", "15-973", "18-957", "17-140", "20-774", "19-760", "22-813", "21-206", "24-761", "23-165", "26-635", "25-209", "28-432", "27-431"])
+    todas_rtf = ordenar_maquinas(["6-6J1", "17-6J1", "30-786", "32-918", "29-785", "4-425", "3-426", "34-842", "31-806", "7-267", "5-903", "36-854", "33-807", "9-815", "8-086", "38-881", "35-885", "11-363", "10-817", "40-912", "37-857", "13-969", "12-962", "42-885", "39-856", "15-977", "14-971", "18-925", "16-183", "20-927", "19-926", "22-916", "21-270", "24-259", "23-753", "26-260", "25-258", "28-954", "27-917"])
     
     maquinas_com_problema = []
     setores_alvo = [("AFC", todas_afc), ("RTF", todas_rtf)] if perfil == 'tecnico' else [(setor_atual, todas_afc if setor_atual == "AFC" else todas_rtf)]
@@ -466,8 +471,8 @@ def tela_minhas_incidencias():
     setor_atual = st.session_state['setor_usuario']
     nome_usuario = st.session_state['operador']
 
-    todas_afc = ["30-161", "29-078", "32-081", "31-969", "34-132", "33-160", "36-084", "35-131", "38-596", "37-892", "40-142", "39-905", "41-141", "8-247", "6-868", "4-427", "9-088", "10-812", "7-743", "12-367", "11-365", "14-967", "13-964", "16-975", "15-973", "18-957", "17-140", "20-774", "19-760", "22-813", "21-206", "24-761", "23-165", "26-635", "25-209", "28-432", "27-431"]
-    todas_rtf = ["6-6J1", "17-6J1", "30-786", "32-918", "29-785", "4-425", "3-426", "34-842", "31-806", "7-267", "5-903", "36-854", "33-807", "9-815", "8-086", "38-881", "35-885", "11-363", "10-817", "40-912", "37-857", "13-969", "12-962", "42-885", "39-856", "15-977", "14-971", "18-925", "16-183", "20-927", "19-926", "22-916", "21-270", "24-259", "23-753", "26-260", "25-258", "28-954", "27-917"]
+    todas_afc = ordenar_maquinas(["30-161", "29-078", "32-081", "31-969", "34-132", "33-160", "36-084", "35-131", "38-596", "37-892", "40-142", "39-905", "41-141", "8-247", "6-868", "4-427", "9-088", "10-812", "7-743", "12-367", "11-365", "14-967", "13-964", "16-975", "15-973", "18-957", "17-140", "20-774", "19-760", "22-813", "21-206", "24-761", "23-165", "26-635", "25-209", "28-432", "27-431"])
+    todas_rtf = ordenar_maquinas(["6-6J1", "17-6J1", "30-786", "32-918", "29-785", "4-425", "3-426", "34-842", "31-806", "7-267", "5-903", "36-854", "33-807", "9-815", "8-086", "38-881", "35-885", "11-363", "10-817", "40-912", "37-857", "13-969", "12-962", "42-885", "39-856", "15-977", "14-971", "18-925", "16-183", "20-927", "19-926", "22-916", "21-270", "24-259", "23-753", "26-260", "25-258", "28-954", "27-917"])
     lista_setor = todas_afc if setor_atual == "AFC" else todas_rtf
 
     minhas_maquinas = []
@@ -574,7 +579,6 @@ def tela_editar():
         df_editado = st.data_editor(df_maq, num_rows="dynamic", use_container_width=True)
         
         if col_salvar.button("💾 Salvar Alterações", use_container_width=True, type="primary"):
-            # Lógica para sincronizar a Hora alterada com o texto de [AGENDADO:] no Status
             for idx, row in df_editado.iterrows():
                 st_val = str(row['Status'])
                 h_val = str(row['Hora']).strip()
@@ -623,13 +627,11 @@ def format_tempo(mins):
     if h > 0: return f"{h} hora(s) e {m} minuto(s)"
     return f"{m} minuto(s)"
 
-# Função para ordenar horários (Garante que menor venha primeiro e trata a virada de madrugada do 3º turno)
 def get_sort_key(time_str):
     if not time_str or time_str == '--' or time_str == '00:00': return "99:99"
     try:
         h = int(time_str.split(':')[0])
         m = int(time_str.split(':')[1])
-        # Se for entre 00h e 05h da madrugada, soma 24h na ordenação para ir para o final da lista (turno da noite)
         if h < 6: h += 24
         return f"{h:02d}:{m:02d}"
     except:
@@ -702,7 +704,7 @@ def tela_relatorio():
                         preparador = prep_atual
 
                     if "PREPARAÇÃO" in st_val or "SEQUÊNCIA" in st_val or "AGUARDANDO" in st_val:
-                        if not ciclo_ativo: # Bloqueia criação de linhas duplicadas
+                        if not ciclo_ativo:
                             ciclo_ativo = True
                             hora_prep = h_val
                             if "[AGENDADO:" in st_val:
@@ -720,7 +722,13 @@ def tela_relatorio():
                     elif ("PRODUZINDO" in st_val or "PARADA" in st_val) and ciclo_ativo:
                         num_maq = maq.replace(f"{prefixo_setor} ", "")
                         str_prep = f" - {preparador}" if preparador else ""
-                        linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_limpo}{str_prep}\n\n"))
+                        
+                        if "PRODUZINDO" in st_val:
+                            status_final = "MÁQUINA LIBERADA"
+                        else:
+                            status_final = "SETUP INTERROMPIDO (PARADA)"
+                            
+                        linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_final}{str_prep}\n\n"))
                         ciclo_ativo = False
                         preparador = "" 
                         
@@ -729,7 +737,6 @@ def tela_relatorio():
                     str_prep = f" - {preparador}" if preparador else ""
                     linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_limpo}{str_prep}\n\n"))
                     
-            # AQUI APLICA A NOVA ORDENAÇÃO (Menor para Maior)
             linhas.sort(key=lambda x: get_sort_key(x[0]))
             return "".join([item[1] for item in linhas])
 
@@ -798,7 +805,7 @@ def tela_relatorio():
                     h_val = str(h_row['Hora'])
                     
                     if "PREPARAÇÃO" in st_val or "SEQUÊNCIA" in st_val or "AGUARDANDO" in st_val:
-                        if not ciclo_ativo: # Bloqueia criação de linhas duplicadas
+                        if not ciclo_ativo:
                             ciclo_ativo = True
                             hora_agenda = h_val
                             if "[AGENDADO:" in st_val:
@@ -826,7 +833,6 @@ def tela_relatorio():
                 if ciclo_ativo:
                     texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda, hora_inicio, hora_assumido, None, prep_1, prep_2))
 
-            # AQUI APLICA A NOVA ORDENAÇÃO (Menor para Maior) NO RELATÓRIO 2
             texto_saida.sort(key=lambda x: get_sort_key(x[0]))
             return "".join([i[1] for i in texto_saida])
 
@@ -847,7 +853,6 @@ def tela_relatorio():
         
         # --- AÇÃO DE ENCERRAR O TURNO ---
         if encerrar:
-            # 1. Salvar no Histórico
             novo_hist = pd.DataFrame([{
                 "Data": data_hoje,
                 "Turno": st.session_state['turno'],
@@ -861,7 +866,6 @@ def tela_relatorio():
             else:
                 novo_hist.to_csv(ARQUIVO_HISTORICO, index=False)
             
-            # 2. Limpar banco de operações, preservando as preparações e paradas em andamento para o Turno 2
             df_novo = []
             for maq in df_completo['Maquina'].unique():
                 df_maq = df_completo[df_completo['Maquina'] == maq]
@@ -886,7 +890,6 @@ def tela_relatorio():
             else:
                 pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"]).to_csv(ARQUIVO_DADOS, index=False)
             
-            # 3. Limpar a Equipe
             if os.path.exists(ARQUIVO_EQUIPE):
                 os.remove(ARQUIVO_EQUIPE)
                 
