@@ -317,21 +317,35 @@ def painel_controle_maquina(maq_id, setor):
                 
                 if btn_sugerir:
                     if nome_input.strip():
-                        if os.path.exists(ARQUIVO_DADOS):
-                            df_dados = pd.read_csv(ARQUIVO_DADOS)
-                            idx = df_dados[df_dados['Maquina'] == f"{setor} {maq_id}"].index
-                            if not idx.empty:
-                                raw_st = str(df_dados.at[idx[-1], 'Status'])
-                                raw_st = re.sub(r' \[Sugerido:.*?\]', '', raw_st)
+                        # Obtém a informação atual da máquina
+                        info_atual = obter_info_maquina(maq_id, setor)
+                        if info_atual:
+                            raw_st = str(info_atual['Status'])
+                            
+                            # Remove qualquer sugestão anterior para não duplicar
+                            raw_st = re.sub(r' \[Sugerido:.*?\]', '', raw_st)
+                            
+                            # Adiciona a nova sugestão. Se houver agendamento, coloca ANTES dele
+                            if "[AGENDADO:" in raw_st:
+                                raw_st = raw_st.replace(" [AGENDADO:", f" [Sugerido: {nome_input.strip().upper()}] [AGENDADO:")
+                            else:
                                 raw_st += f" [Sugerido: {nome_input.strip().upper()}]"
-                                df_dados.at[idx[-1], 'Status'] = raw_st
-                                df_dados.to_csv(ARQUIVO_DADOS, index=False)
-                        
-                        st.session_state['maq_ativa'] = None
-                        del st.session_state[flow_key]
-                        st.success("✅ Sugestão de preparador atualizada!")
-                        time.sleep(0.5)
-                        st.rerun()
+                            
+                            # Salva gerando uma nova linha de histórico
+                            hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                            salvar_csv({
+                                "Setor": setor, 
+                                "Maquina": f"{setor} {maq_id}", 
+                                "Operador": st.session_state['operador'], 
+                                "Status": raw_st, 
+                                "Hora": hora_br_str
+                            }, ARQUIVO_DADOS)
+                            
+                            st.session_state['maq_ativa'] = None
+                            del st.session_state[flow_key]
+                            st.success("✅ Sugestão de preparador atualizada!")
+                            time.sleep(0.5)
+                            st.rerun()
                     else:
                         st.error("⚠️ Informe um nome para sugerir!")
                         
