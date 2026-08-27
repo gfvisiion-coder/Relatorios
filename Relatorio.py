@@ -169,8 +169,9 @@ def painel_controle_maquina(maq_id, setor):
         if flow_key not in st.session_state: st.session_state[flow_key] = "pergunta"
         st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
         
-        if "AGUARDANDO PREPARADOR" in status_atual:
-            st.session_state[flow_key] = "iniciar_prep"
+        # Redirecionamento para a nova tela de sugerir/assumir se estiver esperando
+        if "AGUARDANDO PREPARADOR" in status_atual or "AGENDADO" in status_atual or "AGENDADA" in status_atual:
+            st.session_state[flow_key] = "acoes_espera"
         
         if "PREPARANDO" in status_atual and st.session_state[flow_key] == "pergunta":
             st.markdown(f"<p style='text-align: center; font-weight: 600;'>O setup desta máquina foi finalizado?</p>", unsafe_allow_html=True)
@@ -294,28 +295,50 @@ def painel_controle_maquina(maq_id, setor):
                         time.sleep(0.5)
                         st.rerun()
 
-        elif st.session_state[flow_key] == "iniciar_prep":
-            with st.form(f"form_iniciar_{maq_id}"):
-                st.markdown("🧑‍🔧 **Assumir e Iniciar Preparação**")
+        elif st.session_state[flow_key] == "acoes_espera":
+            with st.form(f"form_espera_{maq_id}"):
+                st.markdown("🧑‍🔧 **Assumir ou Sugerir Preparador**")
                 
                 sug_nome = ""
                 if "[Sugerido:" in status_atual:
                     try: sug_nome = status_atual.split("[Sugerido:")[1].split("]")[0].strip()
                     except: pass
                     
-                nome_preparador = st.text_input("Qual preparador vai preparar?", value=sug_nome if sug_nome else st.session_state['operador'])
+                nome_input = st.text_input("Nome do Preparador:", value=sug_nome if sug_nome else "")
                 
-                if st.form_submit_button("🚀 INICIAR PREPARAÇÃO", type="primary"):
-                    if not nome_preparador.strip(): st.error("⚠️ Informe o nome do preparador!")
-                    else:
+                c1, c2 = st.columns(2)
+                btn_sugerir = c1.form_submit_button("💡 Apenas Sugerir")
+                btn_iniciar = c2.form_submit_button("🚀 INICIAR PREPARAÇÃO", type="primary")
+                
+                if btn_sugerir:
+                    if nome_input.strip():
+                        # Mantem o status original, mas adiciona/atualiza a tag de sugestão
+                        novo_st = status_atual
+                        novo_st = re.sub(r' \[Sugerido:.*?\]', '', novo_st) # Limpa sugestão antiga se houver
+                        novo_st += f" [Sugerido: {nome_input.strip().upper()}]"
+                        
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                        st_andamento = f"PREPARANDO [Prep: {nome_preparador.strip().upper()}]"
-                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                        hora_salvar = info.get('Hora', hora_br_str) if info else hora_br_str
+                        
+                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": novo_st, "Hora": hora_salvar}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
-                        st.success("✅ Preparação iniciada! Timer ativado.")
+                        st.success("✅ Sugestão de preparador salva!")
                         time.sleep(0.5)
                         st.rerun()
+                    else:
+                        st.error("⚠️ Informe um nome para sugerir!")
+                        
+                if btn_iniciar:
+                    nome_final = nome_input if nome_input.strip() else st.session_state['operador']
+                    hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                    st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}]"
+                    salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                    st.session_state['maq_ativa'] = None
+                    del st.session_state[flow_key]
+                    st.success("✅ Preparação iniciada! Timer ativado.")
+                    time.sleep(0.5)
+                    st.rerun()
 
         elif st.session_state[flow_key] == "detalhe_man":
             with st.form(f"form_man_{maq_id}"):
@@ -555,7 +578,6 @@ def tela_editar():
                 st_val = str(row['Status'])
                 h_val = str(row['Hora']).strip()
                 if "[AGENDADO:" in st_val:
-                    # Substitui qualquer valor dentro de [AGENDADO:...] pela nova Hora editada
                     st_val = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{h_val}]", st_val)
                     df_editado.at[idx, 'Status'] = st_val
                     
@@ -584,7 +606,7 @@ def tela_historico():
     else:
         st.info("Nenhum relatório salvo no histórico ainda.")
 
-# Funções auxiliares para cálculos de tempo no relatório
+# Funções auxiliares para cálculos de tempo e ordenação no relatório
 def diff_mins(h_inicio, h_fim):
     try:
         t1 = datetime.strptime(h_inicio, "%H:%M")
@@ -599,6 +621,18 @@ def format_tempo(mins):
     m = mins % 60
     if h > 0: return f"{h} hora(s) e {m} minuto(s)"
     return f"{m} minuto(s)"
+
+# Função para ordenar horários (Garante que menor venha primeiro e trata a virada de madrugada do 3º turno)
+def get_sort_key(time_str):
+    if not time_str or time_str == '--' or time_str == '00:00': return "99:99"
+    try:
+        h = int(time_str.split(':')[0])
+        m = int(time_str.split(':')[1])
+        # Se for entre 00h e 05h da madrugada, soma 24h na ordenação para ir para o final da lista (turno da noite)
+        if h < 6: h += 24
+        return f"{h:02d}:{m:02d}"
+    except:
+        return str(time_str)
 
 def tela_relatorio():
     if st.button("⬅️ Voltar"): mudar_tela('menu')
@@ -655,7 +689,6 @@ def tela_relatorio():
                     st_val = str(row['Status'])
                     h_val = str(row['Hora'])
                     
-                    # Extrair o nome do preparador (seja sugerido ou assumido)
                     prep_atual = ""
                     if "[Prep:" in st_val:
                         prep_atual = st_val.split("[Prep:")[1].split("]")[0].strip()
@@ -700,8 +733,8 @@ def tela_relatorio():
                     str_prep = f" - {preparador}" if preparador else ""
                     linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_limpo}{str_prep}\n\n"))
                     
-            # Ordenação Cronológica (Lexicográfica pelo HH:MM)
-            linhas.sort(key=lambda x: x[0])
+            # AQUI APLICA A NOVA ORDENAÇÃO (Menor para Maior)
+            linhas.sort(key=lambda x: get_sort_key(x[0]))
             return "".join([item[1] for item in linhas])
 
         texto_padrao += "*RETIFICAS*\n\n"
@@ -729,7 +762,7 @@ def tela_relatorio():
             
             def salvar_ciclo(maq_num, h_agenda, h_inicio, h_assumido, h_fim, p1, p2):
                 if h_inicio is None:
-                    return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Aguardando preparador desde as {h_agenda}.\nPreparador sugerido/responsável: AGUARDANDO OPERADOR\n\n")
+                    return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Aguardando preparador desde as {h_agenda}.\nPreparador sugerido/responsável: AGUARDANDO PREPARADOR\n\n")
                 
                 t_espera = format_tempo(diff_mins(h_agenda, h_inicio)) if h_agenda else "0 minutos"
                 h_conclusao = h_fim if h_fim else datetime.now(FUSO_BR).strftime("%H:%M")
@@ -799,7 +832,8 @@ def tela_relatorio():
                 if ciclo_ativo:
                     texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda, hora_inicio, hora_assumido, None, prep_1, prep_2))
 
-            texto_saida.sort(key=lambda x: x[0])
+            # AQUI APLICA A NOVA ORDENAÇÃO (Menor para Maior) NO RELATÓRIO 2
+            texto_saida.sort(key=lambda x: get_sort_key(x[0]))
             return "".join([i[1] for i in texto_saida])
 
         texto_tempos += "*RETIFICAS*\n\n"
