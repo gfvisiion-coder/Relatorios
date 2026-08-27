@@ -102,9 +102,9 @@ def ler_status_atual():
                         status_calculado[maq] = f"{tipo_agendado} AGENDADA PARA {hora_alvo}"
                     else: 
                         sugestao = ""
-                        if "[Sugerido:" in st_raw:
-                            sug = st_raw.split("[Sugerido:")[1].split("]")[0].strip()
-                            sugestao = f" [Sugerido: {sug}]"
+                        if "[Prep. Sugerido:" in st_raw:
+                            sug = st_raw.split("[Prep. Sugerido:")[1].split("]")[0].strip()
+                            sugestao = f" [Prep. Sugerido: {sug}]"
                         status_calculado[maq] = f"AGUARDANDO PREPARADOR{sugestao}"
                 except: status_calculado[maq] = st_raw
             else:
@@ -286,12 +286,12 @@ def painel_controle_maquina(maq_id, setor):
                             if troca_rebolo: st_final += " (C/ Rebolo)"
                             
                         if prep_sugerido.strip():
-                            st_final += f" [Sugerido: {prep_sugerido.strip().upper()}]"
+                            st_final += f" [Prep. Sugerido: {prep_sugerido.strip().upper()}]"
 
                         if is_agendado and hora_relatorio.strip():
                             st_final += f" [AGENDADO:{hora_relatorio.strip()}]"
                         else: 
-                            st_final = f"AGUARDANDO PREPARADOR [Sugerido: {prep_sugerido.strip().upper()}]" if prep_sugerido.strip() else "AGUARDANDO PREPARADOR"
+                            st_final = f"AGUARDANDO PREPARADOR [Prep. Sugerido: {prep_sugerido.strip().upper()}]" if prep_sugerido.strip() else "AGUARDANDO PREPARADOR"
                         
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
@@ -305,8 +305,8 @@ def painel_controle_maquina(maq_id, setor):
                 st.markdown("🧑‍🔧 **Assumir ou Sugerir Preparador**")
                 
                 sug_nome = ""
-                if "[Sugerido:" in status_atual:
-                    try: sug_nome = status_atual.split("[Sugerido:")[1].split("]")[0].strip()
+                if "[Prep. Sugerido:" in status_atual:
+                    try: sug_nome = status_atual.split("[Prep. Sugerido:")[1].split("]")[0].strip()
                     except: pass
                     
                 nome_input = st.text_input("Nome do Preparador:", value=sug_nome if sug_nome else "")
@@ -323,13 +323,13 @@ def painel_controle_maquina(maq_id, setor):
                             raw_st = str(info_atual['Status'])
                             
                             # Remove qualquer sugestão anterior para não duplicar
-                            raw_st = re.sub(r' \[Sugerido:.*?\]', '', raw_st)
+                            raw_st = re.sub(r' \[Prep\. Sugerido:.*?\]', '', raw_st)
                             
                             # Adiciona a nova sugestão. Se houver agendamento, coloca ANTES dele
                             if "[AGENDADO:" in raw_st:
-                                raw_st = raw_st.replace(" [AGENDADO:", f" [Sugerido: {nome_input.strip().upper()}] [AGENDADO:")
+                                raw_st = raw_st.replace(" [AGENDADO:", f" [Prep. Sugerido: {nome_input.strip().upper()}] [AGENDADO:")
                             else:
-                                raw_st += f" [Sugerido: {nome_input.strip().upper()}]"
+                                raw_st += f" [Prep. Sugerido: {nome_input.strip().upper()}]"
                             
                             # Salva gerando uma nova linha de histórico
                             hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
@@ -709,8 +709,8 @@ def tela_relatorio():
                     prep_atual = ""
                     if "[Prep:" in st_val:
                         prep_atual = st_val.split("[Prep:")[1].split("]")[0].strip()
-                    elif "[Sugerido:" in st_val:
-                        prep_atual = st_val.split("[Sugerido:")[1].split("]")[0].strip()
+                    elif "[Prep. Sugerido:" in st_val:
+                        prep_atual = st_val.split("[Prep. Sugerido:")[1].split("]")[0].strip()
                     elif "[PREP:" in st_val.upper():
                         prep_atual = st_val.upper().split("[PREP:")[1].split("]")[0].strip()
                     
