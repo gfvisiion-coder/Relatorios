@@ -130,7 +130,6 @@ def salvar_csv(dados, arquivo):
         df_existente.to_csv(arquivo, index=False)
     else: df_novo.to_csv(arquivo, index=False)
 
-# --- FUNÇÃO DE ORDENAÇÃO CRESCENTE DE MÁQUINAS ---
 def ordenar_maquinas(lista_maquinas):
     def natural_sort_key(s):
         return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
@@ -178,17 +177,21 @@ def painel_controle_maquina(maq_id, setor):
         if "AGUARDANDO PREPARADOR" in status_atual or "AGENDADO" in status_atual or "AGENDADA" in status_atual:
             st.session_state[flow_key] = "acoes_espera"
         
+        # --- ALTERAÇÃO AQUI: TRÊS BOTÕES PARA PREPARANDO (Permite interromper para manutenção) ---
         if "PREPARANDO" in status_atual and st.session_state[flow_key] == "pergunta":
             st.markdown(f"<p style='text-align: center; font-weight: 600;'>O setup desta máquina foi finalizado?</p>", unsafe_allow_html=True)
-            c1, c2 = st.columns(2)
-            if c1.button("✅ Sim (Voltar a Produzir)", key=f"s_{maq_id}", use_container_width=True):
+            c1, c2, c3 = st.columns(3)
+            if c1.button("✅ Sim (Produzir)", key=f"s_{maq_id}", use_container_width=True):
                 hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                 salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": "PRODUZINDO", "Hora": hora_br_str}, ARQUIVO_DADOS)
                 st.session_state['maq_ativa'] = None
                 del st.session_state[flow_key]
                 st.rerun()
-            if c2.button("🔄 Não (Assumir Setup)", key=f"n_{maq_id}", use_container_width=True):
+            if c2.button("🔄 Assumir", key=f"n_{maq_id}", use_container_width=True):
                 st.session_state[flow_key] = "assumir_prep"
+                st.rerun()
+            if c3.button("⚠️ Alterar", key=f"alt_{maq_id}", use_container_width=True):
+                st.session_state[flow_key] = "mudanca_status"
                 st.rerun()
 
         elif st.session_state[flow_key] == "assumir_prep":
@@ -317,30 +320,17 @@ def painel_controle_maquina(maq_id, setor):
                 
                 if btn_sugerir:
                     if nome_input.strip():
-                        # Obtém a informação atual da máquina
                         info_atual = obter_info_maquina(maq_id, setor)
                         if info_atual:
                             raw_st = str(info_atual['Status'])
-                            
-                            # Remove qualquer sugestão anterior para não duplicar
                             raw_st = re.sub(r' \[Prep\. Sugerido:.*?\]', '', raw_st)
-                            
-                            # Adiciona a nova sugestão. Se houver agendamento, coloca ANTES dele
                             if "[AGENDADO:" in raw_st:
                                 raw_st = raw_st.replace(" [AGENDADO:", f" [Prep. Sugerido: {nome_input.strip().upper()}] [AGENDADO:")
                             else:
                                 raw_st += f" [Prep. Sugerido: {nome_input.strip().upper()}]"
                             
-                            # Salva gerando uma nova linha de histórico
                             hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                            salvar_csv({
-                                "Setor": setor, 
-                                "Maquina": f"{setor} {maq_id}", 
-                                "Operador": st.session_state['operador'], 
-                                "Status": raw_st, 
-                                "Hora": hora_br_str
-                            }, ARQUIVO_DADOS)
-                            
+                            salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": raw_st, "Hora": hora_br_str}, ARQUIVO_DADOS)
                             st.session_state['maq_ativa'] = None
                             del st.session_state[flow_key]
                             st.success("✅ Sugestão de preparador atualizada!")
@@ -625,7 +615,6 @@ def tela_historico():
     else:
         st.info("Nenhum relatório salvo no histórico ainda.")
 
-# Funções auxiliares para cálculos de tempo e ordenação no relatório
 def diff_mins(h_inicio, h_fim):
     try:
         t1 = datetime.strptime(h_inicio, "%H:%M")
@@ -733,12 +722,15 @@ def tela_relatorio():
                             hora_prep = h_val
                         status_limpo = "PREPARANDO"
 
-                    elif ("PRODUZINDO" in st_val or "PARADA" in st_val) and ciclo_ativo:
+                    # --- ALTERAÇÃO AQUI: Manutenção ou parada interrompe o ciclo! ---
+                    elif ("PRODUZINDO" in st_val or "PARADA" in st_val or "MANUTENÇÃO" in st_val) and ciclo_ativo:
                         num_maq = maq.replace(f"{prefixo_setor} ", "")
                         str_prep = f" - {preparador}" if preparador else ""
                         
                         if "PRODUZINDO" in st_val:
                             status_final = "MÁQUINA LIBERADA"
+                        elif "MANUTENÇÃO" in st_val:
+                            status_final = "SETUP INTERROMPIDO (MANUTENÇÃO)"
                         else:
                             status_final = "SETUP INTERROMPIDO (PARADA)"
                             
@@ -777,7 +769,8 @@ def tela_relatorio():
         def gerar_relatorio_tempos(df_all, maquinas, prefixo):
             texto_saida = []
             
-            def salvar_ciclo(maq_num, h_agenda, h_inicio, h_assumido, h_fim, p1, p2):
+            # --- ALTERAÇÃO AQUI: Salvar Ciclo modificado para suportar interrupções ---
+            def salvar_ciclo(maq_num, h_agenda, h_inicio, h_assumido, h_fim, p1, p2, st_final=""):
                 if h_inicio is None:
                     return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Aguardando preparador desde as {h_agenda}.\nPreparador sugerido/responsável: AGUARDANDO OPERADOR\n\n")
                 
@@ -786,20 +779,27 @@ def tela_relatorio():
                 
                 txt_maq = f"Máquina {maq_num}: Aguardou {t_espera} até o preparador iniciar.\n"
                 
+                is_finished = "PRODUZINDO" in st_final
+                is_interrompido = "PARADA" in st_final or "MANUTENÇÃO" in st_final
+                
+                if is_finished: txt_estado = "finalizado"
+                elif is_interrompido: txt_estado = "interrompido"
+                else: txt_estado = "EM ANDAMENTO"
+                
                 if p2 is not None:
                     t1 = format_tempo(diff_mins(h_inicio, h_assumido))
                     t2 = format_tempo(diff_mins(h_assumido, h_conclusao))
                     if h_fim:
-                        txt_maq += f"Setup finalizado! Iniciado por {p1} e finalizado por {p2}.\nO primeiro levou {t1} e o segundo {t2}.\n\n"
+                        txt_maq += f"Setup {txt_estado}! Iniciado por {p1} e assumido por {p2}.\nO primeiro levou {t1} e o segundo {t2}.\n\n"
                     else:
-                        txt_maq += f"Setup EM ANDAMENTO! Iniciado por {p1} e assumido por {p2}.\nO primeiro levou {t1} e o segundo está preparando há {t2} até agora.\n\n"
+                        txt_maq += f"Setup {txt_estado}! Iniciado por {p1} e assumido por {p2}.\nO primeiro levou {t1} e o segundo está preparando há {t2} até agora.\n\n"
                 else:
                     t_tot = format_tempo(diff_mins(h_inicio, h_conclusao))
                     if h_fim:
-                        txt_maq += f"Setup finalizado! Levou {t_tot}. Preparador responsável: {p1}.\n\n"
+                        txt_maq += f"Setup {txt_estado}! Levou {t_tot}. Preparador responsável: {p1}.\n\n"
                     else:
-                        txt_maq += f"Setup EM ANDAMENTO há {t_tot} até o momento. Preparador responsável: {p1}.\n\n"
-                    
+                        txt_maq += f"Setup {txt_estado} há {t_tot} até o momento. Preparador responsável: {p1}.\n\n"
+                
                 return (h_agenda if h_agenda else h_inicio, txt_maq)
 
             for maq in maquinas:
@@ -839,13 +839,14 @@ def tela_relatorio():
                             try: prep_1 = st_val.split("[PREP:")[1].split("]")[0].strip()
                             except: pass
                             
-                    elif "PRODUZINDO" in st_val and ciclo_ativo:
+                    # --- ALTERAÇÃO AQUI: Interrupção por Manutenção ou Parada ---
+                    elif ("PRODUZINDO" in st_val or "PARADA" in st_val or "MANUTENÇÃO" in st_val) and ciclo_ativo:
                         hora_fim = h_val
-                        texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda, hora_inicio, hora_assumido, hora_fim, prep_1, prep_2))
+                        texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda, hora_inicio, hora_assumido, hora_fim, prep_1, prep_2, st_val))
                         ciclo_ativo = False
 
                 if ciclo_ativo:
-                    texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda, hora_inicio, hora_assumido, None, prep_1, prep_2))
+                    texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda, hora_inicio, hora_assumido, None, prep_1, prep_2, ""))
 
             texto_saida.sort(key=lambda x: get_sort_key(x[0]))
             return "".join([i[1] for i in texto_saida])
