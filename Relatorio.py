@@ -359,7 +359,7 @@ def painel_controle_maquina(maq_id, setor):
                 nome_input = st.text_input("Nome do Preparador:", value=sug_nome if sug_nome else "")
                 
                 st.markdown("📦 **Qual item será preparado?**")
-                novo_item_input = st.text_input("Novo Item (Entrando):", placeholder="Ex: HASTE-02")
+                novo_item_input = st.text_input("Novo Item (Entrando):", placeholder="313324")
                 
                 c1, c2 = st.columns(2)
                 btn_sugerir = c1.form_submit_button("💡 Apenas Sugerir")
