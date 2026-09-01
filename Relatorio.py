@@ -446,11 +446,11 @@ def tela_menu():
     if st.button("🚪 Encerramento de Sessão (Logout)", use_container_width=True):
         st.session_state['operador'] = ''
         
-        # Apagando os cookies
-        cookie_manager.delete("user_logado")
-        cookie_manager.delete("user_turno")
-        cookie_manager.delete("user_setor")
-        cookie_manager.delete("user_perfil")
+        # CORREÇÃO: Adicionando o parâmetro 'key' único para cada deleção
+        cookie_manager.delete("user_logado", key="del_logado")
+        cookie_manager.delete("user_turno", key="del_turno")
+        cookie_manager.delete("user_setor", key="del_setor")
+        cookie_manager.delete("user_perfil", key="del_perfil")
         
         time.sleep(0.5)
         mudar_tela('login')
