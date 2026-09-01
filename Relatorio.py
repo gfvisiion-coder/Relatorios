@@ -303,7 +303,7 @@ def painel_controle_maquina(maq_id, setor):
                 prep_sugerido = st.text_input("🧑‍🔧 Sugerir Preparador (Opcional):", placeholder="Ex: Lucas")
                 
                 st.markdown("📦 **Dados do Item**")
-                item_atual = st.text_input("Item Atual (Na Máquina):", placeholder="Ex: HASTE-01")
+                item_atual = st.text_input("Item Atual (Na Máquina):", placeholder="Ex: 313324")
                 
                 st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
                 
