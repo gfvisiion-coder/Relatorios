@@ -586,15 +586,27 @@ def tela_editar():
             for idx, row in df_editado.iterrows():
                 st_val = str(row['Status'])
                 h_val = str(row['Hora']).strip()
-                if "[AGENDADO:" in st_val:
-                    st_val = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{h_val}]", st_val)
-                    df_editado.at[idx, 'Status'] = st_val
+                
+                # CORREÇÃO: Verifica se a linha já existia no banco de dados original
+                if idx in df_maq.index:
+                    hora_original = str(df_maq.loc[idx, 'Hora']).strip()
+                    
+                    # SÓ ATUALIZA a tag [AGENDADO:] se a coluna Hora for de fato alterada por você na tabela
+                    if h_val != hora_original and "[AGENDADO:" in st_val:
+                        st_val = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{h_val}]", st_val)
+                        df_editado.at[idx, 'Status'] = st_val
+                else:
+                    # Caso seja uma linha nova adicionada pelo botão '+' do data_editor
+                    if "[AGENDADO:" in st_val:
+                        st_val = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{h_val}]", st_val)
+                        df_editado.at[idx, 'Status'] = st_val
                     
             df_editado.to_csv(ARQUIVO_DADOS, index=False)
             st.success("✨ Banco de dados atualizado! Os horários e status das máquinas foram alterados e sincronizados.")
             time.sleep(0.5)
             st.rerun()
-    else: st.info("Nenhum apontamento encontrado no sistema.")
+    else: 
+        st.info("Nenhum apontamento encontrado no sistema.")
 
 def tela_historico():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
