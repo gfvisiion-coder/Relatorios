@@ -57,13 +57,12 @@ st.markdown(CSS_APP, unsafe_allow_html=True)
 
 # --- GERENCIADOR DE COOKIES ---
 cookie_manager = stx.CookieManager()
-
-# Puxa todos os cookies do navegador de uma vez para não perder o login no F5
 cookies_salvos = cookie_manager.get_all()
 
 ARQUIVO_DADOS = "banco_operacao.csv"
 ARQUIVO_EQUIPE = "banco_equipe.csv"
 ARQUIVO_HISTORICO = "historico_relatorios.csv"
+ARQUIVO_HISTORICO_EVENTOS = "historico_eventos.csv"
 
 def get_status_icon(status_str):
     if "AGUARDANDO PREPARADOR" in status_str: return "🟠"
@@ -74,7 +73,6 @@ def get_status_icon(status_str):
     elif "PARADA" in status_str: return "🔴"
     else: return "🟢"
 
-# Função auxiliar para não perder as tags de Item na troca de status
 def extrair_tags_producao(status_str):
     tags = ""
     if "[Item Atual:" in status_str:
@@ -231,8 +229,6 @@ def painel_controle_maquina(maq_id, setor):
                 if st.form_submit_button("🚀 ASSUMIR PREPARAÇÃO", type="primary"):
                     if novo_nome.strip():
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                        
-                        # Resgata Itens se houver (Atual e Novo)
                         info_atual = obter_info_maquina(maq_id, setor)
                         tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
                         
@@ -336,7 +332,6 @@ def painel_controle_maquina(maq_id, setor):
                         else: 
                             st_final = f"AGUARDANDO PREPARADOR [Prep. Sugerido: {prep_sugerido.strip().upper()}]" if prep_sugerido.strip() else "AGUARDANDO PREPARADOR"
                         
-                        # Anexa apenas o Item Atual
                         if item_atual.strip():
                             st_final += f" [Item Atual: {item_atual.strip().upper()}]"
                         
@@ -393,10 +388,9 @@ def painel_controle_maquina(maq_id, setor):
                         nome_final = nome_input if nome_input.strip() else st.session_state['operador']
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                         
-                        # Resgata Item Atual se houver e remove resquícios de Novo Item antigos
                         info_atual = obter_info_maquina(maq_id, setor)
                         tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
-                        tags_prod = re.sub(r' \[Novo Item:.*?\]', '', tags_prod) # Limpa se já existir
+                        tags_prod = re.sub(r' \[Novo Item:.*?\]', '', tags_prod) 
                         
                         st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}]{tags_prod} [Novo Item: {novo_item_input.strip().upper()}]"
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
@@ -429,9 +423,17 @@ def tela_login():
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         if st.button("ACESSAR SISTEMA", use_container_width=True, type="primary"):
             codigos_validos = {
-                "1123": ("1° TURNO", "AFC", "operador"), "2123": ("2° TURNO", "AFC", "operador"), "3123": ("3° TURNO", "AFC", "operador"),
-                "1234": ("1° TURNO", "RTF", "operador"), "2234": ("2° TURNO", "RTF", "operador"), "3234": ("3° TURNO", "RTF", "operador"),
-                "1010": ("1° TURNO", "TECNICO", "tecnico"), "2020": ("2° TURNO", "TECNICO", "tecnico"), "3030": ("3° TURNO", "TECNICO", "tecnico")
+                # --- ADM ---
+                "9999": ("GERAL", "GERÊNCIA", "adm"),
+                
+                # --- PREPARADORES E TÉCNICOS (Alimentam e preparam máquinas) ---
+                "1010": ("1° TURNO", "TECNICO", "preparador"), "2020": ("2° TURNO", "TECNICO", "preparador"), "3030": ("3° TURNO", "TECNICO", "preparador"),
+                "1123": ("1° TURNO", "AFC", "preparador"), "2123": ("2° TURNO", "AFC", "preparador"), "3123": ("3° TURNO", "AFC", "preparador"),
+                "1234": ("1° TURNO", "RTF", "preparador"), "2234": ("2° TURNO", "RTF", "preparador"), "3234": ("3° TURNO", "RTF", "preparador"),
+                
+                # --- OPERADORES (Apenas correção, fechamento e visualização) ---
+                "1001": ("1° TURNO", "AFC", "operador"), "2001": ("2° TURNO", "AFC", "operador"), "3001": ("3° TURNO", "AFC", "operador"),
+                "1002": ("1° TURNO", "RTF", "operador"), "2002": ("2° TURNO", "RTF", "operador"), "3002": ("3° TURNO", "RTF", "operador")
             }
             if cod in codigos_validos and nome:
                 turno_val, setor_val, perfil_val = codigos_validos[cod]
@@ -442,7 +444,6 @@ def tela_login():
                 st.session_state['perfil'] = perfil_val
                 st.session_state['operador'] = nome_formatado
                 
-                # Salvando nos cookies com KEY única para evitar erro DuplicateElementKey
                 cookie_manager.set("user_logado", nome_formatado, key="set_logado")
                 cookie_manager.set("user_turno", turno_val, key="set_turno")
                 cookie_manager.set("user_setor", setor_val, key="set_setor")
@@ -454,7 +455,10 @@ def tela_login():
 
 def tela_menu():
     perfil = st.session_state['perfil']
-    setor_txt = "Técnico (Geral)" if perfil == 'tecnico' else ('Afiação' if st.session_state['setor_usuario']=='AFC' else 'Retífica')
+    
+    if perfil == 'adm': setor_txt = "Gerência"
+    elif st.session_state['setor_usuario'] == 'TECNICO': setor_txt = "Técnico (Geral)"
+    else: setor_txt = 'Afiação' if st.session_state['setor_usuario']=='AFC' else 'Retífica'
     
     st.markdown(f"""
     <div style='background: #18181B; padding: 12px; border-radius: 10px; border-left: 4px solid #14B8A6; margin-bottom: 15px;'>
@@ -464,24 +468,39 @@ def tela_menu():
     </div>
     """, unsafe_allow_html=True)
     
-    if perfil == 'tecnico':
+    # ---------------------------------------------
+    # MENU DO GERENTE (Acesso Total)
+    # ---------------------------------------------
+    if perfil == 'adm':
         if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True, type="primary"): mudar_tela('afc')
         if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True, type="primary"): mudar_tela('rtf')
-        if st.button("📋 RELATÓRIO GERAL CONSOLIDADO", use_container_width=True): mudar_tela('relatorio')
         if st.button("🔍 INCIDÊNCIAS GERAL", use_container_width=True): mudar_tela('checkup')
-        if st.button("📁 HISTÓRICO DE RELATÓRIOS", use_container_width=True): mudar_tela('historico')
+        if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
+        if st.button("📋 RELATÓRIO GERAL CONSOLIDADO", use_container_width=True): mudar_tela('relatorio')
+        if st.button("📊 HISTÓRICOS E EXPORTAÇÕES", use_container_width=True): mudar_tela('historico')
         if st.button("✏️ GERENCIAR BANCO DE DADOS", use_container_width=True): mudar_tela('editar')
-    else:
-        if st.session_state['setor_usuario'] == 'AFC':
+        
+    # ---------------------------------------------
+    # MENU DO PREPARADOR / TÉCNICO (Operacional de Campo)
+    # ---------------------------------------------
+    elif perfil == 'preparador':
+        if st.session_state['setor_usuario'] in ['AFC', 'TECNICO']:
             if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True, type="primary"): mudar_tela('afc')
-        else:
+        if st.session_state['setor_usuario'] in ['RTF', 'TECNICO']:
             if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True, type="primary"): mudar_tela('rtf')
             
         if st.button("🔍 INCIDÊNCIAS DO SETOR", use_container_width=True): mudar_tela('checkup')
         if st.button("⚡ MINHAS INCIDÊNCIAS", use_container_width=True, type="primary"): mudar_tela('minhas_incidencias')
         if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
         if st.button("📋 RELATÓRIO DE TURNO", use_container_width=True): mudar_tela('relatorio')
-        if st.button("📁 HISTÓRICO DE RELATÓRIOS", use_container_width=True): mudar_tela('historico')
+        if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
+
+    # ---------------------------------------------
+    # MENU DO OPERADOR (Ultra Restrito)
+    # ---------------------------------------------
+    else:
+        if st.button("🔍 INCIDÊNCIAS DO SETOR", use_container_width=True): mudar_tela('checkup')
+        if st.button("📋 FECHAMENTO DE TURNO", use_container_width=True): mudar_tela('relatorio')
         if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
     
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
@@ -528,7 +547,10 @@ def tela_checkup():
     todas_rtf = ordenar_maquinas(["6-6J1", "17-6J1", "30-786", "32-918", "29-785", "4-425", "3-426", "34-842", "31-806", "7-267", "5-903", "36-854", "33-807", "9-815", "8-086", "38-881", "35-885", "11-363", "10-817", "40-912", "37-857", "13-969", "12-962", "42-885", "39-856", "15-977", "14-971", "18-925", "16-183", "20-927", "19-926", "22-916", "21-270", "24-259", "23-753", "26-260", "25-258", "28-954", "27-917"])
     
     maquinas_com_problema = []
-    setores_alvo = [("AFC", todas_afc), ("RTF", todas_rtf)] if perfil == 'tecnico' else [(setor_atual, todas_afc if setor_atual == "AFC" else todas_rtf)]
+    if setor_atual in ['TECNICO', 'GERAL']:
+        setores_alvo = [("AFC", todas_afc), ("RTF", todas_rtf)]
+    else:
+        setores_alvo = [(setor_atual, todas_afc if setor_atual == "AFC" else todas_rtf)]
         
     for s_nome, lista in setores_alvo:
         for m in lista:
@@ -645,24 +667,23 @@ def tela_equipe():
 
 def tela_editar():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
-    st.markdown("#### ✏️ Correção de Dados")
-    col_salvar, col_apagar_dados, col_apagar_hist = st.columns([2, 1, 1])
+    st.markdown("#### ✏️ Correção de Apontamentos")
     
-    if col_apagar_dados.button("🗑️ ZERAR DADOS", use_container_width=True):
-        if os.path.exists(ARQUIVO_DADOS): os.remove(ARQUIVO_DADOS)
-        if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
-        st.success("✅ Banco de dados apagado com sucesso!")
-        time.sleep(0.5)
-        st.rerun()
-        
-    if col_apagar_hist.button("🗑️ ZERAR HISTÓRICO", use_container_width=True):
-        if os.path.exists(ARQUIVO_HISTORICO): os.remove(ARQUIVO_HISTORICO)
-        st.success("✅ Histórico de relatórios apagado!")
-        time.sleep(0.5)
-        st.rerun()
+    # Apenas o ADM possui permissão de apagar/zerar o banco de dados principal
+    if st.session_state['perfil'] == 'adm':
+        col_salvar, col_apagar = st.columns([2, 1])
+        if col_apagar.button("🗑️ ZERAR DADOS DO TURNO", use_container_width=True):
+            if os.path.exists(ARQUIVO_DADOS): os.remove(ARQUIVO_DADOS)
+            if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
+            st.success("✅ Banco de dados apagado com sucesso!")
+            time.sleep(0.5)
+            st.rerun()
+    else:
+        col_salvar = st.container()
         
     if os.path.exists(ARQUIVO_DADOS):
         df_maq = pd.read_csv(ARQUIVO_DADOS)
+        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Altere o Horário ou o Status se houver algum erro de digitação. Para confirmar, clique em Salvar Alterações.</p>", unsafe_allow_html=True)
         df_editado = st.data_editor(df_maq, num_rows="dynamic", use_container_width=True)
         
         if col_salvar.button("💾 Salvar Alterações", use_container_width=True, type="primary"):
@@ -689,22 +710,65 @@ def tela_editar():
 
 def tela_historico():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
-    st.markdown("#### 📁 Histórico de Relatórios")
+    st.markdown("#### 📊 Histórico e Exportações")
     
-    if os.path.exists(ARQUIVO_HISTORICO):
-        df_hist = pd.read_csv(ARQUIVO_HISTORICO)
-        if df_hist.empty:
-            st.info("Nenhum relatório salvo no histórico ainda.")
+    aba1, aba2 = st.tabs(["📝 Relatórios Textuais", "📥 Banco de Eventos Gerais (Planilha)"])
+    
+    # Aba 1: Relatórios Antigos (Fechamento)
+    with aba1:
+        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Histórico de relatórios gerados a cada encerramento de turno.</p>", unsafe_allow_html=True)
+        
+        if st.session_state['perfil'] == 'adm' and os.path.exists(ARQUIVO_HISTORICO):
+            if st.button("🗑️ APAGAR HISTÓRICO DE RELATÓRIOS", type="secondary"):
+                os.remove(ARQUIVO_HISTORICO)
+                st.rerun()
+                
+        if os.path.exists(ARQUIVO_HISTORICO):
+            df_hist = pd.read_csv(ARQUIVO_HISTORICO)
+            if df_hist.empty: st.info("Nenhum relatório salvo no histórico ainda.")
+            else:
+                for idx in reversed(df_hist.index):
+                    row = df_hist.loc[idx]
+                    with st.expander(f"📅 {row['Data']} - {row['Turno']}"):
+                        st.markdown("##### Relatório Padrão")
+                        st.code(row['Relatorio_Padrao'], language="text")
+                        st.markdown("##### Relatório de Tempos")
+                        st.code(row['Relatorio_Tempos'], language="text")
         else:
-            for idx in reversed(df_hist.index):
-                row = df_hist.loc[idx]
-                with st.expander(f"📅 {row['Data']} - {row['Turno']}"):
-                    st.markdown("##### Relatório Padrão")
-                    st.code(row['Relatorio_Padrao'], language="text")
-                    st.markdown("##### Relatório de Tempos")
-                    st.code(row['Relatorio_Tempos'], language="text")
-    else:
-        st.info("Nenhum relatório salvo no histórico ainda.")
+            st.info("Nenhum relatório salvo no histórico ainda.")
+
+    # Aba 2: Novo Histórico Integral de Incidências para Exportação
+    with aba2:
+        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Aqui ficam armazenados TODOS os registros, pausas, setups e paradas que ocorreram nas máquinas durante os turnos.</p>", unsafe_allow_html=True)
+        
+        if os.path.exists(ARQUIVO_HISTORICO_EVENTOS):
+            df_ev = pd.read_csv(ARQUIVO_HISTORICO_EVENTOS)
+            if not df_ev.empty:
+                col_f1, col_f2 = st.columns(2)
+                opcoes_data = ["Todas as Datas"] + list(df_ev['Data_Registro'].unique())
+                opcoes_turno = ["Todos os Turnos"] + list(df_ev['Turno_Registro'].unique())
+                
+                filtro_dt = col_f1.selectbox("Data:", opcoes_data)
+                filtro_tn = col_f2.selectbox("Turno:", opcoes_turno)
+                
+                df_filtrado = df_ev.copy()
+                if filtro_dt != "Todas as Datas": df_filtrado = df_filtrado[df_filtrado['Data_Registro'] == filtro_dt]
+                if filtro_tn != "Todos os Turnos": df_filtrado = df_filtrado[df_filtrado['Turno_Registro'] == filtro_tn]
+                
+                st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
+                
+                # Apenas ADM pode baixar e apagar esse banco mestre
+                if st.session_state['perfil'] == 'adm':
+                    st.markdown("##### Opções de Exportação (Exclusivo ADM)")
+                    csv = df_filtrado.to_csv(index=False).encode('utf-8')
+                    c_down, c_del = st.columns(2)
+                    c_down.download_button(label="📥 Baixar como CSV", data=csv, file_name=f"eventos_maquinas_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv", type="primary", use_container_width=True)
+                    if c_del.button("🗑️ Apagar Todo o Banco de Eventos", use_container_width=True):
+                        os.remove(ARQUIVO_HISTORICO_EVENTOS)
+                        st.rerun()
+            else: st.info("O banco de eventos está vazio.")
+        else:
+            st.info("Nenhum evento registrado ainda. O sistema alimentará essa planilha assim que um turno for encerrado.")
 
 def diff_mins(h_inicio, h_fim):
     try:
@@ -963,6 +1027,7 @@ def tela_relatorio():
         
         # --- AÇÃO DE ENCERRAR O TURNO ---
         if encerrar:
+            # 1. Salvar os textos do relatório
             novo_hist = pd.DataFrame([{
                 "Data": data_hoje,
                 "Turno": st.session_state['turno'],
@@ -976,6 +1041,20 @@ def tela_relatorio():
             else:
                 novo_hist.to_csv(ARQUIVO_HISTORICO, index=False)
             
+            # 2. Salvar TODO o banco_operacao para o Banco Permanente de Eventos antes de limpá-lo
+            if not df_completo.empty:
+                df_eventos = df_completo.copy()
+                df_eventos['Data_Registro'] = data_hoje
+                df_eventos['Turno_Registro'] = st.session_state['turno']
+                
+                if os.path.exists(ARQUIVO_HISTORICO_EVENTOS):
+                    df_base_eventos = pd.read_csv(ARQUIVO_HISTORICO_EVENTOS)
+                    df_base_eventos = pd.concat([df_base_eventos, df_eventos], ignore_index=True)
+                    df_base_eventos.to_csv(ARQUIVO_HISTORICO_EVENTOS, index=False)
+                else:
+                    df_eventos.to_csv(ARQUIVO_HISTORICO_EVENTOS, index=False)
+            
+            # 3. Limpar o banco de operação para o próximo turno
             df_novo = []
             for maq in df_completo['Maquina'].unique():
                 df_maq = df_completo[df_completo['Maquina'] == maq]
