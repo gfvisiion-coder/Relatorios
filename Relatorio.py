@@ -58,6 +58,9 @@ st.markdown(CSS_APP, unsafe_allow_html=True)
 # --- GERENCIADOR DE COOKIES ---
 cookie_manager = stx.CookieManager()
 
+# Puxa todos os cookies do navegador de uma vez para não perder o login no F5
+cookies_salvos = cookie_manager.get_all()
+
 ARQUIVO_DADOS = "banco_operacao.csv"
 ARQUIVO_EQUIPE = "banco_equipe.csv"
 ARQUIVO_HISTORICO = "historico_relatorios.csv"
@@ -71,6 +74,17 @@ def get_status_icon(status_str):
     elif "PARADA" in status_str: return "🔴"
     else: return "🟢"
 
+# Função auxiliar para não perder OP e Item na troca de status
+def extrair_tags_producao(status_str):
+    tags = ""
+    if "[OP:" in status_str:
+        try: tags += f" [OP: {status_str.split('[OP:')[1].split(']')[0].strip()}]"
+        except: pass
+    if "[Item:" in status_str:
+        try: tags += f" [Item: {status_str.split('[Item:')[1].split(']')[0].strip()}]"
+        except: pass
+    return tags
+
 # --- INICIALIZAÇÃO DO SESSION STATE ---
 if 'tela_atual' not in st.session_state: st.session_state['tela_atual'] = 'login'
 if 'operador' not in st.session_state: st.session_state['operador'] = ''
@@ -82,13 +96,13 @@ if 'maq_ativa' not in st.session_state: st.session_state['maq_ativa'] = None
 
 # --- RESTAURAÇÃO DE LOGIN POR COOKIE ---
 if not st.session_state['operador']:
-    saved_user = cookie_manager.get(cookie="user_logado")
-    if saved_user:
-        st.session_state['operador'] = saved_user
-        st.session_state['turno'] = cookie_manager.get(cookie="user_turno")
-        st.session_state['setor_usuario'] = cookie_manager.get(cookie="user_setor")
-        st.session_state['perfil'] = cookie_manager.get(cookie="user_perfil")
+    if cookies_salvos and "user_logado" in cookies_salvos:
+        st.session_state['operador'] = cookies_salvos["user_logado"]
+        st.session_state['turno'] = cookies_salvos.get("user_turno", "")
+        st.session_state['setor_usuario'] = cookies_salvos.get("user_setor", "")
+        st.session_state['perfil'] = cookies_salvos.get("user_perfil", "")
         st.session_state['tela_atual'] = 'menu'
+        st.rerun() 
 
 def mudar_tela(nome_tela):
     st.session_state['tela_atual'] = nome_tela
@@ -120,7 +134,9 @@ def ler_status_atual():
                         if "[Prep. Sugerido:" in st_raw:
                             sug = st_raw.split("[Prep. Sugerido:")[1].split("]")[0].strip()
                             sugestao = f" [Prep. Sugerido: {sug}]"
-                        status_calculado[maq] = f"AGUARDANDO PREPARADOR{sugestao}"
+                        
+                        tags_prod = extrair_tags_producao(st_raw)
+                        status_calculado[maq] = f"AGUARDANDO PREPARADOR{sugestao}{tags_prod}"
                 except: status_calculado[maq] = st_raw
             else:
                 status_calculado[maq] = st_raw
@@ -176,7 +192,7 @@ def painel_controle_maquina(maq_id, setor):
             except: pass
 
         st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
-        if "AGUARDANDO PREPARADOR" in status_atual: st.warning(f"🟠 Status Atual: AGUARDANDO PREPARADOR")
+        if "AGUARDANDO PREPARADOR" in status_atual: st.warning(f"🟠 Status Atual: {status_atual}")
         elif "AGENDADO" in status_atual or "AGENDADA" in status_atual: st.info(f"🔵 Status: {status_atual}")
         elif "PREPARANDO" in status_atual: st.info(f"🟡 Status Atual: {status_atual} desde {hora_atual}{timer_str}")
         elif "SEQUÊNCIA" in status_atual: st.info(f"🟣 Status Atual: {status_atual} desde {hora_atual}{timer_str}")
@@ -215,7 +231,12 @@ def painel_controle_maquina(maq_id, setor):
                 if st.form_submit_button("🚀 ASSUMIR PREPARAÇÃO", type="primary"):
                     if novo_nome.strip():
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                        st_andamento = f"PREPARANDO [Prep: {novo_nome.strip().upper()}] [Assumido]"
+                        
+                        # Resgata OP e Item se houver
+                        info_atual = obter_info_maquina(maq_id, setor)
+                        tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
+                        
+                        st_andamento = f"PREPARANDO [Prep: {novo_nome.strip().upper()}] [Assumido]{tags_prod}"
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
@@ -281,6 +302,17 @@ def painel_controle_maquina(maq_id, setor):
                 is_agendado = st.toggle("Marcar como Agendamento Futuro", value=True)
                 prep_sugerido = st.text_input("🧑‍🔧 Sugerir Preparador (Opcional):", placeholder="Ex: Lucas")
                 
+                st.markdown("📦 **Dados de Produção (Opcional)**")
+                c_op1, c_op2 = st.columns(2)
+                ordem_atual = c_op1.text_input("OP Atual (Saindo):", placeholder="Ex: 102030")
+                ordem_futura = c_op2.text_input("Nova OP (Entrando):", placeholder="Ex: 102031")
+                
+                c_it1, c_it2 = st.columns(2)
+                item_atual = c_it1.text_input("Item Atual (Saindo):", placeholder="Ex: HASTE-01")
+                item_futuro = c_it2.text_input("Novo Item (Entrando):", placeholder="Ex: HASTE-02")
+                
+                st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
+                
                 if setor == "AFC":
                     tipo_afc = st.radio("Selecione o Status:", ["PREPARAÇÃO", "SEQUÊNCIA"], horizontal=True)
                     troca_rebolo = st.toggle("Troca de Rebolo")
@@ -309,6 +341,12 @@ def painel_controle_maquina(maq_id, setor):
                             st_final += f" [AGENDADO:{hora_relatorio.strip()}]"
                         else: 
                             st_final = f"AGUARDANDO PREPARADOR [Prep. Sugerido: {prep_sugerido.strip().upper()}]" if prep_sugerido.strip() else "AGUARDANDO PREPARADOR"
+                        
+                        # Anexa os dados de OP e Item
+                        if ordem_atual.strip() or ordem_futura.strip():
+                            st_final += f" [OP: {ordem_atual.strip() or '-'} -> {ordem_futura.strip() or '-'}]"
+                        if item_atual.strip() or item_futuro.strip():
+                            st_final += f" [Item: {item_atual.strip() or '-'} -> {item_futuro.strip() or '-'}]"
                         
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
@@ -356,7 +394,12 @@ def painel_controle_maquina(maq_id, setor):
                 if btn_iniciar:
                     nome_final = nome_input if nome_input.strip() else st.session_state['operador']
                     hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                    st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}]"
+                    
+                    # Resgata OP e Item se houver
+                    info_atual = obter_info_maquina(maq_id, setor)
+                    tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
+                    
+                    st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}]{tags_prod}"
                     salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
                     st.session_state['maq_ativa'] = None
                     del st.session_state[flow_key]
@@ -445,20 +488,18 @@ def tela_menu():
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
     
     if st.button("🚪 Encerramento de Sessão (Logout)", use_container_width=True):
-        # Limpa todas as variáveis do session state
         st.session_state['operador'] = ''
         st.session_state['turno'] = ''
         st.session_state['setor_usuario'] = ''
         st.session_state['perfil'] = ''
         
-        # Apaga os cookies de forma segura usando try/except com KEYS únicas
         try:
             if cookie_manager.get("user_logado"): cookie_manager.delete("user_logado", key="del_logado")
             if cookie_manager.get("user_turno"): cookie_manager.delete("user_turno", key="del_turno")
             if cookie_manager.get("user_setor"): cookie_manager.delete("user_setor", key="del_setor")
             if cookie_manager.get("user_perfil"): cookie_manager.delete("user_perfil", key="del_perfil")
         except Exception:
-            pass # Se der problema, só ignora e encerra a sessão da mesma forma
+            pass 
         
         time.sleep(0.5)
         mudar_tela('login')
@@ -630,16 +671,12 @@ def tela_editar():
                 st_val = str(row['Status'])
                 h_val = str(row['Hora']).strip()
                 
-                # CORREÇÃO: Verifica se a linha já existia no banco de dados original
                 if idx in df_maq.index:
                     hora_original = str(df_maq.loc[idx, 'Hora']).strip()
-                    
-                    # SÓ ATUALIZA a tag [AGENDADO:] se a coluna Hora for de fato alterada por você na tabela
                     if h_val != hora_original and "[AGENDADO:" in st_val:
                         st_val = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{h_val}]", st_val)
                         df_editado.at[idx, 'Status'] = st_val
                 else:
-                    # Caso seja uma linha nova adicionada pelo botão '+' do data_editor
                     if "[AGENDADO:" in st_val:
                         st_val = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{h_val}]", st_val)
                         df_editado.at[idx, 'Status'] = st_val
@@ -788,14 +825,21 @@ def tela_relatorio():
                         else:
                             status_final = "SETUP INTERROMPIDO (PARADA)"
                             
-                        linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_final}{str_prep}\n\n"))
+                        # Resgata OP/Item da ultima string antes de interromper
+                        tags_prod = extrair_tags_producao(st_val)
+                        
+                        linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_final}{str_prep}{tags_prod}\n\n"))
                         ciclo_ativo = False
                         preparador = "" 
                         
                 if ciclo_ativo:
                     num_maq = maq.replace(f"{prefixo_setor} ", "")
                     str_prep = f" - {preparador}" if preparador else ""
-                    linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_limpo}{str_prep}\n\n"))
+                    
+                    # Puxa a OP/Item atual na string (se houver)
+                    tags_prod = extrair_tags_producao(df_maq.iloc[-1]['Status'])
+                    
+                    linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_limpo}{str_prep}{tags_prod}\n\n"))
                     
             linhas.sort(key=lambda x: get_sort_key(x[0]))
             return "".join([item[1] for item in linhas])
