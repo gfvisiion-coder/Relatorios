@@ -400,11 +400,11 @@ def tela_login():
                 st.session_state['perfil'] = perfil_val
                 st.session_state['operador'] = nome_formatado
                 
-                # Salvando nos cookies
-                cookie_manager.set("user_logado", nome_formatado)
-                cookie_manager.set("user_turno", turno_val)
-                cookie_manager.set("user_setor", setor_val)
-                cookie_manager.set("user_perfil", perfil_val)
+                # CORREÇÃO: Adicionando o parâmetro 'key' único para cada cookie
+                cookie_manager.set("user_logado", nome_formatado, key="set_logado")
+                cookie_manager.set("user_turno", turno_val, key="set_turno")
+                cookie_manager.set("user_setor", setor_val, key="set_setor")
+                cookie_manager.set("user_perfil", perfil_val, key="set_perfil")
                 
                 time.sleep(0.5)
                 mudar_tela('menu')
