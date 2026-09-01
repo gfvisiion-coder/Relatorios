@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 import os
 import time
 import re
+import extra_streamlit_components as stx
 
 # --- CONFIGURAÇÃO BASE DO APP ---
 st.set_page_config(page_title="Relatorio - Setor Afiação", page_icon="📱", layout="centered", initial_sidebar_state="collapsed")
@@ -54,6 +55,13 @@ CSS_APP = """
 """
 st.markdown(CSS_APP, unsafe_allow_html=True)
 
+# --- GERENCIADOR DE COOKIES ---
+@st.cache_resource
+def get_cookie_manager():
+    return stx.CookieManager()
+
+cookie_manager = get_cookie_manager()
+
 ARQUIVO_DADOS = "banco_operacao.csv"
 ARQUIVO_EQUIPE = "banco_equipe.csv"
 ARQUIVO_HISTORICO = "historico_relatorios.csv"
@@ -67,6 +75,7 @@ def get_status_icon(status_str):
     elif "PARADA" in status_str: return "🔴"
     else: return "🟢"
 
+# --- INICIALIZAÇÃO DO SESSION STATE ---
 if 'tela_atual' not in st.session_state: st.session_state['tela_atual'] = 'login'
 if 'operador' not in st.session_state: st.session_state['operador'] = ''
 if 'turno' not in st.session_state: st.session_state['turno'] = ''
@@ -74,6 +83,16 @@ if 'setor_usuario' not in st.session_state: st.session_state['setor_usuario'] = 
 if 'perfil' not in st.session_state: st.session_state['perfil'] = '' 
 if 'celula_selecionada' not in st.session_state: st.session_state['celula_selecionada'] = None
 if 'maq_ativa' not in st.session_state: st.session_state['maq_ativa'] = None
+
+# --- RESTAURAÇÃO DE LOGIN POR COOKIE ---
+if not st.session_state['operador']:
+    saved_user = cookie_manager.get(cookie="user_logado")
+    if saved_user:
+        st.session_state['operador'] = saved_user
+        st.session_state['turno'] = cookie_manager.get(cookie="user_turno")
+        st.session_state['setor_usuario'] = cookie_manager.get(cookie="user_setor")
+        st.session_state['perfil'] = cookie_manager.get(cookie="user_perfil")
+        st.session_state['tela_atual'] = 'menu'
 
 def mudar_tela(nome_tela):
     st.session_state['tela_atual'] = nome_tela
@@ -177,7 +196,6 @@ def painel_controle_maquina(maq_id, setor):
         if "AGUARDANDO PREPARADOR" in status_atual or "AGENDADO" in status_atual or "AGENDADA" in status_atual:
             st.session_state[flow_key] = "acoes_espera"
         
-        # --- ALTERAÇÃO AQUI: TRÊS BOTÕES PARA PREPARANDO (Permite interromper para manutenção) ---
         if "PREPARANDO" in status_atual and st.session_state[flow_key] == "pergunta":
             st.markdown(f"<p style='text-align: center; font-weight: 600;'>O setup desta máquina foi finalizado?</p>", unsafe_allow_html=True)
             c1, c2, c3 = st.columns(3)
@@ -378,8 +396,21 @@ def tela_login():
                 "1010": ("1° TURNO", "TECNICO", "tecnico"), "2020": ("2° TURNO", "TECNICO", "tecnico"), "3030": ("3° TURNO", "TECNICO", "tecnico")
             }
             if cod in codigos_validos and nome:
-                st.session_state['turno'], st.session_state['setor_usuario'], st.session_state['perfil'] = codigos_validos[cod]
-                st.session_state['operador'] = nome.upper()
+                turno_val, setor_val, perfil_val = codigos_validos[cod]
+                nome_formatado = nome.upper()
+                
+                st.session_state['turno'] = turno_val
+                st.session_state['setor_usuario'] = setor_val
+                st.session_state['perfil'] = perfil_val
+                st.session_state['operador'] = nome_formatado
+                
+                # Salvando nos cookies (Expira após a aba fechar ou conforme padrão do navegador)
+                cookie_manager.set("user_logado", nome_formatado)
+                cookie_manager.set("user_turno", turno_val)
+                cookie_manager.set("user_setor", setor_val)
+                cookie_manager.set("user_perfil", perfil_val)
+                
+                time.sleep(0.5)
                 mudar_tela('menu')
             else: st.error("⚠️ Credenciais inválidas.")
 
@@ -418,6 +449,14 @@ def tela_menu():
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
     if st.button("🚪 Encerramento de Sessão (Logout)", use_container_width=True):
         st.session_state['operador'] = ''
+        
+        # Apagando os cookies
+        cookie_manager.delete("user_logado")
+        cookie_manager.delete("user_turno")
+        cookie_manager.delete("user_setor")
+        cookie_manager.delete("user_perfil")
+        
+        time.sleep(0.5)
         mudar_tela('login')
 
 def render_grid_vertical(lista_maquinas, setor, status_dict):
@@ -734,7 +773,6 @@ def tela_relatorio():
                             hora_prep = h_val
                         status_limpo = "PREPARANDO"
 
-                    # --- ALTERAÇÃO AQUI: Manutenção ou parada interrompe o ciclo! ---
                     elif ("PRODUZINDO" in st_val or "PARADA" in st_val or "MANUTENÇÃO" in st_val) and ciclo_ativo:
                         num_maq = maq.replace(f"{prefixo_setor} ", "")
                         str_prep = f" - {preparador}" if preparador else ""
@@ -781,7 +819,6 @@ def tela_relatorio():
         def gerar_relatorio_tempos(df_all, maquinas, prefixo):
             texto_saida = []
             
-            # --- ALTERAÇÃO AQUI: Salvar Ciclo modificado para suportar interrupções ---
             def salvar_ciclo(maq_num, h_agenda, h_inicio, h_assumido, h_fim, p1, p2, st_final=""):
                 if h_inicio is None:
                     return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Aguardando preparador desde as {h_agenda}.\nPreparador sugerido/responsável: AGUARDANDO OPERADOR\n\n")
@@ -851,7 +888,6 @@ def tela_relatorio():
                             try: prep_1 = st_val.split("[PREP:")[1].split("]")[0].strip()
                             except: pass
                             
-                    # --- ALTERAÇÃO AQUI: Interrupção por Manutenção ou Parada ---
                     elif ("PRODUZINDO" in st_val or "PARADA" in st_val or "MANUTENÇÃO" in st_val) and ciclo_ativo:
                         hora_fim = h_val
                         texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda, hora_inicio, hora_assumido, hora_fim, prep_1, prep_2, st_val))
