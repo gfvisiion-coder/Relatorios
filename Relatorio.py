@@ -56,11 +56,7 @@ CSS_APP = """
 st.markdown(CSS_APP, unsafe_allow_html=True)
 
 # --- GERENCIADOR DE COOKIES ---
-@st.cache_resource
-def get_cookie_manager():
-    return stx.CookieManager()
-
-cookie_manager = get_cookie_manager()
+cookie_manager = stx.CookieManager()
 
 ARQUIVO_DADOS = "banco_operacao.csv"
 ARQUIVO_EQUIPE = "banco_equipe.csv"
@@ -404,7 +400,7 @@ def tela_login():
                 st.session_state['perfil'] = perfil_val
                 st.session_state['operador'] = nome_formatado
                 
-                # Salvando nos cookies (Expira após a aba fechar ou conforme padrão do navegador)
+                # Salvando nos cookies
                 cookie_manager.set("user_logado", nome_formatado)
                 cookie_manager.set("user_turno", turno_val)
                 cookie_manager.set("user_setor", setor_val)
