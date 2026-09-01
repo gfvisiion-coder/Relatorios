@@ -134,6 +134,7 @@ def ler_status_atual():
                             sugestao = f" [Prep. Sugerido: {sug}]"
                         
                         tags_prod = extrair_tags_producao(st_raw)
+                        # Garante que a indicação de GUIA/HASTE continue aparecendo caso atrase
                         status_calculado[maq] = f"AGUARDANDO PREPARADOR{sugestao}{tags_prod}"
                 except: status_calculado[maq] = st_raw
             else:
@@ -330,7 +331,8 @@ def painel_controle_maquina(maq_id, setor):
                         if is_agendado and hora_relatorio.strip():
                             st_final += f" [AGENDADO:{hora_relatorio.strip()}]"
                         else: 
-                            st_final = f"AGUARDANDO PREPARADOR [Prep. Sugerido: {prep_sugerido.strip().upper()}]" if prep_sugerido.strip() else "AGUARDANDO PREPARADOR"
+                            # Correção: Agora não perde a indicação de GUIA/HASTE se não for agendado
+                            st_final = f"AGUARDANDO PREPARADOR - {st_final}"
                         
                         if item_atual.strip():
                             st_final += f" [Item Atual: {item_atual.strip().upper()}]"
@@ -353,8 +355,14 @@ def painel_controle_maquina(maq_id, setor):
                     
                 nome_input = st.text_input("Nome do Preparador:", value=sug_nome if sug_nome else "")
                 
-                st.markdown("📦 **Qual item será preparado?**")
-                novo_item_input = st.text_input("Novo Item (Entrando):", placeholder="313324")
+                # --- Lógica do Item: Se for GUIA, não pede o novo item ---
+                is_guia = "GUIA" in status_atual
+                
+                if not is_guia:
+                    st.markdown("📦 **Qual item será preparado?**")
+                    novo_item_input = st.text_input("Novo Item (Entrando):", placeholder="Ex: 313324")
+                else:
+                    novo_item_input = "" # Se for guia, passa vazio e invisível
                 
                 c1, c2 = st.columns(2)
                 btn_sugerir = c1.form_submit_button("💡 Apenas Sugerir")
@@ -382,7 +390,8 @@ def painel_controle_maquina(maq_id, setor):
                         st.error("⚠️ Informe um nome para sugerir!")
                         
                 if btn_iniciar:
-                    if not novo_item_input.strip():
+                    # Verifica obrigatoriedade APENAS se não for GUIA
+                    if not is_guia and not novo_item_input.strip():
                         st.error("⚠️ Para INICIAR a preparação, você precisa informar o NOVO ITEM que vai entrar na máquina!")
                     else:
                         nome_final = nome_input if nome_input.strip() else st.session_state['operador']
@@ -392,7 +401,12 @@ def painel_controle_maquina(maq_id, setor):
                         tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
                         tags_prod = re.sub(r' \[Novo Item:.*?\]', '', tags_prod) 
                         
-                        st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}]{tags_prod} [Novo Item: {novo_item_input.strip().upper()}]"
+                        st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}]{tags_prod}"
+                        
+                        # Anexa o Novo Item apenas se preenchido
+                        if not is_guia and novo_item_input.strip():
+                            st_andamento += f" [Novo Item: {novo_item_input.strip().upper()}]"
+                            
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
@@ -669,7 +683,6 @@ def tela_editar():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### ✏️ Correção de Apontamentos")
     
-    # Apenas o ADM possui permissão de apagar/zerar o banco de dados principal
     if st.session_state['perfil'] == 'adm':
         col_salvar, col_apagar = st.columns([2, 1])
         if col_apagar.button("🗑️ ZERAR DADOS DO TURNO", use_container_width=True):
@@ -712,9 +725,8 @@ def tela_historico():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### 📊 Histórico e Exportações")
     
-    aba1, aba2 = st.tabs(["📝 Relatórios Textuais", "📥 Banco de Eventos Gerais (Planilha)"])
+    aba1, aba2 = st.tabs(["📝 Relatórios Textuais", "📥 Banco de Eventos (Planilha)"])
     
-    # Aba 1: Relatórios Antigos (Fechamento)
     with aba1:
         st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Histórico de relatórios gerados a cada encerramento de turno.</p>", unsafe_allow_html=True)
         
@@ -737,7 +749,6 @@ def tela_historico():
         else:
             st.info("Nenhum relatório salvo no histórico ainda.")
 
-    # Aba 2: Novo Histórico Integral de Incidências para Exportação
     with aba2:
         st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Aqui ficam armazenados TODOS os registros, pausas, setups e paradas que ocorreram nas máquinas durante os turnos.</p>", unsafe_allow_html=True)
         
@@ -757,11 +768,8 @@ def tela_historico():
                 
                 st.dataframe(df_filtrado, use_container_width=True, hide_index=True)
                 
-                # Apenas ADM pode baixar e apagar esse banco mestre
                 if st.session_state['perfil'] == 'adm':
                     st.markdown("##### Opções de Exportação (Exclusivo ADM)")
-                    
-                    # --- CORREÇÃO AQUI: sep=';' e utf-8-sig para o Excel ler perfeitamente ---
                     csv = df_filtrado.to_csv(index=False, sep=';').encode('utf-8-sig')
                     
                     c_down, c_del = st.columns(2)
@@ -899,7 +907,6 @@ def tela_relatorio():
                         else:
                             status_final = "SETUP INTERROMPIDO (PARADA)"
                             
-                        # Resgata Item da ultima string antes de interromper
                         tags_prod = extrair_tags_producao(st_val)
                         
                         linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_final}{str_prep}{tags_prod}\n\n"))
@@ -909,10 +916,7 @@ def tela_relatorio():
                 if ciclo_ativo:
                     num_maq = maq.replace(f"{prefixo_setor} ", "")
                     str_prep = f" - {preparador}" if preparador else ""
-                    
-                    # Puxa o Item da string atual
                     tags_prod = extrair_tags_producao(df_maq.iloc[-1]['Status'])
-                    
                     linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_limpo}{str_prep}{tags_prod}\n\n"))
                     
             linhas.sort(key=lambda x: get_sort_key(x[0]))
@@ -1029,16 +1033,13 @@ def tela_relatorio():
         str_t_afc = gerar_relatorio_tempos(df_completo, maquinas_com_setup, "AFC")
         texto_tempos += str_t_afc if str_t_afc else "Nenhuma preparação registrada.\n\n"
 
-        # Exibe os dois blocos na tela
         st.markdown("##### 📄 Relatório 1 (Padrão e Limpo)")
         st.code(texto_padrao, language="text")
 
         st.markdown("##### ⏱️ Relatório 2 (Tempos e Repasses)")
         st.code(texto_tempos, language="text")
         
-        # --- AÇÃO DE ENCERRAR O TURNO ---
         if encerrar:
-            # 1. Salvar os textos do relatório
             novo_hist = pd.DataFrame([{
                 "Data": data_hoje,
                 "Turno": st.session_state['turno'],
@@ -1052,7 +1053,6 @@ def tela_relatorio():
             else:
                 novo_hist.to_csv(ARQUIVO_HISTORICO, index=False)
             
-            # 2. Salvar TODO o banco_operacao para o Banco Permanente de Eventos antes de limpá-lo
             if not df_completo.empty:
                 df_eventos = df_completo.copy()
                 df_eventos['Data_Registro'] = data_hoje
@@ -1065,7 +1065,6 @@ def tela_relatorio():
                 else:
                     df_eventos.to_csv(ARQUIVO_HISTORICO_EVENTOS, index=False)
             
-            # 3. Limpar o banco de operação para o próximo turno
             df_novo = []
             for maq in df_completo['Maquina'].unique():
                 df_maq = df_completo[df_completo['Maquina'] == maq]
