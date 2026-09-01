@@ -400,7 +400,7 @@ def tela_login():
                 st.session_state['perfil'] = perfil_val
                 st.session_state['operador'] = nome_formatado
                 
-                # CORREÇÃO: Adicionando o parâmetro 'key' único para cada cookie
+                # Salvando nos cookies com KEY única para evitar erro DuplicateElementKey
                 cookie_manager.set("user_logado", nome_formatado, key="set_logado")
                 cookie_manager.set("user_turno", turno_val, key="set_turno")
                 cookie_manager.set("user_setor", setor_val, key="set_setor")
@@ -443,14 +443,22 @@ def tela_menu():
         if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
     
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
+    
     if st.button("🚪 Encerramento de Sessão (Logout)", use_container_width=True):
+        # Limpa todas as variáveis do session state
         st.session_state['operador'] = ''
+        st.session_state['turno'] = ''
+        st.session_state['setor_usuario'] = ''
+        st.session_state['perfil'] = ''
         
-        # CORREÇÃO: Adicionando o parâmetro 'key' único para cada deleção
-        cookie_manager.delete("user_logado", key="del_logado")
-        cookie_manager.delete("user_turno", key="del_turno")
-        cookie_manager.delete("user_setor", key="del_setor")
-        cookie_manager.delete("user_perfil", key="del_perfil")
+        # Apaga os cookies de forma segura usando try/except com KEYS únicas
+        try:
+            if cookie_manager.get("user_logado"): cookie_manager.delete("user_logado", key="del_logado")
+            if cookie_manager.get("user_turno"): cookie_manager.delete("user_turno", key="del_turno")
+            if cookie_manager.get("user_setor"): cookie_manager.delete("user_setor", key="del_setor")
+            if cookie_manager.get("user_perfil"): cookie_manager.delete("user_perfil", key="del_perfil")
+        except Exception:
+            pass # Se der problema, só ignora e encerra a sessão da mesma forma
         
         time.sleep(0.5)
         mudar_tela('login')
