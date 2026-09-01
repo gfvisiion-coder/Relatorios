@@ -91,9 +91,11 @@ if 'setor_usuario' not in st.session_state: st.session_state['setor_usuario'] = 
 if 'perfil' not in st.session_state: st.session_state['perfil'] = '' 
 if 'celula_selecionada' not in st.session_state: st.session_state['celula_selecionada'] = None
 if 'maq_ativa' not in st.session_state: st.session_state['maq_ativa'] = None
+if 'logout_realizado' not in st.session_state: st.session_state['logout_realizado'] = False
 
 # --- RESTAURAÇÃO DE LOGIN POR COOKIE ---
-if not st.session_state['operador']:
+# Só restaura se o operador estiver vazio E se não tiver acabado de clicar no botão Sair
+if not st.session_state['operador'] and not st.session_state['logout_realizado']:
     if cookies_salvos and "user_logado" in cookies_salvos:
         st.session_state['operador'] = cookies_salvos["user_logado"]
         st.session_state['turno'] = cookies_salvos.get("user_turno", "")
@@ -134,7 +136,6 @@ def ler_status_atual():
                             sugestao = f" [Prep. Sugerido: {sug}]"
                         
                         tags_prod = extrair_tags_producao(st_raw)
-                        # Garante que a indicação de GUIA/HASTE continue aparecendo caso atrase
                         status_calculado[maq] = f"AGUARDANDO PREPARADOR{sugestao}{tags_prod}"
                 except: status_calculado[maq] = st_raw
             else:
@@ -331,7 +332,6 @@ def painel_controle_maquina(maq_id, setor):
                         if is_agendado and hora_relatorio.strip():
                             st_final += f" [AGENDADO:{hora_relatorio.strip()}]"
                         else: 
-                            # Correção: Agora não perde a indicação de GUIA/HASTE se não for agendado
                             st_final = f"AGUARDANDO PREPARADOR - {st_final}"
                         
                         if item_atual.strip():
@@ -355,14 +355,13 @@ def painel_controle_maquina(maq_id, setor):
                     
                 nome_input = st.text_input("Nome do Preparador:", value=sug_nome if sug_nome else "")
                 
-                # --- Lógica do Item: Se for GUIA, não pede o novo item ---
                 is_guia = "GUIA" in status_atual
                 
                 if not is_guia:
                     st.markdown("📦 **Qual item será preparado?**")
                     novo_item_input = st.text_input("Novo Item (Entrando):", placeholder="Ex: 313324")
                 else:
-                    novo_item_input = "" # Se for guia, passa vazio e invisível
+                    novo_item_input = "" 
                 
                 c1, c2 = st.columns(2)
                 btn_sugerir = c1.form_submit_button("💡 Apenas Sugerir")
@@ -390,7 +389,6 @@ def painel_controle_maquina(maq_id, setor):
                         st.error("⚠️ Informe um nome para sugerir!")
                         
                 if btn_iniciar:
-                    # Verifica obrigatoriedade APENAS se não for GUIA
                     if not is_guia and not novo_item_input.strip():
                         st.error("⚠️ Para INICIAR a preparação, você precisa informar o NOVO ITEM que vai entrar na máquina!")
                     else:
@@ -403,7 +401,6 @@ def painel_controle_maquina(maq_id, setor):
                         
                         st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}]{tags_prod}"
                         
-                        # Anexa o Novo Item apenas se preenchido
                         if not is_guia and novo_item_input.strip():
                             st_andamento += f" [Novo Item: {novo_item_input.strip().upper()}]"
                             
@@ -437,21 +434,19 @@ def tela_login():
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         if st.button("ACESSAR SISTEMA", use_container_width=True, type="primary"):
             codigos_validos = {
-                # --- ADM ---
                 "9999": ("GERAL", "GERÊNCIA", "adm"),
-                
-                # --- PREPARADORES E TÉCNICOS (Alimentam e preparam máquinas) ---
                 "1010": ("1° TURNO", "TECNICO", "preparador"), "2020": ("2° TURNO", "TECNICO", "preparador"), "3030": ("3° TURNO", "TECNICO", "preparador"),
                 "1123": ("1° TURNO", "AFC", "preparador"), "2123": ("2° TURNO", "AFC", "preparador"), "3123": ("3° TURNO", "AFC", "preparador"),
                 "1234": ("1° TURNO", "RTF", "preparador"), "2234": ("2° TURNO", "RTF", "preparador"), "3234": ("3° TURNO", "RTF", "preparador"),
-                
-                # --- OPERADORES (Apenas correção, fechamento e visualização) ---
                 "1001": ("1° TURNO", "AFC", "operador"), "2001": ("2° TURNO", "AFC", "operador"), "3001": ("3° TURNO", "AFC", "operador"),
                 "1002": ("1° TURNO", "RTF", "operador"), "2002": ("2° TURNO", "RTF", "operador"), "3002": ("3° TURNO", "RTF", "operador")
             }
             if cod in codigos_validos and nome:
                 turno_val, setor_val, perfil_val = codigos_validos[cod]
                 nome_formatado = nome.upper()
+                
+                # Desativa a trava de logout ao logar novamente
+                st.session_state['logout_realizado'] = False
                 
                 st.session_state['turno'] = turno_val
                 st.session_state['setor_usuario'] = setor_val
@@ -482,9 +477,6 @@ def tela_menu():
     </div>
     """, unsafe_allow_html=True)
     
-    # ---------------------------------------------
-    # MENU DO GERENTE (Acesso Total)
-    # ---------------------------------------------
     if perfil == 'adm':
         if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True, type="primary"): mudar_tela('afc')
         if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True, type="primary"): mudar_tela('rtf')
@@ -494,9 +486,6 @@ def tela_menu():
         if st.button("📊 HISTÓRICOS E EXPORTAÇÕES", use_container_width=True): mudar_tela('historico')
         if st.button("✏️ GERENCIAR BANCO DE DADOS", use_container_width=True): mudar_tela('editar')
         
-    # ---------------------------------------------
-    # MENU DO PREPARADOR / TÉCNICO (Operacional de Campo)
-    # ---------------------------------------------
     elif perfil == 'preparador':
         if st.session_state['setor_usuario'] in ['AFC', 'TECNICO']:
             if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True, type="primary"): mudar_tela('afc')
@@ -509,9 +498,6 @@ def tela_menu():
         if st.button("📋 RELATÓRIO DE TURNO", use_container_width=True): mudar_tela('relatorio')
         if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
 
-    # ---------------------------------------------
-    # MENU DO OPERADOR (Ultra Restrito)
-    # ---------------------------------------------
     else:
         if st.button("🔍 INCIDÊNCIAS DO SETOR", use_container_width=True): mudar_tela('checkup')
         if st.button("📋 FECHAMENTO DE TURNO", use_container_width=True): mudar_tela('relatorio')
@@ -520,6 +506,9 @@ def tela_menu():
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
     
     if st.button("🚪 Encerramento de Sessão (Logout)", use_container_width=True):
+        # Ativa a trava para ignorar cookies antigos e não logar de volta sozinho
+        st.session_state['logout_realizado'] = True
+        
         st.session_state['operador'] = ''
         st.session_state['turno'] = ''
         st.session_state['setor_usuario'] = ''
