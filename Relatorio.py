@@ -760,9 +760,20 @@ def tela_historico():
                 # Apenas ADM pode baixar e apagar esse banco mestre
                 if st.session_state['perfil'] == 'adm':
                     st.markdown("##### Opções de Exportação (Exclusivo ADM)")
-                    csv = df_filtrado.to_csv(index=False).encode('utf-8')
+                    
+                    # --- CORREÇÃO AQUI: sep=';' e utf-8-sig para o Excel ler perfeitamente ---
+                    csv = df_filtrado.to_csv(index=False, sep=';').encode('utf-8-sig')
+                    
                     c_down, c_del = st.columns(2)
-                    c_down.download_button(label="📥 Baixar como CSV", data=csv, file_name=f"eventos_maquinas_{datetime.now().strftime('%Y%m%d')}.csv", mime="text/csv", type="primary", use_container_width=True)
+                    c_down.download_button(
+                        label="📥 Baixar Planilha (Excel/CSV)", 
+                        data=csv, 
+                        file_name=f"eventos_maquinas_{datetime.now().strftime('%Y%m%d')}.csv", 
+                        mime="text/csv", 
+                        type="primary", 
+                        use_container_width=True
+                    )
+                    
                     if c_del.button("🗑️ Apagar Todo o Banco de Eventos", use_container_width=True):
                         os.remove(ARQUIVO_HISTORICO_EVENTOS)
                         st.rerun()
