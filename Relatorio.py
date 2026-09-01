@@ -74,14 +74,14 @@ def get_status_icon(status_str):
     elif "PARADA" in status_str: return "🔴"
     else: return "🟢"
 
-# Função auxiliar para não perder OP e Item na troca de status
+# Função auxiliar para não perder as tags de Item na troca de status
 def extrair_tags_producao(status_str):
     tags = ""
-    if "[OP:" in status_str:
-        try: tags += f" [OP: {status_str.split('[OP:')[1].split(']')[0].strip()}]"
+    if "[Item Atual:" in status_str:
+        try: tags += f" [Item Atual: {status_str.split('[Item Atual:')[1].split(']')[0].strip()}]"
         except: pass
-    if "[Item:" in status_str:
-        try: tags += f" [Item: {status_str.split('[Item:')[1].split(']')[0].strip()}]"
+    if "[Novo Item:" in status_str:
+        try: tags += f" [Novo Item: {status_str.split('[Novo Item:')[1].split(']')[0].strip()}]"
         except: pass
     return tags
 
@@ -232,7 +232,7 @@ def painel_controle_maquina(maq_id, setor):
                     if novo_nome.strip():
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                         
-                        # Resgata OP e Item se houver
+                        # Resgata Itens se houver (Atual e Novo)
                         info_atual = obter_info_maquina(maq_id, setor)
                         tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
                         
@@ -302,14 +302,8 @@ def painel_controle_maquina(maq_id, setor):
                 is_agendado = st.toggle("Marcar como Agendamento Futuro", value=True)
                 prep_sugerido = st.text_input("🧑‍🔧 Sugerir Preparador (Opcional):", placeholder="Ex: Lucas")
                 
-                st.markdown("📦 **Dados de Produção (Opcional)**")
-                c_op1, c_op2 = st.columns(2)
-                ordem_atual = c_op1.text_input("OP Atual (Saindo):", placeholder="Ex: 102030")
-                ordem_futura = c_op2.text_input("Nova OP (Entrando):", placeholder="Ex: 102031")
-                
-                c_it1, c_it2 = st.columns(2)
-                item_atual = c_it1.text_input("Item Atual (Saindo):", placeholder="Ex: HASTE-01")
-                item_futuro = c_it2.text_input("Novo Item (Entrando):", placeholder="Ex: HASTE-02")
+                st.markdown("📦 **Dados do Item**")
+                item_atual = st.text_input("Item Atual (Na Máquina):", placeholder="Ex: HASTE-01")
                 
                 st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
                 
@@ -342,11 +336,9 @@ def painel_controle_maquina(maq_id, setor):
                         else: 
                             st_final = f"AGUARDANDO PREPARADOR [Prep. Sugerido: {prep_sugerido.strip().upper()}]" if prep_sugerido.strip() else "AGUARDANDO PREPARADOR"
                         
-                        # Anexa os dados de OP e Item
-                        if ordem_atual.strip() or ordem_futura.strip():
-                            st_final += f" [OP: {ordem_atual.strip() or '-'} -> {ordem_futura.strip() or '-'}]"
-                        if item_atual.strip() or item_futuro.strip():
-                            st_final += f" [Item: {item_atual.strip() or '-'} -> {item_futuro.strip() or '-'}]"
+                        # Anexa apenas o Item Atual
+                        if item_atual.strip():
+                            st_final += f" [Item Atual: {item_atual.strip().upper()}]"
                         
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
@@ -365,6 +357,9 @@ def painel_controle_maquina(maq_id, setor):
                     except: pass
                     
                 nome_input = st.text_input("Nome do Preparador:", value=sug_nome if sug_nome else "")
+                
+                st.markdown("📦 **Qual item será preparado?**")
+                novo_item_input = st.text_input("Novo Item (Entrando):", placeholder="Ex: HASTE-02")
                 
                 c1, c2 = st.columns(2)
                 btn_sugerir = c1.form_submit_button("💡 Apenas Sugerir")
@@ -392,20 +387,24 @@ def painel_controle_maquina(maq_id, setor):
                         st.error("⚠️ Informe um nome para sugerir!")
                         
                 if btn_iniciar:
-                    nome_final = nome_input if nome_input.strip() else st.session_state['operador']
-                    hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                    
-                    # Resgata OP e Item se houver
-                    info_atual = obter_info_maquina(maq_id, setor)
-                    tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
-                    
-                    st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}]{tags_prod}"
-                    salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
-                    st.session_state['maq_ativa'] = None
-                    del st.session_state[flow_key]
-                    st.success("✅ Preparação iniciada! Timer ativado.")
-                    time.sleep(0.5)
-                    st.rerun()
+                    if not novo_item_input.strip():
+                        st.error("⚠️ Para INICIAR a preparação, você precisa informar o NOVO ITEM que vai entrar na máquina!")
+                    else:
+                        nome_final = nome_input if nome_input.strip() else st.session_state['operador']
+                        hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                        
+                        # Resgata Item Atual se houver e remove resquícios de Novo Item antigos
+                        info_atual = obter_info_maquina(maq_id, setor)
+                        tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
+                        tags_prod = re.sub(r' \[Novo Item:.*?\]', '', tags_prod) # Limpa se já existir
+                        
+                        st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}]{tags_prod} [Novo Item: {novo_item_input.strip().upper()}]"
+                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                        st.session_state['maq_ativa'] = None
+                        del st.session_state[flow_key]
+                        st.success("✅ Preparação iniciada! Timer ativado.")
+                        time.sleep(0.5)
+                        st.rerun()
 
         elif st.session_state[flow_key] == "detalhe_man":
             with st.form(f"form_man_{maq_id}"):
@@ -825,7 +824,7 @@ def tela_relatorio():
                         else:
                             status_final = "SETUP INTERROMPIDO (PARADA)"
                             
-                        # Resgata OP/Item da ultima string antes de interromper
+                        # Resgata Item da ultima string antes de interromper
                         tags_prod = extrair_tags_producao(st_val)
                         
                         linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_final}{str_prep}{tags_prod}\n\n"))
@@ -836,7 +835,7 @@ def tela_relatorio():
                     num_maq = maq.replace(f"{prefixo_setor} ", "")
                     str_prep = f" - {preparador}" if preparador else ""
                     
-                    # Puxa a OP/Item atual na string (se houver)
+                    # Puxa o Item da string atual
                     tags_prod = extrair_tags_producao(df_maq.iloc[-1]['Status'])
                     
                     linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_limpo}{str_prep}{tags_prod}\n\n"))
