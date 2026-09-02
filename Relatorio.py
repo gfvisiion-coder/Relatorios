@@ -94,7 +94,6 @@ if 'maq_ativa' not in st.session_state: st.session_state['maq_ativa'] = None
 if 'logout_realizado' not in st.session_state: st.session_state['logout_realizado'] = False
 
 # --- RESTAURAÇÃO DE LOGIN POR COOKIE ---
-# Só restaura se o operador estiver vazio E se não tiver acabado de clicar no botão Sair
 if not st.session_state['operador'] and not st.session_state['logout_realizado']:
     if cookies_salvos and "user_logado" in cookies_salvos:
         st.session_state['operador'] = cookies_salvos["user_logado"]
@@ -127,7 +126,15 @@ def ler_status_atual():
                 try:
                     hora_alvo = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
                     tipo_agendado = st_raw.split(" [AGENDADO:")[0]
-                    if agora_str < hora_alvo: 
+                    
+                    # Lógica para meia-noite corrigida
+                    h_agora = datetime.strptime(agora_str, "%H:%M")
+                    h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M")
+                    
+                    if h_alvo_dt < h_agora and (h_agora - h_alvo_dt).total_seconds() > 12 * 3600:
+                        h_alvo_dt += timedelta(days=1)
+                        
+                    if h_agora < h_alvo_dt: 
                         status_calculado[maq] = f"{tipo_agendado} AGENDADA PARA {hora_alvo}"
                     else: 
                         sugestao = ""
@@ -445,7 +452,6 @@ def tela_login():
                 turno_val, setor_val, perfil_val = codigos_validos[cod]
                 nome_formatado = nome.upper()
                 
-                # Desativa a trava de logout ao logar novamente
                 st.session_state['logout_realizado'] = False
                 
                 st.session_state['turno'] = turno_val
@@ -506,7 +512,6 @@ def tela_menu():
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
     
     if st.button("🚪 Encerramento de Sessão (Logout)", use_container_width=True):
-        # Ativa a trava para ignorar cookies antigos e não logar de volta sozinho
         st.session_state['logout_realizado'] = True
         
         st.session_state['operador'] = ''
@@ -550,7 +555,9 @@ def tela_checkup():
     todas_rtf = ordenar_maquinas(["6-6J1", "17-6J1", "30-786", "32-918", "29-785", "4-425", "3-426", "34-842", "31-806", "7-267", "5-903", "36-854", "33-807", "9-815", "8-086", "38-881", "35-885", "11-363", "10-817", "40-912", "37-857", "13-969", "12-962", "42-885", "39-856", "15-977", "14-971", "18-925", "16-183", "20-927", "19-926", "22-916", "21-270", "24-259", "23-753", "26-260", "25-258", "28-954", "27-917"])
     
     maquinas_com_problema = []
-    if setor_atual in ['TECNICO', 'GERAL']:
+    
+    # Adicionado PERFIL == 'ADM'
+    if setor_atual in ['TECNICO', 'GERAL', 'GERÊNCIA'] or perfil == 'adm':
         setores_alvo = [("AFC", todas_afc), ("RTF", todas_rtf)]
     else:
         setores_alvo = [(setor_atual, todas_afc if setor_atual == "AFC" else todas_rtf)]
@@ -581,7 +588,7 @@ def tela_minhas_incidencias():
 
     status_dict = ler_status_atual()
     setor_atual = st.session_state['setor_usuario']
-    nome_usuario = st.session_state['operador']
+    nome_usuario = st.session_state['operador'].upper() # Formata em maiúsculo para comparar
 
     todas_afc = ordenar_maquinas(["30-161", "29-078", "32-081", "31-969", "34-132", "33-160", "36-084", "35-131", "38-596", "37-892", "40-142", "39-905", "41-141", "8-247", "6-868", "4-427", "9-088", "10-812", "7-743", "12-367", "11-365", "14-967", "13-964", "16-975", "15-973", "18-957", "17-140", "20-774", "19-760", "22-813", "21-206", "24-761", "23-165", "26-635", "25-209", "28-432", "27-431"])
     todas_rtf = ordenar_maquinas(["6-6J1", "17-6J1", "30-786", "32-918", "29-785", "4-425", "3-426", "34-842", "31-806", "7-267", "5-903", "36-854", "33-807", "9-815", "8-086", "38-881", "35-885", "11-363", "10-817", "40-912", "37-857", "13-969", "12-962", "42-885", "39-856", "15-977", "14-971", "18-925", "16-183", "20-927", "19-926", "22-916", "21-270", "24-259", "23-753", "26-260", "25-258", "28-954", "27-917"])
@@ -592,7 +599,9 @@ def tela_minhas_incidencias():
         chave = f"{setor_atual} {m}"
         st_val = status_dict.get(chave, "PRODUZINDO")
         info = obter_info_maquina(m, setor_atual)
-        if info and f"[Prep: {nome_usuario}]" in st_val:
+        
+        # Filtra buscando o nome tanto na tag Prep quanto na Sugerido
+        if info and (f"[Prep: {nome_usuario}]" in st_val or f"[Prep. Sugerido: {nome_usuario}]" in st_val or f"[PREP: {nome_usuario}]" in st_val.upper()):
             minhas_maquinas.append((setor_atual, m, st_val))
 
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo']:
@@ -685,10 +694,16 @@ def tela_editar():
         
     if os.path.exists(ARQUIVO_DADOS):
         df_maq = pd.read_csv(ARQUIVO_DADOS)
-        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Altere o Horário ou o Status se houver algum erro de digitação. Para confirmar, clique em Salvar Alterações.</p>", unsafe_allow_html=True)
-        df_editado = st.data_editor(df_maq, num_rows="dynamic", use_container_width=True)
+        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Altere o Horário ou o Status se houver algum erro de digitação. Somente o <b>último apontamento</b> de cada máquina está sendo exibido para facilitar.</p>", unsafe_allow_html=True)
+        
+        # Filtra para exibir apenas a última linha
+        idx_ultimos = df_maq.drop_duplicates(subset=['Maquina'], keep='last').index
+        df_editar = df_maq.loc[idx_ultimos].copy()
+        
+        df_editado = st.data_editor(df_editar, num_rows="dynamic", use_container_width=True)
         
         if col_salvar.button("💾 Salvar Alterações", use_container_width=True, type="primary"):
+            novas_linhas = []
             for idx, row in df_editado.iterrows():
                 st_val = str(row['Status'])
                 h_val = str(row['Hora']).strip()
@@ -697,13 +712,22 @@ def tela_editar():
                     hora_original = str(df_maq.loc[idx, 'Hora']).strip()
                     if h_val != hora_original and "[AGENDADO:" in st_val:
                         st_val = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{h_val}]", st_val)
-                        df_editado.at[idx, 'Status'] = st_val
+                    
+                    df_maq.at[idx, 'Status'] = st_val
+                    df_maq.at[idx, 'Hora'] = h_val
+                    df_maq.at[idx, 'Setor'] = row['Setor']
+                    df_maq.at[idx, 'Maquina'] = row['Maquina']
+                    df_maq.at[idx, 'Operador'] = row['Operador']
                 else:
                     if "[AGENDADO:" in st_val:
                         st_val = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{h_val}]", st_val)
-                        df_editado.at[idx, 'Status'] = st_val
-                    
-            df_editado.to_csv(ARQUIVO_DADOS, index=False)
+                    novas_linhas.append({"Setor": row['Setor'], "Maquina": row['Maquina'], "Operador": row['Operador'], "Status": st_val, "Hora": h_val})
+            
+            if novas_linhas:
+                df_novas = pd.DataFrame(novas_linhas)
+                df_maq = pd.concat([df_maq, df_novas], ignore_index=True)
+                
+            df_maq.to_csv(ARQUIVO_DADOS, index=False)
             st.success("✨ Banco de dados atualizado! Os horários e status das máquinas foram alterados e sincronizados.")
             time.sleep(0.5)
             st.rerun()
