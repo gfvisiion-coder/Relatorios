@@ -81,6 +81,24 @@ def inicializar_armarios():
                 })
         pd.DataFrame(dados).to_csv(ARQUIVO_ARMARIOS, index=False)
 
+def dar_baixa_armario(ordem_alvo):
+    """Procura a Ordem nos armários e esvazia a gaveta automaticamente"""
+    if not ordem_alvo or not str(ordem_alvo).strip() or not os.path.exists(ARQUIVO_ARMARIOS): return
+    try:
+        ordem_formatada = str(ordem_alvo).strip().upper()
+        df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Status': str, 'Data_Hora': str})
+        if 'Item' not in df_arm.columns: df_arm['Item'] = ""
+        
+        # Converte a coluna Ordem para string e procura a OP informada
+        df_arm['Ordem'] = df_arm['Ordem'].astype(str)
+        idx_ordem = df_arm[df_arm['Ordem'].str.upper() == ordem_formatada].index
+        
+        # Se encontrar, atualiza os campos para VAZIO
+        if not idx_ordem.empty:
+            df_arm.loc[idx_ordem, ['Ordem', 'Item', 'Status', 'Data_Hora']] = ["", "", 'VAZIO', datetime.now(FUSO_BR).strftime("%H:%M")]
+            df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
+    except: pass
+
 def get_status_icon(status_str):
     if "AGUARDANDO PREPARADOR" in status_str: return "🟠"
     elif "AGENDADO" in status_str or "AGENDADA" in status_str: return "🔵"
@@ -303,6 +321,9 @@ def painel_controle_maquina(maq_id, setor):
                         st_final = f"PRODUZINDO [Ordem: {ordem.strip().upper()}] [Item: {item.strip().upper()}]"
                         if pcs_hora.strip(): st_final += f" [Pçs/Hora: {pcs_hora.strip()}]"
                         
+                        # Da baixa na gaveta do armário (se existir)
+                        dar_baixa_armario(ordem.strip())
+                        
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
@@ -377,6 +398,10 @@ def painel_controle_maquina(maq_id, setor):
                         if ordem_atual.strip(): st_final += f" [Ordem: {ordem_atual.strip().upper()}]"
                         if item_atual.strip(): st_final += f" [Item Atual: {item_atual.strip().upper()}]"
                         
+                        # Da baixa na gaveta do armário (se existir)
+                        if ordem_atual.strip():
+                            dar_baixa_armario(ordem_atual.strip())
+                            
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
@@ -448,10 +473,14 @@ def painel_controle_maquina(maq_id, setor):
                             if nova_ordem_input.strip(): st_andamento += f" [Ordem: {nova_ordem_input.strip().upper()}]"
                             if novo_item_input.strip(): st_andamento += f" [Novo Item: {novo_item_input.strip().upper()}]"
                             
+                        # Da baixa na gaveta do armário (se existir)
+                        if nova_ordem_input.strip():
+                            dar_baixa_armario(nova_ordem_input.strip())
+                            
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
-                        st.success("✅ Preparação iniciada! Timer ativado.")
+                        st.success("✅ Preparação iniciada! Ordem liberada do armário. Timer ativado.")
                         time.sleep(0.5)
                         st.rerun()
 
