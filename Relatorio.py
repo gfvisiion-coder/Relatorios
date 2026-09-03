@@ -82,20 +82,23 @@ def inicializar_armarios():
         pd.DataFrame(dados).to_csv(ARQUIVO_ARMARIOS, index=False)
 
 def dar_baixa_armario(ordem_alvo):
-    """Procura a Ordem nos armários e esvazia a gaveta automaticamente"""
+    """Procura a Ordem nos armários e esvazia a gaveta automaticamente com match perfeito"""
     if not ordem_alvo or not str(ordem_alvo).strip() or not os.path.exists(ARQUIVO_ARMARIOS): return
     try:
         ordem_formatada = str(ordem_alvo).strip().upper()
+        if ordem_formatada.endswith(".0"): ordem_formatada = ordem_formatada[:-2]
+        
         df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Status': str, 'Data_Hora': str})
         if 'Item' not in df_arm.columns: df_arm['Item'] = ""
         
-        # Converte a coluna Ordem para string e procura a OP informada
-        df_arm['Ordem'] = df_arm['Ordem'].astype(str)
-        idx_ordem = df_arm[df_arm['Ordem'].str.upper() == ordem_formatada].index
+        # Cria uma coluna temporária hiper-limpa para garantir o match (sem float ghosting)
+        df_arm['Ordem_busca'] = df_arm['Ordem'].astype(str).str.strip().str.upper().str.replace(".0", "", regex=False)
         
-        # Se encontrar, atualiza os campos para VAZIO
+        idx_ordem = df_arm[df_arm['Ordem_busca'] == ordem_formatada].index
+        
         if not idx_ordem.empty:
             df_arm.loc[idx_ordem, ['Ordem', 'Item', 'Status', 'Data_Hora']] = ["", "", 'VAZIO', datetime.now(FUSO_BR).strftime("%H:%M")]
+            df_arm = df_arm.drop(columns=['Ordem_busca'])
             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
     except: pass
 
@@ -253,8 +256,22 @@ def painel_controle_maquina(maq_id, setor):
             st.markdown(f"<p style='text-align: center; font-weight: 600;'>O setup desta máquina foi finalizado?</p>", unsafe_allow_html=True)
             c1, c2, c3 = st.columns(3)
             if c1.button("✅ Sim (Produzir)", key=f"s_{maq_id}", use_container_width=True):
-                st.session_state[flow_key] = "detalhe_prod"
+                # FAST-TRACK: PULA O FORMULÁRIO E VAI DIRETO PARA PRODUZINDO HERDANDO OS DADOS
+                hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                info_atual = obter_info_maquina(maq_id, setor)
+                tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
+                
+                # Converte as tags antigas para o padrão de Produção
+                tags_prod = tags_prod.replace("[Novo Item:", "[Item:")
+                tags_prod = tags_prod.replace("[Item Atual:", "[Item:")
+                
+                st_final = f"PRODUZINDO {tags_prod}".strip()
+                salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                
+                st.session_state['maq_ativa'] = None
+                del st.session_state[flow_key]
                 st.rerun()
+                
             if c2.button("🔄 Assumir", key=f"n_{maq_id}", use_container_width=True):
                 st.session_state[flow_key] = "assumir_prep"
                 st.rerun()
@@ -309,8 +326,18 @@ def painel_controle_maquina(maq_id, setor):
         elif st.session_state[flow_key] == "detalhe_prod":
             with st.form(f"form_prod_{maq_id}"):
                 st.markdown("🟢 **Apontamento de Produção**")
-                ordem = st.text_input("Ordem de Produção (OP):", placeholder="Ex: 987654")
-                item = st.text_input("Item:", placeholder="Ex: 313324")
+                
+                info_atual = obter_info_maquina(maq_id, setor)
+                st_atual = str(info_atual['Status']) if info_atual else ""
+                op_pre, item_pre = "", ""
+                
+                if "[Ordem:" in st_atual: op_pre = st_atual.split("[Ordem:")[1].split("]")[0].strip()
+                if "[Novo Item:" in st_atual: item_pre = st_atual.split("[Novo Item:")[1].split("]")[0].strip()
+                elif "[Item:" in st_atual: item_pre = st_atual.split("[Item:")[1].split("]")[0].strip()
+                elif "[Item Atual:" in st_atual: item_pre = st_atual.split("[Item Atual:")[1].split("]")[0].strip()
+                
+                ordem = st.text_input("Ordem de Produção (OP):", value=op_pre, placeholder="Ex: 987654")
+                item = st.text_input("Item:", value=item_pre, placeholder="Ex: 313324")
                 pcs_hora = st.text_input("Produção (Pçs/Hora) - Opcional:", placeholder="Ex: 150")
                 
                 if st.form_submit_button("🚀 INICIAR PRODUÇÃO", type="primary"):
@@ -321,7 +348,6 @@ def painel_controle_maquina(maq_id, setor):
                         st_final = f"PRODUZINDO [Ordem: {ordem.strip().upper()}] [Item: {item.strip().upper()}]"
                         if pcs_hora.strip(): st_final += f" [Pçs/Hora: {pcs_hora.strip()}]"
                         
-                        # Da baixa na gaveta do armário (se existir)
                         dar_baixa_armario(ordem.strip())
                         
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
@@ -398,10 +424,6 @@ def painel_controle_maquina(maq_id, setor):
                         if ordem_atual.strip(): st_final += f" [Ordem: {ordem_atual.strip().upper()}]"
                         if item_atual.strip(): st_final += f" [Item Atual: {item_atual.strip().upper()}]"
                         
-                        # Da baixa na gaveta do armário (se existir)
-                        if ordem_atual.strip():
-                            dar_baixa_armario(ordem_atual.strip())
-                            
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
@@ -420,15 +442,17 @@ def painel_controle_maquina(maq_id, setor):
                     
                 nome_input = st.text_input("Nome do Preparador:", value=sug_nome if sug_nome else "")
                 
-                is_guia = "GUIA" in status_atual
+                # REGRA UNIFICADA: Na Guia ou Sequência o ITEM permanece, mas a OP muda
+                is_guia_ou_seq = "GUIA" in status_atual or "SEQUÊNCIA" in status_atual
                 
-                if not is_guia:
-                    st.markdown("📦 **Qual item será preparado?**")
-                    nova_ordem_input = st.text_input("Nova Ordem (OP):", placeholder="Ex: 987654")
+                st.markdown("📦 **Dados da Preparação**")
+                nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", placeholder="Ex: 987654")
+                
+                if not is_guia_ou_seq:
                     novo_item_input = st.text_input("Novo Item (Entrando):", placeholder="Ex: 313324")
                 else:
-                    nova_ordem_input = ""
                     novo_item_input = "" 
+                    st.info("ℹ️ Preparação de Guia/Sequência: O Item atual será herdado automaticamente.")
                 
                 c1, c2 = st.columns(2)
                 btn_sugerir = c1.form_submit_button("💡 Apenas Sugerir")
@@ -456,30 +480,41 @@ def painel_controle_maquina(maq_id, setor):
                         st.error("⚠️ Informe um nome para sugerir!")
                         
                 if btn_iniciar:
-                    if not is_guia and (not novo_item_input.strip() or not nova_ordem_input.strip()):
-                        st.error("⚠️ Para INICIAR a preparação, informe a Ordem e o Novo Item!")
+                    # Validacao: Sempre exige OP. Se nao for guia_ou_seq, exige o item tambem.
+                    if not nova_ordem_input.strip() or (not is_guia_ou_seq and not novo_item_input.strip()):
+                        st.error("⚠️ Para INICIAR a preparação, informe a Nova Ordem (e o Item)!")
                     else:
                         nome_final = nome_input if nome_input.strip() else st.session_state['operador']
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                         
                         info_atual = obter_info_maquina(maq_id, setor)
                         tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
-                        tags_prod = re.sub(r' \[Novo Item:.*?\]', '', tags_prod) 
+                        
+                        # Como a OP sempre é nova, limpamos a tag de Ordem antiga para nao duplicar
                         tags_prod = re.sub(r' \[Ordem:.*?\]', '', tags_prod) 
+                        
+                        # Se NÃO for Guia/Seq, limpa as tags de item antigas, pois entrará um novo
+                        if not is_guia_ou_seq:
+                            tags_prod = re.sub(r' \[Novo Item:.*?\]', '', tags_prod) 
+                            tags_prod = re.sub(r' \[Item:.*?\]', '', tags_prod) 
+                            tags_prod = re.sub(r' \[Item Atual:.*?\]', '', tags_prod) 
                         
                         st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}] {tags_prod}".strip()
                         
-                        if not is_guia:
-                            if nova_ordem_input.strip(): st_andamento += f" [Ordem: {nova_ordem_input.strip().upper()}]"
-                            if novo_item_input.strip(): st_andamento += f" [Novo Item: {novo_item_input.strip().upper()}]"
+                        # Adiciona a nova Ordem que sempre é preenchida
+                        st_andamento += f" [Ordem: {nova_ordem_input.strip().upper()}]"
+                        
+                        # Adiciona o novo item se nao for guia_ou_seq
+                        if not is_guia_ou_seq and novo_item_input.strip():
+                            st_andamento += f" [Novo Item: {novo_item_input.strip().upper()}]"
                             
-                        # Da baixa na gaveta do armário (se existir)
-                        if nova_ordem_input.strip():
-                            dar_baixa_armario(nova_ordem_input.strip())
+                        # Da baixa no armario com a OP digitada
+                        dar_baixa_armario(nova_ordem_input.strip())
                             
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
+                        
                         st.success("✅ Preparação iniciada! Ordem liberada do armário. Timer ativado.")
                         time.sleep(0.5)
                         st.rerun()
@@ -626,7 +661,6 @@ def tela_armarios():
     if not pode_editar:
         st.info("👁️ **Modo Visualização:** Você pode apenas consultar o status das gavetas.")
     
-    # --- LEITURA SEGURA COM CONVERSÃO DE DADOS ---
     df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Status': str, 'Data_Hora': str})
     
     if 'Item' not in df_arm.columns:
@@ -634,13 +668,11 @@ def tela_armarios():
         
     df_arm['Item'] = df_arm['Item'].astype(str).replace('nan', '')
     
-    # Seleção do Armário
     armario_sel = st.selectbox("Selecione o Armário:", ["AFC 1", "AFC 2", "RTF 1", "RTF 2"])
     df_filtro = df_arm[df_arm["Armario"] == armario_sel]
     
     st.markdown(f"<p style='text-align: center; color: #2DD4BF; font-weight: bold;'>Visão Frontal - {armario_sel}</p>", unsafe_allow_html=True)
     
-    # Renderização do Grid 6x4 (6 linhas e 4 colunas)
     pos = 1
     for linha in range(6):
         cols = st.columns(4)
@@ -649,6 +681,8 @@ def tela_armarios():
             status = row_data["Status"]
             
             ordem_str = str(row_data["Ordem"]) if str(row_data["Ordem"]) != "nan" else ""
+            if ordem_str.endswith(".0"): ordem_str = ordem_str[:-2]
+                
             item_str = str(row_data["Item"]) if str(row_data["Item"]) != "nan" else ""
             
             with cols[c]:
