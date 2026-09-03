@@ -70,11 +70,12 @@ def inicializar_armarios():
         dados = []
         armarios = ["AFC 1", "AFC 2", "RTF 1", "RTF 2"]
         for arm in armarios:
-            for i in range(1, 25): # 4x6 = 24 posições
+            for i in range(1, 25): # 6x4 = 24 posições
                 dados.append({
                     "Armario": arm,
                     "Posicao": i,
                     "Ordem": "",
+                    "Item": "",
                     "Status": "VAZIO",
                     "Data_Hora": ""
                 })
@@ -91,7 +92,6 @@ def get_status_icon(status_str):
 
 def extrair_tags_producao(status_str):
     tags = ""
-    # Busca todas as tags para não perder informações entre setup e produção
     for marcador in ["[Item Atual:", "[Novo Item:", "[Ordem:", "[Item:", "[Pçs/Hora:"]:
         if marcador in status_str:
             try: 
@@ -592,13 +592,18 @@ def tela_armarios():
     st.markdown("#### 🗄️ Gestão de Armários (Pré-Set)")
     inicializar_armarios()
     
-    # Verifica se o perfil tem permissão de edição (Preset e ADM)
     pode_editar = st.session_state['perfil'] in ['preset', 'adm']
     
     if not pode_editar:
         st.info("👁️ **Modo Visualização:** Você pode apenas consultar o status das gavetas.")
     
-    df_arm = pd.read_csv(ARQUIVO_ARMARIOS)
+    # --- LEITURA SEGURA COM CONVERSÃO DE DADOS ---
+    df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Status': str, 'Data_Hora': str})
+    
+    if 'Item' not in df_arm.columns:
+        df_arm['Item'] = ""
+        
+    df_arm['Item'] = df_arm['Item'].astype(str).replace('nan', '')
     
     # Seleção do Armário
     armario_sel = st.selectbox("Selecione o Armário:", ["AFC 1", "AFC 2", "RTF 1", "RTF 2"])
@@ -606,28 +611,32 @@ def tela_armarios():
     
     st.markdown(f"<p style='text-align: center; color: #2DD4BF; font-weight: bold;'>Visão Frontal - {armario_sel}</p>", unsafe_allow_html=True)
     
-    # Renderização do Grid 4x6
+    # Renderização do Grid 6x4 (6 linhas e 4 colunas)
     pos = 1
-    for linha in range(4):
-        cols = st.columns(6)
-        for c in range(6):
+    for linha in range(6):
+        cols = st.columns(4)
+        for c in range(4):
             row_data = df_filtro[df_filtro["Posicao"] == pos].iloc[0]
             status = row_data["Status"]
-            ordem = row_data["Ordem"]
+            
+            ordem_str = str(row_data["Ordem"]) if str(row_data["Ordem"]) != "nan" else ""
+            item_str = str(row_data["Item"]) if str(row_data["Item"]) != "nan" else ""
             
             with cols[c]:
-                # O parâmetro disabled bloqueia o botão para quem não é PRESET ou ADM
                 if status == "VAZIO":
                     if st.button(f"[{pos}] --", key=f"vazio_{armario_sel}_{pos}", disabled=not pode_editar):
                         st.session_state['acao_armario'] = {'armario': armario_sel, 'pos': pos, 'acao': 'abastecer'}
                         st.rerun()
                 else:
-                    if st.button(f"[{pos}] {ordem}", key=f"ocupado_{armario_sel}_{pos}", type="primary", disabled=not pode_editar):
-                        st.session_state['acao_armario'] = {'armario': armario_sel, 'pos': pos, 'acao': 'retirar', 'ordem': ordem}
+                    label_btn = f"[{pos}] {ordem_str}"
+                    if item_str.strip():
+                        label_btn += f" | {item_str}"
+                        
+                    if st.button(label_btn, key=f"ocupado_{armario_sel}_{pos}", type="primary", disabled=not pode_editar):
+                        st.session_state['acao_armario'] = {'armario': armario_sel, 'pos': pos, 'acao': 'retirar', 'ordem': ordem_str, 'item': item_str}
                         st.rerun()
             pos += 1
 
-    # Somente mostra o menu de ações se foi clicado e o usuário tem permissão
     if 'acao_armario' in st.session_state and st.session_state['acao_armario'] and pode_editar:
         acao = st.session_state['acao_armario']
         st.divider()
@@ -636,20 +645,26 @@ def tela_armarios():
             with st.form("form_abastecer"):
                 st.markdown(f"📦 **Abastecer Posição {acao['pos']} ({acao['armario']})**")
                 nova_ordem = st.text_input("Número da Ordem / OP:")
+                novo_item = st.text_input("Item (Material):") 
+                
                 if st.form_submit_button("💾 Salvar Ordem", type="primary"):
-                    if nova_ordem.strip():
-                        df_arm.loc[(df_arm['Armario'] == acao['armario']) & (df_arm['Posicao'] == acao['pos']), ['Ordem', 'Status', 'Data_Hora']] = [nova_ordem.strip().upper(), 'OCUPADO', datetime.now(FUSO_BR).strftime("%H:%M")]
+                    if nova_ordem.strip() and novo_item.strip():
+                        df_arm.loc[(df_arm['Armario'] == acao['armario']) & (df_arm['Posicao'] == acao['pos']), ['Ordem', 'Item', 'Status', 'Data_Hora']] = [nova_ordem.strip().upper(), novo_item.strip().upper(), 'OCUPADO', datetime.now(FUSO_BR).strftime("%H:%M")]
                         df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                         st.session_state['acao_armario'] = None
                         st.success("✅ Posição abastecida com sucesso!")
                         time.sleep(0.5)
                         st.rerun()
+                    else:
+                        st.error("⚠️ Os campos Ordem e Item são obrigatórios!")
                         
         elif acao['acao'] == 'retirar':
             with st.form("form_retirar"):
-                st.markdown(f"📤 **Retirar Ordem {acao['ordem']} da Posição {acao['pos']} ({acao['armario']})**")
+                item_display = f" (Item: {acao['item']})" if acao.get('item') else ""
+                st.markdown(f"📤 **Retirar Ordem {acao['ordem']}{item_display} da Posição {acao['pos']} ({acao['armario']})**")
+                
                 if st.form_submit_button("✔️ Confirmar Retirada", type="primary"):
-                    df_arm.loc[(df_arm['Armario'] == acao['armario']) & (df_arm['Posicao'] == acao['pos']), ['Ordem', 'Status', 'Data_Hora']] = ["", 'VAZIO', datetime.now(FUSO_BR).strftime("%H:%M")]
+                    df_arm.loc[(df_arm['Armario'] == acao['armario']) & (df_arm['Posicao'] == acao['pos']), ['Ordem', 'Item', 'Status', 'Data_Hora']] = ["", "", 'VAZIO', datetime.now(FUSO_BR).strftime("%H:%M")]
                     df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                     st.session_state['acao_armario'] = None
                     st.success("✅ Ordem retirada e gaveta liberada!")
