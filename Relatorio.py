@@ -130,17 +130,12 @@ def verificar_virada_turno():
         st_atual = str(ultimo_registro['Status'])
         hora_registro = str(ultimo_registro['Hora'])
         
-        # Só interfere se for preparação e se a hora do registro não for da virada atual
-        if "PREPARAÇÃO" in st_atual or "PREPARANDO" in st_atual or "SEQUÊNCIA" in st_atual:
-            # Regra simples para saber se é de turno passado: 
-            # Verifica a diferença de tempo entre agora e a hora de registro.
-            # Se for maior que 8 horas, ou cruzou a linha de corte
+        # SÓ CORTA SE NÃO FOR UM AGENDAMENTO FUTURO
+        if ("PREPARAÇÃO" in st_atual or "PREPARANDO" in st_atual or "SEQUÊNCIA" in st_atual) and ("[AGENDADO:" not in st_atual):
+            
             mins_passados = diff_mins(hora_registro, datetime.now(FUSO_BR).strftime("%H:%M"))
             
-            # Se o registro for mais antigo que a virada, insere um ponto de corte
             if mins_passados > 0: 
-                # Lógica simplificada: Se o turno atualizado não for o mesmo que gerou o registro
-                # Injeta um "AGUARDANDO PREPARADOR" cravado na hora_corte
                 if turno_real == "1° TURNO" and diff_mins(hora_registro, "06:30") > 0 and diff_mins("06:30", hora_registro) > 12*60:
                     precisa_cortar = True
                 elif turno_real == "2° TURNO" and diff_mins(hora_registro, "14:30") > 0 and diff_mins(hora_registro, "14:30") < 8*60:
@@ -207,7 +202,6 @@ def restaurar_queda_energia(setor):
                 else:
                     st_recuperado = "PRODUZINDO"
                 
-                # Adiciona flag temporária para o relatório pegar
                 st_restaurado = f"{st_recuperado} [Energia Restaurada]"
                 
                 novas_linhas.append({
@@ -223,7 +217,7 @@ def restaurar_queda_energia(setor):
         df.to_csv(ARQUIVO_DADOS, index=False)
 
 
-# --- RESTANTE DAS FUNÇÕES ARMARIOS E UI... (Reaproveitadas e mantidas) ---
+# --- RESTANTE DAS FUNÇÕES ARMARIOS E UI... ---
 def inicializar_armarios():
     if not os.path.exists(ARQUIVO_ARMARIOS):
         dados = []
@@ -934,13 +928,20 @@ def tela_rtf():
         if st.button("📍 Fila 2", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_2'; st.rerun()
         if st.button("📍 Fila 3", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_3'; st.rerun()
         if st.button("📍 Fila 4", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_4'; st.rerun()
+        
+        st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
+        
+        if st.button("⚫ Centerless (6 e 17)", use_container_width=True): st.session_state['celula_selecionada'] = 'centerless'; st.rerun()
+        if st.button("🟤 Facetadoras (3 e 4)", use_container_width=True): st.session_state['celula_selecionada'] = 'facetadoras'; st.rerun()
     else:
-        if st.button("⬅️ Trocar de Fila"): st.session_state['celula_selecionada'] = None; st.session_state['maq_ativa'] = None; st.rerun()
+        if st.button("⬅️ Trocar de Fila / Setor"): st.session_state['celula_selecionada'] = None; st.session_state['maq_ativa'] = None; st.rerun()
         st.divider()
         if st.session_state['celula_selecionada'] == 'fila_1': render_grid_vertical(["5-903", "8-086", "10-817", "12-962", "14-971", "16-183", "19-926", "21-270", "23-753", "25-258", "27-917"], "RTF", status_dict)
         elif st.session_state['celula_selecionada'] == 'fila_2': render_grid_vertical(["7-267", "9-815", "11-363", "13-969", "15-977", "18-925", "20-927", "22-916", "24-259", "26-260", "28-954"], "RTF", status_dict)
         elif st.session_state['celula_selecionada'] == 'fila_3': render_grid_vertical(["29-785", "31-806", "33-807", "35-885", "37-857", "39-856"], "RTF", status_dict)
-        elif st.session_state['celula_selecionada'] == 'fila_4': render_grid_vertical(["30-786", "32-918", "34-842", "36-854", "38-881", "40-912", "42-885", "4-425", "6-6J1", "17-6J1", "3-426"], "RTF", status_dict)
+        elif st.session_state['celula_selecionada'] == 'fila_4': render_grid_vertical(["30-786", "32-918", "34-842", "36-854", "38-881", "40-912", "42-885"], "RTF", status_dict)
+        elif st.session_state['celula_selecionada'] == 'centerless': render_grid_vertical(["6-6J1", "17-6J1"], "RTF", status_dict)
+        elif st.session_state['celula_selecionada'] == 'facetadoras': render_grid_vertical(["3-426", "4-425"], "RTF", status_dict)
 
 def tela_equipe():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
@@ -1035,7 +1036,6 @@ def tela_relatorio():
         if not df_completo.empty:
             df_energia = df_completo[df_completo['Status'].str.contains('Energia', na=False, case=False)]
             if not df_energia.empty:
-                # Vamos agrupar as quedas por hora para não poluir o relatorio
                 quedas = df_energia[df_energia['Status'].str.contains("PARADA")]['Hora'].unique()
                 retornos = df_energia[df_energia['Status'].str.contains("Restaurada")]['Hora'].unique()
                 
@@ -1256,4 +1256,3 @@ elif st.session_state['tela_atual'] == 'rtf': tela_rtf()
 elif st.session_state['tela_atual'] == 'equipe': tela_equipe()
 elif st.session_state['tela_atual'] == 'editar': tela_editar()
 elif st.session_state['tela_atual'] == 'relatorio': tela_relatorio()
-elif st.session_state['tela_atual'] == 'armarios': tela_armarios()
