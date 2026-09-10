@@ -82,13 +82,22 @@ def turno_atual_horario():
     elif dtime(14, 30) <= agora < dtime(22, 30): return "2° TURNO"
     else: return "3° TURNO"
 
-def diff_mins(h_inicio, h_fim):
+def diff_mins(h_inicio, h_fim, eh_espera=False):
     try:
         t1 = datetime.strptime(h_inicio, "%H:%M")
         t2 = datetime.strptime(h_fim, "%H:%M")
-        if t2 < t1: t2 += timedelta(days=1)
-        return int((t2 - t1).total_seconds() // 60)
-    except: return 0
+        
+        diff = (t2 - t1).total_seconds() / 60
+        
+        if eh_espera:
+            if diff < -720: return int(diff + 1440)
+            elif diff < 0: return 0 # Se adiantou o setup, considera 0
+            return int(diff)
+        else:
+            if diff < 0: return int(diff + 1440)
+            return int(diff)
+    except: 
+        return 0
 
 def format_tempo(mins):
     if mins <= 0: return "0 minutos"
@@ -108,7 +117,6 @@ def get_sort_key(time_str):
 
 # --- FUNÇÕES DE AUTO-CORREÇÃO DE TURNOS E QUEDA DE ENERGIA ---
 def verificar_virada_turno():
-    """Força máquinas em SETUP a irem para AGUARDANDO PREPARADOR se o turno virou"""
     if not os.path.exists(ARQUIVO_DADOS): return
     df = pd.read_csv(ARQUIVO_DADOS)
     if df.empty: return
@@ -116,7 +124,6 @@ def verificar_virada_turno():
     agora = datetime.now(FUSO_BR).time()
     turno_real = turno_atual_horario()
     
-    # Define a hora exata da última virada
     if turno_real == "1° TURNO": hora_corte = "06:30"
     elif turno_real == "2° TURNO": hora_corte = "14:30"
     else: hora_corte = "22:30"
@@ -130,29 +137,19 @@ def verificar_virada_turno():
         st_atual = str(ultimo_registro['Status'])
         hora_registro = str(ultimo_registro['Hora'])
         
-        # SÓ CORTA SE NÃO FOR UM AGENDAMENTO FUTURO
         if ("PREPARAÇÃO" in st_atual or "PREPARANDO" in st_atual or "SEQUÊNCIA" in st_atual) and ("[AGENDADO:" not in st_atual):
             mins_passados = diff_mins(hora_registro, datetime.now(FUSO_BR).strftime("%H:%M"))
             
             if mins_passados > 0: 
-                if turno_real == "1° TURNO" and diff_mins(hora_registro, "06:30") > 0 and diff_mins("06:30", hora_registro) > 12*60:
-                    precisa_cortar = True
-                elif turno_real == "2° TURNO" and diff_mins(hora_registro, "14:30") > 0 and diff_mins(hora_registro, "14:30") < 8*60:
-                    precisa_cortar = True
-                elif turno_real == "3° TURNO" and diff_mins(hora_registro, "22:30") > 0 and diff_mins(hora_registro, "22:30") < 8*60:
-                    precisa_cortar = True
+                if turno_real == "1° TURNO" and diff_mins(hora_registro, "06:30") > 0 and diff_mins("06:30", hora_registro) > 12*60: precisa_cortar = True
+                elif turno_real == "2° TURNO" and diff_mins(hora_registro, "14:30") > 0 and diff_mins(hora_registro, "14:30") < 8*60: precisa_cortar = True
+                elif turno_real == "3° TURNO" and diff_mins(hora_registro, "22:30") > 0 and diff_mins(hora_registro, "22:30") < 8*60: precisa_cortar = True
                 else: precisa_cortar = False
                 
                 if precisa_cortar:
                     tags = extrair_tags_producao(st_atual)
                     novo_st = f"AGUARDANDO PREPARADOR [Corte de Turno] {tags}".strip()
-                    novas_linhas.append({
-                        "Setor": ultimo_registro['Setor'],
-                        "Maquina": maq,
-                        "Operador": "SISTEMA",
-                        "Status": novo_st,
-                        "Hora": hora_corte
-                    })
+                    novas_linhas.append({"Setor": ultimo_registro['Setor'], "Maquina": maq, "Operador": "SISTEMA", "Status": novo_st, "Hora": hora_corte})
                     
     if novas_linhas:
         df = pd.concat([df, pd.DataFrame(novas_linhas)], ignore_index=True)
@@ -170,13 +167,7 @@ def registrar_queda_energia(setor):
         st_atual = str(df_maq.iloc[-1]['Status']) if not df_maq.empty else "PRODUZINDO"
         
         if "Queda de Energia" not in st_atual:
-            novas_linhas.append({
-                "Setor": setor,
-                "Maquina": maq_full,
-                "Operador": st.session_state.get('operador', 'SISTEMA'),
-                "Status": "PARADA - Motivo: Queda de Energia",
-                "Hora": hora_br_str
-            })
+            novas_linhas.append({"Setor": setor, "Maquina": maq_full, "Operador": st.session_state.get('operador', 'SISTEMA'), "Status": "PARADA - Motivo: Queda de Energia", "Hora": hora_br_str})
             
     if novas_linhas:
         df = pd.concat([df, pd.DataFrame(novas_linhas)], ignore_index=True)
@@ -196,25 +187,13 @@ def restaurar_queda_energia(setor):
             st_atual = str(df_maq.iloc[-1]['Status'])
             if "Queda de Energia" in st_atual:
                 df_maq_valido = df_maq[~df_maq['Status'].str.contains("Queda de Energia", na=False)]
-                if not df_maq_valido.empty:
-                    st_recuperado = str(df_maq_valido.iloc[-1]['Status'])
-                else:
-                    st_recuperado = "PRODUZINDO"
-                
+                st_recuperado = str(df_maq_valido.iloc[-1]['Status']) if not df_maq_valido.empty else "PRODUZINDO"
                 st_restaurado = f"{st_recuperado} [Energia Restaurada]"
-                
-                novas_linhas.append({
-                    "Setor": setor,
-                    "Maquina": maq_full,
-                    "Operador": st.session_state.get('operador', 'SISTEMA'),
-                    "Status": st_restaurado,
-                    "Hora": hora_br_str
-                })
+                novas_linhas.append({"Setor": setor, "Maquina": maq_full, "Operador": st.session_state.get('operador', 'SISTEMA'), "Status": st_restaurado, "Hora": hora_br_str})
                 
     if novas_linhas:
         df = pd.concat([df, pd.DataFrame(novas_linhas)], ignore_index=True)
         df.to_csv(ARQUIVO_DADOS, index=False)
-
 
 # --- RESTANTE DAS FUNÇÕES ARMARIOS E UI... ---
 def inicializar_armarios():
@@ -222,8 +201,7 @@ def inicializar_armarios():
         dados = []
         armarios = ["AFC 1", "AFC 2", "RTF 1", "RTF 2"]
         for arm in armarios:
-            for i in range(1, 25): # 6x4 = 24 posições
-                dados.append({"Armario": arm, "Posicao": i, "Ordem": "", "Item": "", "Status": "VAZIO", "Data_Hora": ""})
+            for i in range(1, 25): dados.append({"Armario": arm, "Posicao": i, "Ordem": "", "Item": "", "Status": "VAZIO", "Data_Hora": ""})
         pd.DataFrame(dados).to_csv(ARQUIVO_ARMARIOS, index=False)
 
 def dar_baixa_armario(ordem_alvo):
@@ -234,7 +212,6 @@ def dar_baixa_armario(ordem_alvo):
         if 'Item' not in df_arm.columns: df_arm['Item'] = ""
         df_arm['Ordem_busca'] = df_arm['Ordem'].astype(str).str.strip().str.upper().str.replace(".0", "", regex=False)
         idx_ordem = df_arm[df_arm['Ordem_busca'] == ordem_formatada].index
-        
         if not idx_ordem.empty:
             df_arm.loc[idx_ordem, ['Ordem', 'Item', 'Status', 'Data_Hora']] = ["", "", 'VAZIO', datetime.now(FUSO_BR).strftime("%H:%M")]
             df_arm = df_arm.drop(columns=['Ordem_busca'])
@@ -254,9 +231,7 @@ def extrair_tags_producao(status_str):
     tags = ""
     for marcador in ["[Item Atual:", "[Novo Item:", "[Ordem:", "[Item:", "[Pçs/Hora:", "[Obs:"]:
         if marcador in status_str:
-            try: 
-                valor = status_str.split(marcador)[1].split(']')[0].strip()
-                tags += f" {marcador} {valor}]"
+            try: tags += f" {marcador} {status_str.split(marcador)[1].split(']')[0].strip()}]"
             except: pass
     return tags.strip()
 
@@ -287,7 +262,7 @@ def mudar_tela(nome_tela):
     st.rerun()
 
 def ler_status_atual():
-    verificar_virada_turno() # Tenta cortar setups presos
+    verificar_virada_turno()
     if not os.path.exists(ARQUIVO_DADOS): return {}
     try:
         df = pd.read_csv(ARQUIVO_DADOS)
@@ -298,7 +273,7 @@ def ler_status_atual():
         df_ultimo = df.drop_duplicates(subset=['Maquina'], keep='last')
         for _, row in df_ultimo.iterrows():
             maq = row['Maquina']
-            st_raw = str(row['Status']).replace(" [Energia Restaurada]", "") # limpa flag visual
+            st_raw = str(row['Status']).replace(" [Energia Restaurada]", "") 
             
             if "[AGENDADO:" in st_raw:
                 try:
@@ -314,8 +289,7 @@ def ler_status_atual():
                         tags = extrair_tags_producao(st_raw)
                         status_calculado[maq] = f"AGUARDANDO PREPARADOR{sug} {tags}".strip()
                 except: status_calculado[maq] = st_raw
-            else:
-                status_calculado[maq] = st_raw
+            else: status_calculado[maq] = st_raw
         return status_calculado
     except: return {}
 
@@ -382,8 +356,7 @@ def painel_controle_maquina(maq_id, setor):
         
         is_setup_ativo = "PREPARANDO" in status_atual or "SEQUÊNCIA" in status_atual
         
-        if "AGUARDANDO PREPARADOR" in status_atual or "AGENDADO" in status_atual or "AGENDADA" in status_atual:
-            st.session_state[flow_key] = "acoes_espera"
+        if "AGUARDANDO PREPARADOR" in status_atual or "AGENDADO" in status_atual or "AGENDADA" in status_atual: st.session_state[flow_key] = "acoes_espera"
         
         if is_setup_ativo and st.session_state[flow_key] == "pergunta":
             with st.form(f"form_fast_track_{maq_id}"):
@@ -405,25 +378,19 @@ def painel_controle_maquina(maq_id, setor):
                     tags_prod = tags_prod.replace("[Item Atual:", "[Item:")
                     
                     st_final = f"PRODUZINDO {tags_prod}".strip()
-                    if obs_fast.strip():
-                        st_final += f" [Obs: {obs_fast.strip()}]"
+                    if obs_fast.strip(): st_final += f" [Obs: {obs_fast.strip()}]"
                     
                     if "[Ordem:" in st_atual:
                         op_ext = st_atual.split("[Ordem:")[1].split("]")[0].strip()
                         dar_baixa_armario(op_ext)
                     
                     salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
-                    
                     st.session_state['maq_ativa'] = None
                     del st.session_state[flow_key]
                     st.rerun()
                     
-                if btn_assumir:
-                    st.session_state[flow_key] = "assumir_prep"
-                    st.rerun()
-                if btn_alt:
-                    st.session_state[flow_key] = "mudanca_status"
-                    st.rerun()
+                if btn_assumir: st.session_state[flow_key] = "assumir_prep"; st.rerun()
+                if btn_alt: st.session_state[flow_key] = "mudanca_status"; st.rerun()
 
         elif st.session_state[flow_key] == "assumir_prep":
             with st.form(f"form_assumir_{maq_id}"):
@@ -475,15 +442,9 @@ def painel_controle_maquina(maq_id, setor):
                     st.session_state[flow_key] = "detalhe_prod"
                     st.rerun()
                     
-            if st.button("🟡 PREPARAÇÃO / SEQUÊNCIA", key=f"st_prep_{maq_id}", use_container_width=True):
-                st.session_state[flow_key] = "detalhe_prep"
-                st.rerun()
-            if st.button("🛠️ MANUTENÇÃO", key=f"st_man_{maq_id}", use_container_width=True):
-                st.session_state[flow_key] = "detalhe_man"
-                st.rerun()
-            if st.button("🔴 PARADA", key=f"st_par_{maq_id}", use_container_width=True):
-                st.session_state[flow_key] = "detalhe_parada"
-                st.rerun()
+            if st.button("🟡 PREPARAÇÃO / SEQUÊNCIA", key=f"st_prep_{maq_id}", use_container_width=True): st.session_state[flow_key] = "detalhe_prep"; st.rerun()
+            if st.button("🛠️ MANUTENÇÃO", key=f"st_man_{maq_id}", use_container_width=True): st.session_state[flow_key] = "detalhe_man"; st.rerun()
+            if st.button("🔴 PARADA", key=f"st_par_{maq_id}", use_container_width=True): st.session_state[flow_key] = "detalhe_parada"; st.rerun()
 
         elif st.session_state[flow_key] == "detalhe_prod":
             with st.form(f"form_prod_{maq_id}"):
@@ -530,8 +491,7 @@ def painel_controle_maquina(maq_id, setor):
                     hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                     mot_final = motivo
                     if detalhe.strip(): mot_final += f" - {detalhe.strip()}"
-                    if op_faltante.strip() and motivo == "Falta de Operador":
-                        mot_final += f" [Op. Faltante: {op_faltante.strip().upper()}]"
+                    if op_faltante.strip() and motivo == "Falta de Operador": mot_final += f" [Op. Faltante: {op_faltante.strip().upper()}]"
                         
                     st_final = f"PARADA - Motivo: {mot_final}"
                     salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
@@ -575,8 +535,7 @@ def painel_controle_maquina(maq_id, setor):
                             if tipo_prep == "HASTE" and troca_diametro: st_final += " (C/ Diâmetro)"
                             if troca_rebolo: st_final += " (C/ Rebolo)"
                             
-                        if prep_sugerido.strip():
-                            st_final += f" [Prep. Sugerido: {prep_sugerido.strip().upper()}]"
+                        if prep_sugerido.strip(): st_final += f" [Prep. Sugerido: {prep_sugerido.strip().upper()}]"
 
                         if is_agendado and hora_relatorio.strip(): st_final += f" [AGENDADO:{hora_relatorio.strip()}]"
                         else: st_final = f"AGUARDANDO PREPARADOR - {st_final}"
@@ -698,8 +657,6 @@ def tela_login():
             }
             if cod in codigos_validos and nome:
                 turno_val, setor_val, perfil_val = codigos_validos[cod]
-                
-                # --- BLOQUEIO POR HORÁRIO ---
                 if perfil_val != "adm":
                     turno_atual_real = turno_atual_horario()
                     if turno_val != turno_atual_real:
@@ -717,14 +674,12 @@ def tela_login():
                 cookie_manager.set("user_turno", turno_val, key="set_turno")
                 cookie_manager.set("user_setor", setor_val, key="set_setor")
                 cookie_manager.set("user_perfil", perfil_val, key="set_perfil")
-                
                 time.sleep(0.5)
                 mudar_tela('menu')
             else: st.error("⚠️ Credenciais inválidas.")
 
 def tela_menu():
     perfil = st.session_state['perfil']
-    
     if perfil == 'adm': setor_txt = "Gerência"
     elif st.session_state['setor_usuario'] == 'TECNICO': setor_txt = "Técnico (Geral)"
     elif perfil == 'preset': setor_txt = "Pré-Set"
@@ -747,31 +702,26 @@ def tela_menu():
         if st.button("📋 RELATÓRIO GERAL CONSOLIDADO", use_container_width=True): mudar_tela('relatorio')
         if st.button("📊 HISTÓRICOS E EXPORTAÇÕES", use_container_width=True): mudar_tela('historico')
         if st.button("✏️ GERENCIAR BANCO DE DADOS", use_container_width=True): mudar_tela('editar')
-        
     elif perfil == 'preset':
         if st.button("🗄️ GERENCIAR ARMÁRIOS", use_container_width=True, type="primary"): mudar_tela('armarios')
         if st.button("🔍 VER INCIDÊNCIAS DO SETOR", use_container_width=True): mudar_tela('checkup')
-        
     elif perfil == 'preparador':
         if st.session_state['setor_usuario'] in ['AFC', 'TECNICO']:
             if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True, type="primary"): mudar_tela('afc')
         if st.session_state['setor_usuario'] in ['RTF', 'TECNICO']:
             if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True, type="primary"): mudar_tela('rtf')
-            
         if st.button("🗄️ VISÃO DOS ARMÁRIOS", use_container_width=True): mudar_tela('armarios')
         if st.button("🔍 INCIDÊNCIAS DO SETOR", use_container_width=True): mudar_tela('checkup')
         if st.button("⚡ MINHAS INCIDÊNCIAS", use_container_width=True, type="primary"): mudar_tela('minhas_incidencias')
         if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
         if st.button("📋 RELATÓRIO DE TURNO", use_container_width=True): mudar_tela('relatorio')
         if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
-
     else:
         if st.button("🔍 INCIDÊNCIAS DO SETOR", use_container_width=True): mudar_tela('checkup')
         if st.button("📋 FECHAMENTO DE TURNO", use_container_width=True): mudar_tela('relatorio')
         if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
     
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
-    
     if st.button("🚪 Encerramento de Sessão (Logout)", use_container_width=True):
         st.session_state['logout_realizado'] = True
         st.session_state['operador'], st.session_state['turno'], st.session_state['setor_usuario'], st.session_state['perfil'] = '', '', '', ''
@@ -781,8 +731,7 @@ def tela_menu():
             if cookie_manager.get("user_setor"): cookie_manager.delete("user_setor", key="del_setor")
             if cookie_manager.get("user_perfil"): cookie_manager.delete("user_perfil", key="del_perfil")
         except: pass 
-        time.sleep(0.5)
-        mudar_tela('login')
+        time.sleep(0.5); mudar_tela('login')
 
 def render_grid_vertical(lista_maquinas, setor, status_dict):
     for maq in ordenar_maquinas(lista_maquinas):
@@ -872,13 +821,11 @@ def tela_afc():
     if col_em1.button("🔴 Parar todas (AFC)", use_container_width=True):
         registrar_queda_energia("AFC")
         st.success("✅ Todas as afiadoras registradas como PARADAS!")
-        time.sleep(1)
-        st.rerun()
+        time.sleep(1); st.rerun()
     if col_em2.button("🔄 Restaurar Status", use_container_width=True):
         restaurar_queda_energia("AFC")
         st.success("✅ Status das afiadoras restaurado!")
-        time.sleep(1)
-        st.rerun()
+        time.sleep(1); st.rerun()
         
     status_dict = ler_status_atual()
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] == 'AFC': painel_controle_maquina(st.session_state['maq_ativa'], 'AFC')
@@ -911,13 +858,11 @@ def tela_rtf():
     if col_em1.button("🔴 Parar todas (RTF)", use_container_width=True):
         registrar_queda_energia("RTF")
         st.success("✅ Todas as retíficas registradas como PARADAS!")
-        time.sleep(1)
-        st.rerun()
+        time.sleep(1); st.rerun()
     if col_em2.button("🔄 Restaurar Status", use_container_width=True):
         restaurar_queda_energia("RTF")
         st.success("✅ Status das retíficas restaurado!")
-        time.sleep(1)
-        st.rerun()
+        time.sleep(1); st.rerun()
 
     status_dict = ler_status_atual()
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] == 'RTF': painel_controle_maquina(st.session_state['maq_ativa'], 'RTF')
@@ -929,7 +874,6 @@ def tela_rtf():
         if st.button("📍 Fila 4", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_4'; st.rerun()
         
         st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
-        
         if st.button("⚫ Centerless (6 e 17)", use_container_width=True): st.session_state['celula_selecionada'] = 'centerless'; st.rerun()
         if st.button("🟤 Facetadoras (3 e 4)", use_container_width=True): st.session_state['celula_selecionada'] = 'facetadoras'; st.rerun()
     else:
@@ -953,8 +897,7 @@ def tela_equipe():
                 if nome:
                     salvar_csv({"Tipo": tipo, "Nome": nome.upper()}, ARQUIVO_EQUIPE)
                     st.success(f"✅ {nome.upper()} registrado como {tipo}!")
-                    time.sleep(0.5)
-                    st.rerun()
+                    time.sleep(0.5); st.rerun()
     st.divider()
     if os.path.exists(ARQUIVO_EQUIPE):
         df_eq = pd.read_csv(ARQUIVO_EQUIPE)
@@ -973,8 +916,7 @@ def tela_editar():
             if os.path.exists(ARQUIVO_DADOS): os.remove(ARQUIVO_DADOS)
             if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
             st.success("✅ Banco de dados apagado com sucesso!")
-            time.sleep(0.5)
-            st.rerun()
+            time.sleep(0.5); st.rerun()
     else: col_salvar = st.container()
         
     if os.path.exists(ARQUIVO_DADOS):
@@ -982,51 +924,35 @@ def tela_editar():
         idx_ultimos = df_maq.drop_duplicates(subset=['Maquina'], keep='last').index
         df_editar = df_maq.loc[idx_ultimos].copy()
         
-        # Filtro automático por setor
         if setor_usuario == 'AFC': df_editar = df_editar[df_editar['Setor'] == 'AFC']
         elif setor_usuario == 'RTF': df_editar = df_editar[df_editar['Setor'] == 'RTF']
             
         st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Altere o Horário ou o Status se houver algum erro de digitação. Somente o <b>último apontamento</b> de cada máquina está sendo exibido.</p>", unsafe_allow_html=True)
         
-        # Campo de busca de máquina
         busca_maq = st.text_input("🔍 Pesquisar Máquina:", placeholder="Digite o número (ex: 6-868, 30-161...)")
-        if busca_maq.strip():
-            df_editar = df_editar[df_editar['Maquina'].str.contains(busca_maq.strip(), case=False, na=False)]
+        if busca_maq.strip(): df_editar = df_editar[df_editar['Maquina'].str.contains(busca_maq.strip(), case=False, na=False)]
         
         df_editado = st.data_editor(df_editar, num_rows="dynamic", use_container_width=True)
         
         if col_salvar.button("💾 Salvar Alterações", use_container_width=True, type="primary"):
-            # 1. Identificar linhas que foram apagadas no editor
             indices_originais = df_editar.index.tolist()
             indices_mantidos = df_editado.index.tolist()
             indices_apagados = [i for i in indices_originais if i not in indices_mantidos]
             
-            # Remove as apagadas do DataFrame original
-            if indices_apagados:
-                df_maq = df_maq.drop(index=indices_apagados)
+            if indices_apagados: df_maq = df_maq.drop(index=indices_apagados)
             
-            # 2. Atualizar as modificadas ou adicionar novas
             for idx, row in df_editado.iterrows():
                 if idx in df_maq.index:
                     df_maq.at[idx, 'Status'] = str(row['Status'])
                     df_maq.at[idx, 'Hora'] = str(row['Hora']).strip()
                 else:
-                    # Caso o usuário tenha adicionado uma linha nova
-                    nova_linha = pd.DataFrame([{
-                        "Setor": row.get('Setor', ''), 
-                        "Maquina": row.get('Maquina', ''), 
-                        "Operador": row.get('Operador', ''), 
-                        "Status": str(row.get('Status', '')), 
-                        "Hora": str(row.get('Hora', '')).strip()
-                    }])
+                    nova_linha = pd.DataFrame([{"Setor": row.get('Setor', ''), "Maquina": row.get('Maquina', ''), "Operador": row.get('Operador', ''), "Status": str(row.get('Status', '')), "Hora": str(row.get('Hora', '')).strip()}])
                     df_maq = pd.concat([df_maq, nova_linha], ignore_index=True)
                     
             df_maq.to_csv(ARQUIVO_DADOS, index=False)
             st.success("✨ Banco de dados atualizado com sucesso!")
-            time.sleep(0.5)
-            st.rerun()
-    else: 
-        st.info("Nenhum apontamento encontrado no sistema.")
+            time.sleep(0.5); st.rerun()
+    else: st.info("Nenhum apontamento encontrado no sistema.")
 
 def tela_historico():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
@@ -1070,7 +996,6 @@ def tela_relatorio():
 
         # --- 1. RELATÓRIO PADRÃO (LIMPO) ---
         texto_padrao = f"*PLANTA AFIACAO E RETIFICA {data_hoje}*\n\n"
-        
         texto_padrao += "*OCORRÊNCIAS DE QUEDA DE ENERGIA*\n\n"
         if not df_completo.empty:
             df_energia = df_completo[df_completo['Status'].str.contains('Energia', na=False, case=False)]
@@ -1083,8 +1008,7 @@ def tela_relatorio():
                     duração = format_tempo(diff_mins(h_q, h_r)) if h_r != "Sem retorno" else "Em andamento"
                     texto_padrao += f"- Queda registrada às {h_q} | Restaurada às {h_r} (Duração: {duração})\n"
                 texto_padrao += "\n"
-            else:
-                texto_padrao += "Nenhuma queda de energia registrada.\n\n"
+            else: texto_padrao += "Nenhuma queda de energia registrada.\n\n"
         
         texto_padrao += "*MAQUINAS EM MANUTENÇAO*\n\n"
         manutencao_rows = df_ultimo_geral[df_ultimo_geral['Status'].str.contains('MANUTENÇÃO', na=False)]
@@ -1106,17 +1030,14 @@ def tela_relatorio():
             texto_padrao += "\n"
 
         texto_padrao += "*PREPARAÇÕES/AJUSTES*\n\n"
-        
         def processar_padrao(df_all, maquinas, prefixo_setor):
             linhas = []
             for maq in maquinas:
                 if not maq.startswith(prefixo_setor): continue
                 df_maq = df_all[df_all['Maquina'] == maq]
                 ciclo_ativo, status_limpo, hora_prep, preparador = False, "", "", ""
-                
                 for _, row in df_maq.iterrows():
-                    st_val = str(row['Status'])
-                    h_val = str(row['Hora'])
+                    st_val, h_val = str(row['Status']), str(row['Hora'])
                     if "Energia Restaurada" in st_val: continue
                     
                     prep_atual = ""
@@ -1138,8 +1059,7 @@ def tela_relatorio():
                         status_limpo = "PREPARANDO"
                     elif ("PRODUZINDO" in st_val or "PARADA" in st_val or "MANUTENÇÃO" in st_val) and ciclo_ativo:
                         if "Queda de Energia" in st_val: continue
-                        num_maq = maq.replace(f"{prefixo_setor} ", "")
-                        str_prep = f" - {preparador}" if preparador else ""
+                        num_maq, str_prep = maq.replace(f"{prefixo_setor} ", ""), f" - {preparador}" if preparador else ""
                         if "PRODUZINDO" in st_val:
                             status_final = "MÁQUINA LIBERADA"
                             if "[Obs:" in st_val:
@@ -1152,8 +1072,7 @@ def tela_relatorio():
                         ciclo_ativo, preparador = False, ""
                         
                 if ciclo_ativo:
-                    num_maq = maq.replace(f"{prefixo_setor} ", "")
-                    str_prep = f" - {preparador}" if preparador else ""
+                    num_maq, str_prep = maq.replace(f"{prefixo_setor} ", ""), f" - {preparador}" if preparador else ""
                     tags_prod = extrair_tags_producao(df_maq.iloc[-1]['Status'])
                     linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_limpo}{str_prep} {tags_prod}\n\n"))
             linhas.sort(key=lambda x: get_sort_key(x[0]))
@@ -1180,12 +1099,13 @@ def tela_relatorio():
             texto_saida = []
             def salvar_ciclo(maq_num, h_agenda, h_inicio, h_assumido, h_fim, p1, p2, st_final=""):
                 if h_inicio is None: return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Aguardando preparador desde as {h_agenda}.\nPreparador sugerido: AGUARDANDO OPERADOR\n\n")
-                t_espera = format_tempo(diff_mins(h_agenda, h_inicio)) if h_agenda else "0 minutos"
+                
+                t_espera_mins = diff_mins(h_agenda, h_inicio, eh_espera=True) if h_agenda else 0
+                t_espera = format_tempo(t_espera_mins)
                 h_conclusao = h_fim if h_fim else datetime.now(FUSO_BR).strftime("%H:%M")
                 txt_maq = f"Máquina {maq_num}: Aguardou {t_espera} até o preparador iniciar.\n"
                 
-                is_finished = "PRODUZINDO" in st_final
-                is_interrompido = "PARADA" in st_final or "MANUTENÇÃO" in st_final
+                is_finished, is_interrompido = "PRODUZINDO" in st_final, "PARADA" in st_final or "MANUTENÇÃO" in st_final
                 obs_texto = ""
                 if "[Obs:" in st_final:
                     try: obs_texto = f" | Obs: {st_final.split('[Obs:')[1].split(']')[0].strip()}"
@@ -1210,8 +1130,7 @@ def tela_relatorio():
                 df_hist = df_all[df_all['Maquina'] == maq]
                 ciclo_ativo, hora_agenda, hora_inicio, hora_assumido, hora_fim, prep_1, prep_2 = False, None, None, None, None, None, None
                 for _, h_row in df_hist.iterrows():
-                    st_val = str(h_row['Status']).upper()
-                    h_val = str(h_row['Hora'])
+                    st_val, h_val = str(h_row['Status']).upper(), str(h_row['Hora'])
                     if "ENERGIA RESTAURADA" in st_val: continue
                     
                     if "PREPARAÇÃO" in st_val or "SEQUÊNCIA" in st_val or "AGUARDANDO" in st_val:
@@ -1281,8 +1200,7 @@ def tela_relatorio():
             
             if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
             st.success("✨ Turno encerrado! Relatórios salvos no histórico e banco pronto para o próximo turno.")
-            time.sleep(2)
-            st.rerun()
+            time.sleep(2); st.rerun()
 
 # --- ROTEADOR ---
 if st.session_state['tela_atual'] == 'login': tela_login()
@@ -1295,4 +1213,3 @@ elif st.session_state['tela_atual'] == 'rtf': tela_rtf()
 elif st.session_state['tela_atual'] == 'equipe': tela_equipe()
 elif st.session_state['tela_atual'] == 'editar': tela_editar()
 elif st.session_state['tela_atual'] == 'relatorio': tela_relatorio()
-elif st.session_state['tela_atual'] == 'armarios': tela_armarios()
