@@ -964,7 +964,11 @@ def tela_equipe():
 def tela_editar():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### ✏️ Correção de Apontamentos")
-    if st.session_state['perfil'] == 'adm':
+    
+    perfil = st.session_state['perfil']
+    setor_usuario = st.session_state['setor_usuario']
+    
+    if perfil == 'adm':
         col_salvar, col_apagar = st.columns([2, 1])
         if col_apagar.button("🗑️ ZERAR DADOS DO TURNO", use_container_width=True):
             if os.path.exists(ARQUIVO_DADOS): os.remove(ARQUIVO_DADOS)
@@ -972,22 +976,44 @@ def tela_editar():
             st.success("✅ Banco de dados apagado com sucesso!")
             time.sleep(0.5)
             st.rerun()
-    else: col_salvar = st.container()
+    else: 
+        col_salvar = st.container()
         
     if os.path.exists(ARQUIVO_DADOS):
         df_maq = pd.read_csv(ARQUIVO_DADOS)
         idx_ultimos = df_maq.drop_duplicates(subset=['Maquina'], keep='last').index
         df_editar = df_maq.loc[idx_ultimos].copy()
+        
+        # --- REQUISITO 1: Filtro automático por setor ---
+        if setor_usuario == 'AFC':
+            df_editar = df_editar[df_editar['Setor'] == 'AFC']
+        elif setor_usuario == 'RTF':
+            df_editar = df_editar[df_editar['Setor'] == 'RTF']
+            
+        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Altere o Horário ou o Status se houver algum erro de digitação. Somente o <b>último apontamento</b> de cada máquina está sendo exibido.</p>", unsafe_allow_html=True)
+        
+        # --- REQUISITO 2: Campo de busca para filtrar a máquina ---
+        busca_maq = st.text_input("🔍 Pesquisar Máquina:", placeholder="Digite o número (ex: 6-868, 30-161...)")
+        if busca_maq.strip():
+            # Filtra o dataframe exibido contendo o texto pesquisado
+            df_editar = df_editar[df_editar['Maquina'].str.contains(busca_maq.strip(), case=False, na=False)]
+        
+        # Renderiza a tabela editável
         df_editado = st.data_editor(df_editar, num_rows="dynamic", use_container_width=True)
+        
         if col_salvar.button("💾 Salvar Alterações", use_container_width=True, type="primary"):
             for idx, row in df_editado.iterrows():
+                # O índice garante que a linha correta seja atualizada no banco geral
                 if idx in df_maq.index:
                     df_maq.at[idx, 'Status'] = str(row['Status'])
                     df_maq.at[idx, 'Hora'] = str(row['Hora']).strip()
+                    
             df_maq.to_csv(ARQUIVO_DADOS, index=False)
             st.success("✨ Banco de dados atualizado!")
             time.sleep(0.5)
             st.rerun()
+    else: 
+        st.info("Nenhum apontamento encontrado no sistema.")
 
 def tela_historico():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
