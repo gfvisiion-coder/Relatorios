@@ -77,14 +77,12 @@ ARQUIVO_ARMARIOS = "banco_armarios.csv"
 
 # --- FUNÇÕES UTILITÁRIAS ---
 def turno_atual_horario():
-    # Mantém a regra cravada de turno só para o corte automático do sistema
     agora = datetime.now(FUSO_BR).time()
     if dtime(6, 30) <= agora < dtime(14, 30): return "1° TURNO"
     elif dtime(14, 30) <= agora < dtime(22, 30): return "2° TURNO"
     else: return "3° TURNO"
 
 def pode_logar(turno_val):
-    # Janelas flexíveis que permitem overlap entre os turnos no momento de logar
     agora = datetime.now(FUSO_BR).time()
     if turno_val == "1° TURNO": return dtime(6, 20) <= agora <= dtime(14, 50)
     if turno_val == "2° TURNO": return dtime(14, 20) <= agora <= dtime(22, 50)
@@ -95,18 +93,15 @@ def diff_mins(h_inicio, h_fim, eh_espera=False):
     try:
         t1 = datetime.strptime(h_inicio, "%H:%M")
         t2 = datetime.strptime(h_fim, "%H:%M")
-        
         diff = (t2 - t1).total_seconds() / 60
-        
         if eh_espera:
             if diff < -720: return int(diff + 1440)
-            elif diff < 0: return 0 # Se adiantou o setup, considera 0
+            elif diff < 0: return 0
             return int(diff)
         else:
             if diff < 0: return int(diff + 1440)
             return int(diff)
-    except: 
-        return 0
+    except: return 0
 
 def format_tempo(mins):
     if mins <= 0: return "0 minutos"
@@ -146,7 +141,6 @@ def verificar_virada_turno():
         st_atual = str(ultimo_registro['Status'])
         hora_registro = str(ultimo_registro['Hora'])
         
-        # SÓ CORTA SE NÃO FOR UM AGENDAMENTO FUTURO
         if ("PREPARAÇÃO" in st_atual or "PREPARANDO" in st_atual or "SEQUÊNCIA" in st_atual) and ("[AGENDADO:" not in st_atual):
             mins_passados = diff_mins(hora_registro, datetime.now(FUSO_BR).strftime("%H:%M"))
             
@@ -575,17 +569,41 @@ def painel_controle_maquina(maq_id, setor):
                 is_guia_ou_seq = "GUIA" in status_atual or "SEQUÊNCIA" in status_atual
                 
                 st.markdown("📦 **Dados da Preparação**")
-                nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", placeholder="Ex: 987654")
-                
-                if not is_guia_ou_seq: novo_item_input = st.text_input("Novo Item (Entrando):", placeholder="Ex: 313324")
+                if not is_guia_ou_seq:
+                    nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", placeholder="Ex: 987654")
+                    novo_item_input = st.text_input("Novo Item (Entrando):", placeholder="Ex: 313324")
                 else:
+                    nova_ordem_input = ""
                     novo_item_input = "" 
-                    st.info("ℹ️ Preparação de Guia/Sequência: O Item atual será herdado automaticamente.")
+                    st.info("ℹ️ Preparação de Guia/Sequência: A Ordem e o Item atuais serão mantidos.")
+                
+                st.markdown("⏰ **Adiar Agendamento (Opcional)**")
+                col_adiar1, col_adiar2 = st.columns([3, 2])
+                novo_horario_adiar = col_adiar1.text_input("Novo Horário:", placeholder="Ex: 14:30")
+                btn_adiar = col_adiar2.form_submit_button("⏳ Adiar Agendamento")
+                
+                st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
                 
                 c1, c2 = st.columns(2)
                 btn_sugerir = c1.form_submit_button("💡 Apenas Sugerir")
                 btn_iniciar = c2.form_submit_button("🚀 INICIAR PREPARAÇÃO", type="primary")
                 
+                if btn_adiar:
+                    if novo_horario_adiar.strip():
+                        info_atual = obter_info_maquina(maq_id, setor)
+                        if info_atual:
+                            raw_st = str(info_atual['Status'])
+                            if "[AGENDADO:" in raw_st: raw_st = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{novo_horario_adiar.strip()}]", raw_st)
+                            else: raw_st += f" [AGENDADO:{novo_horario_adiar.strip()}]"
+                            
+                            salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": raw_st, "Hora": novo_horario_adiar.strip()}, ARQUIVO_DADOS)
+                            st.session_state['maq_ativa'] = None
+                            del st.session_state[flow_key]
+                            st.success(f"✅ Agendamento adiado para {novo_horario_adiar.strip()}!")
+                            time.sleep(0.5)
+                            st.rerun()
+                    else: st.error("⚠️ Informe o novo horário para adiar!")
+                    
                 if btn_sugerir:
                     if nome_input.strip():
                         info_atual = obter_info_maquina(maq_id, setor)
@@ -605,31 +623,32 @@ def painel_controle_maquina(maq_id, setor):
                     else: st.error("⚠️ Informe um nome para sugerir!")
                         
                 if btn_iniciar:
-                    if not nova_ordem_input.strip() or (not is_guia_ou_seq and not novo_item_input.strip()):
-                        st.error("⚠️ Para INICIAR a preparação, informe a Nova Ordem (e o Item)!")
+                    if not is_guia_ou_seq and (not nova_ordem_input.strip() or not novo_item_input.strip()):
+                        st.error("⚠️ Para INICIAR a preparação, informe a Nova Ordem e o Item!")
                     else:
                         nome_final = nome_input if nome_input.strip() else st.session_state['operador']
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                         
                         info_atual = obter_info_maquina(maq_id, setor)
                         tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
-                        tags_prod = re.sub(r' \[Ordem:.*?\]', '', tags_prod) 
                         
                         if not is_guia_ou_seq:
+                            tags_prod = re.sub(r' \[Ordem:.*?\]', '', tags_prod) 
                             tags_prod = re.sub(r' \[Novo Item:.*?\]', '', tags_prod) 
                             tags_prod = re.sub(r' \[Item:.*?\]', '', tags_prod) 
                             tags_prod = re.sub(r' \[Item Atual:.*?\]', '', tags_prod) 
                         
                         st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}] {tags_prod}".strip()
-                        st_andamento += f" [Ordem: {nova_ordem_input.strip().upper()}]"
-                        if not is_guia_ou_seq and novo_item_input.strip(): st_andamento += f" [Novo Item: {novo_item_input.strip().upper()}]"
+                        if not is_guia_ou_seq:
+                            st_andamento += f" [Ordem: {nova_ordem_input.strip().upper()}]"
+                            st_andamento += f" [Novo Item: {novo_item_input.strip().upper()}]"
+                            dar_baixa_armario(nova_ordem_input.strip())
                             
-                        dar_baixa_armario(nova_ordem_input.strip())
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
                         
-                        if is_guia_ou_seq: st.success("✅ Preparação de Guia/Sequência iniciada! Timer ativado.")
+                        if is_guia_ou_seq: st.success("✅ Preparação iniciada! Setup mantido.")
                         else: st.success("✅ Preparação iniciada! Ordem liberada do armário. Timer ativado.")
                         time.sleep(0.5)
                         st.rerun()
@@ -667,8 +686,6 @@ def tela_login():
             }
             if cod in codigos_validos and nome:
                 turno_val, setor_val, perfil_val = codigos_validos[cod]
-                
-                # --- BLOQUEIO POR HORÁRIO COM TOLERÂNCIA ---
                 if perfil_val != "adm":
                     if not pode_logar(turno_val):
                         st.error(f"🚫 Acesso Negado: Fora do horário permitido para o {turno_val}.")
@@ -685,7 +702,6 @@ def tela_login():
                 cookie_manager.set("user_turno", turno_val, key="set_turno")
                 cookie_manager.set("user_setor", setor_val, key="set_setor")
                 cookie_manager.set("user_perfil", perfil_val, key="set_perfil")
-                
                 time.sleep(0.5)
                 mudar_tela('menu')
             else: st.error("⚠️ Credenciais inválidas.")
@@ -1014,6 +1030,7 @@ def tela_relatorio():
             if not df_energia.empty:
                 quedas = df_energia[df_energia['Status'].str.contains("PARADA")]['Hora'].unique()
                 retornos = df_energia[df_energia['Status'].str.contains("Restaurada")]['Hora'].unique()
+                
                 for h_q in quedas:
                     h_r = retornos[0] if len(retornos) > 0 else "Sem retorno"
                     duração = format_tempo(diff_mins(h_q, h_r)) if h_r != "Sem retorno" else "Em andamento"
