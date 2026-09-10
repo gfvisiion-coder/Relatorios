@@ -876,6 +876,48 @@ def tela_afc():
             
         elif st.session_state['celula_selecionada'] == 'fila_4':
             render_grid_vertical(["30-161", "32-081", "34-132", "36-084", "38-596", "40-142"], "AFC", status_dict)
+
+def tela_rtf():
+    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    st.markdown("#### ⚙️ Setor Retífica — Filas")
+    status_dict = ler_status_atual()
+    
+    if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] == 'RTF':
+        painel_controle_maquina(st.session_state['maq_ativa'], 'RTF')
+    
+    if st.session_state['celula_selecionada'] is None:
+        if st.button("📍 Fila 1", use_container_width=True): 
+            st.session_state['celula_selecionada'] = 'fila_1'
+            st.rerun()
+        if st.button("📍 Fila 2", use_container_width=True): 
+            st.session_state['celula_selecionada'] = 'fila_2'
+            st.rerun()
+        if st.button("📍 Fila 3", use_container_width=True): 
+            st.session_state['celula_selecionada'] = 'fila_3'
+            st.rerun()
+        if st.button("📍 Fila 4", use_container_width=True): 
+            st.session_state['celula_selecionada'] = 'fila_4'
+            st.rerun()
+    else:
+        if st.button("⬅️ Trocar de Fila"): 
+            st.session_state['celula_selecionada'] = None
+            st.session_state['maq_ativa'] = None
+            st.rerun()
+        
+        st.divider()
+        
+        if st.session_state['celula_selecionada'] == 'fila_1':
+            render_grid_vertical(["5-903", "8-086", "10-817", "12-962", "14-971", "16-183", "19-926", "21-270", "23-753", "25-258", "27-917"], "RTF", status_dict)
+            
+        elif st.session_state['celula_selecionada'] == 'fila_2':
+            render_grid_vertical(["7-267", "9-815", "11-363", "13-969", "15-977", "18-925", "20-927", "22-916", "24-259", "26-260", "28-954"], "RTF", status_dict)
+            
+        elif st.session_state['celula_selecionada'] == 'fila_3':
+            render_grid_vertical(["29-785", "31-806", "33-807", "35-885", "37-857", "39-856"], "RTF", status_dict)
+            
+        elif st.session_state['celula_selecionada'] == 'fila_4':
+            render_grid_vertical(["30-786", "32-918", "34-842", "36-854", "38-881", "40-912", "42-885"], "RTF", status_dict)
+
 def tela_equipe():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### 👥 Gestão de Equipe")
