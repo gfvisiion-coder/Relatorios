@@ -77,10 +77,19 @@ ARQUIVO_ARMARIOS = "banco_armarios.csv"
 
 # --- FUNÇÕES UTILITÁRIAS ---
 def turno_atual_horario():
+    # Mantém a regra cravada de turno só para o corte automático do sistema
     agora = datetime.now(FUSO_BR).time()
     if dtime(6, 30) <= agora < dtime(14, 30): return "1° TURNO"
     elif dtime(14, 30) <= agora < dtime(22, 30): return "2° TURNO"
     else: return "3° TURNO"
+
+def pode_logar(turno_val):
+    # Janelas flexíveis que permitem overlap entre os turnos no momento de logar
+    agora = datetime.now(FUSO_BR).time()
+    if turno_val == "1° TURNO": return dtime(6, 20) <= agora <= dtime(14, 50)
+    if turno_val == "2° TURNO": return dtime(14, 20) <= agora <= dtime(22, 50)
+    if turno_val == "3° TURNO": return agora >= dtime(22, 20) or agora <= dtime(7, 0)
+    return True
 
 def diff_mins(h_inicio, h_fim, eh_espera=False):
     try:
@@ -137,6 +146,7 @@ def verificar_virada_turno():
         st_atual = str(ultimo_registro['Status'])
         hora_registro = str(ultimo_registro['Hora'])
         
+        # SÓ CORTA SE NÃO FOR UM AGENDAMENTO FUTURO
         if ("PREPARAÇÃO" in st_atual or "PREPARANDO" in st_atual or "SEQUÊNCIA" in st_atual) and ("[AGENDADO:" not in st_atual):
             mins_passados = diff_mins(hora_registro, datetime.now(FUSO_BR).strftime("%H:%M"))
             
@@ -657,10 +667,11 @@ def tela_login():
             }
             if cod in codigos_validos and nome:
                 turno_val, setor_val, perfil_val = codigos_validos[cod]
+                
+                # --- BLOQUEIO POR HORÁRIO COM TOLERÂNCIA ---
                 if perfil_val != "adm":
-                    turno_atual_real = turno_atual_horario()
-                    if turno_val != turno_atual_real:
-                        st.error(f"🚫 Acesso Negado: O seu login é do {turno_val}, mas agora estamos no {turno_atual_real}.")
+                    if not pode_logar(turno_val):
+                        st.error(f"🚫 Acesso Negado: Fora do horário permitido para o {turno_val}.")
                         return
                 
                 nome_formatado = nome.upper()
@@ -674,6 +685,7 @@ def tela_login():
                 cookie_manager.set("user_turno", turno_val, key="set_turno")
                 cookie_manager.set("user_setor", setor_val, key="set_setor")
                 cookie_manager.set("user_perfil", perfil_val, key="set_perfil")
+                
                 time.sleep(0.5)
                 mudar_tela('menu')
             else: st.error("⚠️ Credenciais inválidas.")
@@ -1002,7 +1014,6 @@ def tela_relatorio():
             if not df_energia.empty:
                 quedas = df_energia[df_energia['Status'].str.contains("PARADA")]['Hora'].unique()
                 retornos = df_energia[df_energia['Status'].str.contains("Restaurada")]['Hora'].unique()
-                
                 for h_q in quedas:
                     h_r = retornos[0] if len(retornos) > 0 else "Sem retorno"
                     duração = format_tempo(diff_mins(h_q, h_r)) if h_r != "Sem retorno" else "Em andamento"
@@ -1213,3 +1224,4 @@ elif st.session_state['tela_atual'] == 'rtf': tela_rtf()
 elif st.session_state['tela_atual'] == 'equipe': tela_equipe()
 elif st.session_state['tela_atual'] == 'editar': tela_editar()
 elif st.session_state['tela_atual'] == 'relatorio': tela_relatorio()
+elif st.session_state['tela_atual'] == 'armarios': tela_armarios()
