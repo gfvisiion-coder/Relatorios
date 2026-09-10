@@ -838,42 +838,44 @@ def tela_minhas_incidencias():
 
 def tela_afc():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
-    st.markdown("#### ⚙️ Setor Afiação — Células")
+    st.markdown("#### ⚙️ Setor Afiação — Filas")
     status_dict = ler_status_atual()
     
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] == 'AFC':
         painel_controle_maquina(st.session_state['maq_ativa'], 'AFC')
     
     if st.session_state['celula_selecionada'] is None:
-        if st.button("📌 Célula 1 (Bloco Esquerdo)", use_container_width=True): st.session_state['celula_selecionada'] = 'celula_1'; st.rerun()
-        if st.button("📌 Célula 2 (Bloco Direito)", use_container_width=True): st.session_state['celula_selecionada'] = 'celula_2'; st.rerun()
+        if st.button("📍 Fila 1", use_container_width=True): 
+            st.session_state['celula_selecionada'] = 'fila_1'
+            st.rerun()
+        if st.button("📍 Fila 2", use_container_width=True): 
+            st.session_state['celula_selecionada'] = 'fila_2'
+            st.rerun()
+        if st.button("📍 Fila 3", use_container_width=True): 
+            st.session_state['celula_selecionada'] = 'fila_3'
+            st.rerun()
+        if st.button("📍 Fila 4", use_container_width=True): 
+            st.session_state['celula_selecionada'] = 'fila_4'
+            st.rerun()
     else:
-        if st.button("⬅️ Trocar de Célula"): st.session_state['celula_selecionada'] = None; st.session_state['maq_ativa'] = None; st.rerun()
+        if st.button("⬅️ Trocar de Fila"): 
+            st.session_state['celula_selecionada'] = None
+            st.session_state['maq_ativa'] = None
+            st.rerun()
+        
         st.divider()
-        if st.session_state['celula_selecionada'] == 'celula_1':
-            render_grid_vertical(["30-161", "29-078", "32-081", "31-969", "34-132", "33-160", "36-084", "35-131", "38-596", "37-892", "40-142", "39-905", "41-141"], "AFC", status_dict)
-        elif st.session_state['celula_selecionada'] == 'celula_2':
-            render_grid_vertical(["8-247", "6-868", "4-427", "9-088", "10-812", "7-743", "12-367", "11-365", "14-967", "13-964", "16-975", "15-973", "18-957", "17-140", "20-774", "19-760", "22-813", "21-206", "24-761", "23-165", "26-635", "25-209", "28-432", "27-431"], "AFC", status_dict)
-
-def tela_rtf():
-    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
-    st.markdown("#### ⚙️ Setor Retífica — Células")
-    status_dict = ler_status_atual()
-    
-    if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] == 'RTF':
-        painel_controle_maquina(st.session_state['maq_ativa'], 'RTF')
-    
-    if st.session_state['celula_selecionada'] is None:
-        if st.button("⚫ Centerless", use_container_width=True): st.session_state['celula_selecionada'] = 'cent'; st.rerun()
-        if st.button("🟣 Retíficas Padrão", use_container_width=True): st.session_state['celula_selecionada'] = 'rtf_padrao'; st.rerun()
-    else:
-        if st.button("⬅️ Trocar de Célula"): st.session_state['celula_selecionada'] = None; st.session_state['maq_ativa'] = None; st.rerun()
-        st.divider()
-        if st.session_state['celula_selecionada'] == 'cent':
-            render_grid_vertical(["6-6J1", "17-6J1"], "RTF", status_dict)
-        elif st.session_state['celula_selecionada'] == 'rtf_padrao':
-            render_grid_vertical(["30-786", "32-918", "29-785", "4-425", "3-426", "34-842", "31-806", "7-267", "5-903", "36-854", "33-807", "9-815", "8-086", "38-881", "35-885", "11-363", "10-817", "40-912", "37-857", "13-969", "12-962", "42-885", "39-856", "15-977", "14-971", "18-925", "16-183", "20-927", "19-926", "22-916", "21-270", "24-259", "23-753", "26-260", "25-258", "28-954", "27-917"], "RTF", status_dict)
-
+        
+        if st.session_state['celula_selecionada'] == 'fila_1':
+            render_grid_vertical(["6-868", "9-088", "7-743", "11-365", "13-964", "15-973", "17-140", "19-760", "21-206", "23-165", "25-209", "27-431"], "AFC", status_dict)
+            
+        elif st.session_state['celula_selecionada'] == 'fila_2':
+            render_grid_vertical(["8-247", "4-427", "10-812", "12-367", "14-967", "16-975", "18-957", "20-774", "22-813", "24-761", "26-635", "28-432"], "AFC", status_dict)
+            
+        elif st.session_state['celula_selecionada'] == 'fila_3':
+            render_grid_vertical(["29-078", "31-969", "33-160", "35-131", "37-892", "39-905", "41-141"], "AFC", status_dict)
+            
+        elif st.session_state['celula_selecionada'] == 'fila_4':
+            render_grid_vertical(["30-161", "32-081", "34-132", "36-084", "38-596", "40-142"], "AFC", status_dict)
 def tela_equipe():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### 👥 Gestão de Equipe")
