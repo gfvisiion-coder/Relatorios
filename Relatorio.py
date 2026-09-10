@@ -120,6 +120,67 @@ def extrair_tags_producao(status_str):
             except: pass
     return tags.strip()
 
+# --- FUNÇÕES DE QUEDA DE ENERGIA ---
+def registrar_queda_energia(setor):
+    if not os.path.exists(ARQUIVO_DADOS): return
+    df = pd.read_csv(ARQUIVO_DADOS)
+    hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+    
+    # Pega todas as máquinas do setor
+    maquinas_setor = [m for m in df['Maquina'].unique() if m.startswith(setor)]
+    novas_linhas = []
+    
+    for maq in maquinas_setor:
+        df_maq = df[df['Maquina'] == maq]
+        if not df_maq.empty:
+            st_atual = str(df_maq.iloc[-1]['Status'])
+            # Se já não estiver como Queda de Energia, ele para a máquina
+            if "Queda de Energia" not in st_atual:
+                novas_linhas.append({
+                    "Setor": setor,
+                    "Maquina": maq,
+                    "Operador": st.session_state['operador'],
+                    "Status": "PARADA - Motivo: Queda de Energia",
+                    "Hora": hora_br_str
+                })
+                
+    if novas_linhas:
+        df = pd.concat([df, pd.DataFrame(novas_linhas)], ignore_index=True)
+        df.to_csv(ARQUIVO_DADOS, index=False)
+
+def restaurar_queda_energia(setor):
+    if not os.path.exists(ARQUIVO_DADOS): return
+    df = pd.read_csv(ARQUIVO_DADOS)
+    hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+    
+    maquinas_setor = [m for m in df['Maquina'].unique() if m.startswith(setor)]
+    novas_linhas = []
+    
+    for maq in maquinas_setor:
+        df_maq = df[df['Maquina'] == maq]
+        if not df_maq.empty:
+            st_atual = str(df_maq.iloc[-1]['Status'])
+            # Só restaura as máquinas que caíram por conta da energia
+            if "Queda de Energia" in st_atual:
+                # Busca o último status válido antes da queda
+                df_maq_valido = df_maq[~df_maq['Status'].str.contains("Queda de Energia", na=False)]
+                if not df_maq_valido.empty:
+                    st_recuperado = str(df_maq_valido.iloc[-1]['Status'])
+                else:
+                    st_recuperado = "PRODUZINDO" # Fallback de segurança
+                
+                novas_linhas.append({
+                    "Setor": setor,
+                    "Maquina": maq,
+                    "Operador": st.session_state['operador'],
+                    "Status": st_recuperado,
+                    "Hora": hora_br_str
+                })
+                
+    if novas_linhas:
+        df = pd.concat([df, pd.DataFrame(novas_linhas)], ignore_index=True)
+        df.to_csv(ARQUIVO_DADOS, index=False)
+
 # --- INICIALIZAÇÃO DO SESSION STATE ---
 if 'tela_atual' not in st.session_state: st.session_state['tela_atual'] = 'login'
 if 'operador' not in st.session_state: st.session_state['operador'] = ''
@@ -839,6 +900,22 @@ def tela_minhas_incidencias():
 def tela_afc():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### ⚙️ Setor Afiação — Filas")
+    
+    # --- PAINEL DE EMERGÊNCIA (QUEDA DE ENERGIA) ---
+    with st.expander("⚡ Ações de Emergência (Queda de Energia)"):
+        col1, col2 = st.columns(2)
+        if col1.button("🔴 Parar todas as máquinas (AFC)", use_container_width=True):
+            registrar_queda_energia("AFC")
+            st.success("✅ Todas as afiadoras registradas como PARADAS!")
+            time.sleep(1)
+            st.rerun()
+        if col2.button("🔄 Restaurar Status Anterior", use_container_width=True):
+            restaurar_queda_energia("AFC")
+            st.success("✅ Status das afiadoras restaurado com sucesso!")
+            time.sleep(1)
+            st.rerun()
+    # ------------------------------------------------
+    
     status_dict = ler_status_atual()
     
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] == 'AFC':
@@ -880,6 +957,22 @@ def tela_afc():
 def tela_rtf():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### ⚙️ Setor Retífica — Filas")
+    
+    # --- PAINEL DE EMERGÊNCIA (QUEDA DE ENERGIA) ---
+    with st.expander("⚡ Ações de Emergência (Queda de Energia)"):
+        col1, col2 = st.columns(2)
+        if col1.button("🔴 Parar todas as máquinas (RTF)", use_container_width=True):
+            registrar_queda_energia("RTF")
+            st.success("✅ Todas as retíficas registradas como PARADAS!")
+            time.sleep(1)
+            st.rerun()
+        if col2.button("🔄 Restaurar Status Anterior", use_container_width=True):
+            restaurar_queda_energia("RTF")
+            st.success("✅ Status das retíficas restaurado com sucesso!")
+            time.sleep(1)
+            st.rerun()
+    # ------------------------------------------------
+
     status_dict = ler_status_atual()
     
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] == 'RTF':
