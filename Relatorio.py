@@ -996,12 +996,33 @@ def tela_editar():
         df_editado = st.data_editor(df_editar, num_rows="dynamic", use_container_width=True)
         
         if col_salvar.button("💾 Salvar Alterações", use_container_width=True, type="primary"):
+            # 1. Identificar linhas que foram apagadas no editor
+            indices_originais = df_editar.index.tolist()
+            indices_mantidos = df_editado.index.tolist()
+            indices_apagados = [i for i in indices_originais if i not in indices_mantidos]
+            
+            # Remove as apagadas do DataFrame original
+            if indices_apagados:
+                df_maq = df_maq.drop(index=indices_apagados)
+            
+            # 2. Atualizar as modificadas ou adicionar novas
             for idx, row in df_editado.iterrows():
                 if idx in df_maq.index:
                     df_maq.at[idx, 'Status'] = str(row['Status'])
                     df_maq.at[idx, 'Hora'] = str(row['Hora']).strip()
+                else:
+                    # Caso o usuário tenha adicionado uma linha nova
+                    nova_linha = pd.DataFrame([{
+                        "Setor": row.get('Setor', ''), 
+                        "Maquina": row.get('Maquina', ''), 
+                        "Operador": row.get('Operador', ''), 
+                        "Status": str(row.get('Status', '')), 
+                        "Hora": str(row.get('Hora', '')).strip()
+                    }])
+                    df_maq = pd.concat([df_maq, nova_linha], ignore_index=True)
+                    
             df_maq.to_csv(ARQUIVO_DADOS, index=False)
-            st.success("✨ Banco de dados atualizado!")
+            st.success("✨ Banco de dados atualizado com sucesso!")
             time.sleep(0.5)
             st.rerun()
     else: 
