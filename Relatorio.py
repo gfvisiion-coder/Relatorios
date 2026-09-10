@@ -132,7 +132,6 @@ def verificar_virada_turno():
         
         # SÓ CORTA SE NÃO FOR UM AGENDAMENTO FUTURO
         if ("PREPARAÇÃO" in st_atual or "PREPARANDO" in st_atual or "SEQUÊNCIA" in st_atual) and ("[AGENDADO:" not in st_atual):
-            
             mins_passados = diff_mins(hora_registro, datetime.now(FUSO_BR).strftime("%H:%M"))
             
             if mins_passados > 0: 
@@ -976,38 +975,31 @@ def tela_editar():
             st.success("✅ Banco de dados apagado com sucesso!")
             time.sleep(0.5)
             st.rerun()
-    else: 
-        col_salvar = st.container()
+    else: col_salvar = st.container()
         
     if os.path.exists(ARQUIVO_DADOS):
         df_maq = pd.read_csv(ARQUIVO_DADOS)
         idx_ultimos = df_maq.drop_duplicates(subset=['Maquina'], keep='last').index
         df_editar = df_maq.loc[idx_ultimos].copy()
         
-        # --- REQUISITO 1: Filtro automático por setor ---
-        if setor_usuario == 'AFC':
-            df_editar = df_editar[df_editar['Setor'] == 'AFC']
-        elif setor_usuario == 'RTF':
-            df_editar = df_editar[df_editar['Setor'] == 'RTF']
+        # Filtro automático por setor
+        if setor_usuario == 'AFC': df_editar = df_editar[df_editar['Setor'] == 'AFC']
+        elif setor_usuario == 'RTF': df_editar = df_editar[df_editar['Setor'] == 'RTF']
             
         st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Altere o Horário ou o Status se houver algum erro de digitação. Somente o <b>último apontamento</b> de cada máquina está sendo exibido.</p>", unsafe_allow_html=True)
         
-        # --- REQUISITO 2: Campo de busca para filtrar a máquina ---
+        # Campo de busca de máquina
         busca_maq = st.text_input("🔍 Pesquisar Máquina:", placeholder="Digite o número (ex: 6-868, 30-161...)")
         if busca_maq.strip():
-            # Filtra o dataframe exibido contendo o texto pesquisado
             df_editar = df_editar[df_editar['Maquina'].str.contains(busca_maq.strip(), case=False, na=False)]
         
-        # Renderiza a tabela editável
         df_editado = st.data_editor(df_editar, num_rows="dynamic", use_container_width=True)
         
         if col_salvar.button("💾 Salvar Alterações", use_container_width=True, type="primary"):
             for idx, row in df_editado.iterrows():
-                # O índice garante que a linha correta seja atualizada no banco geral
                 if idx in df_maq.index:
                     df_maq.at[idx, 'Status'] = str(row['Status'])
                     df_maq.at[idx, 'Hora'] = str(row['Hora']).strip()
-                    
             df_maq.to_csv(ARQUIVO_DADOS, index=False)
             st.success("✨ Banco de dados atualizado!")
             time.sleep(0.5)
@@ -1282,3 +1274,4 @@ elif st.session_state['tela_atual'] == 'rtf': tela_rtf()
 elif st.session_state['tela_atual'] == 'equipe': tela_equipe()
 elif st.session_state['tela_atual'] == 'editar': tela_editar()
 elif st.session_state['tela_atual'] == 'relatorio': tela_relatorio()
+elif st.session_state['tela_atual'] == 'armarios': tela_armarios()
