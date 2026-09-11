@@ -74,6 +74,7 @@ ARQUIVO_EQUIPE = "banco_equipe.csv"
 ARQUIVO_HISTORICO = "historico_relatorios.csv"
 ARQUIVO_HISTORICO_EVENTOS = "historico_eventos.csv"
 ARQUIVO_ARMARIOS = "banco_armarios.csv"
+ARQUIVO_CNC = "banco_cnc.csv"
 
 # --- FUNÇÕES UTILITÁRIAS ---
 def turno_atual_horario():
@@ -118,6 +119,34 @@ def get_sort_key(time_str):
         if h < 6: h += 24
         return f"{h:02d}:{m:02d}"
     except: return str(time_str)
+
+# --- GERENCIAMENTO DE TIPO CNC (RTF) ---
+def ler_tipos_cnc():
+    tipos = {}
+    for m in TODAS_RTF:
+        if m in ["6-6J1", "17-6J1"]: tipos[m] = "RTF_CNC1"
+        elif m in ["3-426", "4-425"]: tipos[m] = "RTF_CNC2"
+        else: tipos[m] = "RTF_CNC3"
+        
+    if os.path.exists(ARQUIVO_CNC):
+        try:
+            df = pd.read_csv(ARQUIVO_CNC)
+            for _, row in df.iterrows():
+                tipos[str(row['Maquina'])] = str(row['Tipo'])
+        except: pass
+    return tipos
+
+def get_tipo_cnc(maq_id):
+    return ler_tipos_cnc().get(maq_id, "RTF_CNC3")
+
+def set_tipo_cnc(maq_id, tipo):
+    if os.path.exists(ARQUIVO_CNC):
+        df = pd.read_csv(ARQUIVO_CNC)
+        df = df[df['Maquina'] != maq_id]
+        df = pd.concat([df, pd.DataFrame([{"Maquina": maq_id, "Tipo": tipo}])], ignore_index=True)
+        df.to_csv(ARQUIVO_CNC, index=False)
+    else:
+        pd.DataFrame([{"Maquina": maq_id, "Tipo": tipo}]).to_csv(ARQUIVO_CNC, index=False)
 
 # --- FUNÇÕES DE AUTO-CORREÇÃO DE TURNOS E QUEDA DE ENERGIA ---
 def verificar_virada_turno():
@@ -324,10 +353,28 @@ def painel_controle_maquina(maq_id, setor):
     
     with st.container():
         col_t, col_f = st.columns([8, 1])
-        col_t.markdown(f"<h4 style='color: #2DD4BF !important; margin:0;'>⚙️ MÁQUINA: {maq_id}</h4>", unsafe_allow_html=True)
+        
+        if setor == 'RTF':
+            tipo_atual = get_tipo_cnc(maq_id)
+            col_t.markdown(f"<h4 style='color: #2DD4BF !important; margin:0;'>⚙️ MÁQUINA: {maq_id} <span style='font-size:13px; color:#A1A1AA; font-weight:normal;'>({tipo_atual})</span></h4>", unsafe_allow_html=True)
+        else:
+            col_t.markdown(f"<h4 style='color: #2DD4BF !important; margin:0;'>⚙️ MÁQUINA: {maq_id}</h4>", unsafe_allow_html=True)
+            
         if col_f.button("✕", key=f"fechar_{maq_id}"):
             st.session_state['maq_ativa'] = None
             st.rerun()
+
+        if setor == 'RTF':
+            with st.expander("🔄 Alterar Tipo CNC desta Máquina"):
+                c_tipo1, c_tipo2 = st.columns([3, 2])
+                novo_tipo = c_tipo1.selectbox("Definir como:", ["RTF_CNC3 (Normal)", "RTF_CNC2 (Facetadora)", "RTF_CNC1 (Centerless)"], index=0)
+                
+                if c_tipo2.button("💾 Salvar Tipo", use_container_width=True):
+                    tipo_limpo = novo_tipo.split(" ")[0]
+                    set_tipo_cnc(maq_id, tipo_limpo)
+                    st.success(f"✅ Máquina alterada para {tipo_limpo}!")
+                    time.sleep(0.5)
+                    st.rerun()
             
         status_dict = ler_status_atual()
         status_atual = status_dict.get(f"{setor} {maq_id}", "PRODUZINDO")
@@ -630,7 +677,6 @@ def painel_controle_maquina(maq_id, setor):
                     else: st.error("⚠️ Informe um nome para sugerir!")
                         
                 if btn_iniciar:
-                    # Validando de acordo com as 3 regras: Comum, Sequência, Guia
                     if is_comum and (not nova_ordem_input.strip() or not novo_item_input.strip()):
                         st.error("⚠️ Para INICIAR a preparação, informe a Nova Ordem e o Item!")
                     elif is_seq and not nova_ordem_input.strip():
@@ -649,7 +695,6 @@ def painel_controle_maquina(maq_id, setor):
                             tags_prod = re.sub(r' \[Item Atual:.*?\]', '', tags_prod) 
                         elif is_seq:
                             tags_prod = re.sub(r' \[Ordem:.*?\]', '', tags_prod)
-                            # Não remove a tag do item pois ele permanece
                         
                         st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}] {tags_prod}".strip()
                         
@@ -913,6 +958,26 @@ def tela_rtf():
     status_dict = ler_status_atual()
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] == 'RTF': painel_controle_maquina(st.session_state['maq_ativa'], 'RTF')
     
+    # --- DISTRIBUIÇÃO DINÂMICA DE FILAS ---
+    tipos_dict = ler_tipos_cnc()
+    
+    base_fila_1 = ["5-903", "8-086", "10-817", "12-962", "14-971", "16-183", "19-926", "21-270", "23-753", "25-258", "27-917"]
+    base_fila_2 = ["7-267", "9-815", "11-363", "13-969", "15-977", "18-925", "20-927", "22-916", "24-259", "26-260", "28-954"]
+    base_fila_3 = ["29-785", "31-806", "33-807", "35-885", "37-857", "39-856"]
+    base_fila_4 = ["30-786", "32-918", "34-842", "36-854", "38-881", "40-912", "42-885"]
+    
+    todas_cnc1 = [m for m in TODAS_RTF if tipos_dict.get(m) == "RTF_CNC1"]
+    todas_cnc2 = [m for m in TODAS_RTF if tipos_dict.get(m) == "RTF_CNC2"]
+    todas_cnc3 = [m for m in TODAS_RTF if tipos_dict.get(m) == "RTF_CNC3"]
+    
+    f1_atual = [m for m in base_fila_1 if m in todas_cnc3]
+    f2_atual = [m for m in base_fila_2 if m in todas_cnc3]
+    f3_atual = [m for m in base_fila_3 if m in todas_cnc3]
+    
+    nativos_normais = set(base_fila_1 + base_fila_2 + base_fila_3 + base_fila_4)
+    extraviados_cnc3 = [m for m in todas_cnc3 if m not in nativos_normais]
+    f4_atual = [m for m in base_fila_4 if m in todas_cnc3] + extraviados_cnc3
+
     if st.session_state['celula_selecionada'] is None:
         if st.button("📍 Fila 1", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_1'; st.rerun()
         if st.button("📍 Fila 2", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_2'; st.rerun()
@@ -920,17 +985,18 @@ def tela_rtf():
         if st.button("📍 Fila 4", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_4'; st.rerun()
         
         st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
-        if st.button("⚫ Centerless (6 e 17)", use_container_width=True): st.session_state['celula_selecionada'] = 'centerless'; st.rerun()
-        if st.button("🟤 Facetadoras (3 e 4)", use_container_width=True): st.session_state['celula_selecionada'] = 'facetadoras'; st.rerun()
+        if st.button("⚫ Centerless (CNC1)", use_container_width=True): st.session_state['celula_selecionada'] = 'centerless'; st.rerun()
+        if st.button("🟤 Facetadoras (CNC2)", use_container_width=True): st.session_state['celula_selecionada'] = 'facetadoras'; st.rerun()
     else:
         if st.button("⬅️ Trocar de Fila / Setor"): st.session_state['celula_selecionada'] = None; st.session_state['maq_ativa'] = None; st.rerun()
         st.divider()
-        if st.session_state['celula_selecionada'] == 'fila_1': render_grid_vertical(["5-903", "8-086", "10-817", "12-962", "14-971", "16-183", "19-926", "21-270", "23-753", "25-258", "27-917"], "RTF", status_dict)
-        elif st.session_state['celula_selecionada'] == 'fila_2': render_grid_vertical(["7-267", "9-815", "11-363", "13-969", "15-977", "18-925", "20-927", "22-916", "24-259", "26-260", "28-954"], "RTF", status_dict)
-        elif st.session_state['celula_selecionada'] == 'fila_3': render_grid_vertical(["29-785", "31-806", "33-807", "35-885", "37-857", "39-856"], "RTF", status_dict)
-        elif st.session_state['celula_selecionada'] == 'fila_4': render_grid_vertical(["30-786", "32-918", "34-842", "36-854", "38-881", "40-912", "42-885"], "RTF", status_dict)
-        elif st.session_state['celula_selecionada'] == 'centerless': render_grid_vertical(["6-6J1", "17-6J1"], "RTF", status_dict)
-        elif st.session_state['celula_selecionada'] == 'facetadoras': render_grid_vertical(["3-426", "4-425"], "RTF", status_dict)
+        
+        if st.session_state['celula_selecionada'] == 'fila_1': render_grid_vertical(f1_atual, "RTF", status_dict)
+        elif st.session_state['celula_selecionada'] == 'fila_2': render_grid_vertical(f2_atual, "RTF", status_dict)
+        elif st.session_state['celula_selecionada'] == 'fila_3': render_grid_vertical(f3_atual, "RTF", status_dict)
+        elif st.session_state['celula_selecionada'] == 'fila_4': render_grid_vertical(f4_atual, "RTF", status_dict)
+        elif st.session_state['celula_selecionada'] == 'centerless': render_grid_vertical(todas_cnc1, "RTF", status_dict)
+        elif st.session_state['celula_selecionada'] == 'facetadoras': render_grid_vertical(todas_cnc2, "RTF", status_dict)
 
 def tela_equipe():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
