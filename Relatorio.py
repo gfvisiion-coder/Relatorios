@@ -26,7 +26,6 @@ TODAS_RTF = ["5-903", "8-086", "10-817", "12-962", "14-971", "16-183", "19-926",
 CSS_APP = """
 <style>
     .stApp { background-color: #09090B !important; }
-    /* Corrigido o bug do st.expander removendo o 'span' desta regra global */
     h1, h2, h3, h4, h5, p, div[data-testid="stMarkdownContainer"] > p { 
         color: #F4F4F5 !important; 
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important; 
@@ -76,6 +75,7 @@ ARQUIVO_HISTORICO = "historico_relatorios.csv"
 ARQUIVO_HISTORICO_EVENTOS = "historico_eventos.csv"
 ARQUIVO_ARMARIOS = "banco_armarios.csv"
 ARQUIVO_CNC = "banco_cnc.csv"
+ARQUIVO_FECHAMENTO = "ultimo_fechamento.csv"
 
 # --- FUNÇÕES UTILITÁRIAS ---
 def turno_atual_horario():
@@ -156,6 +156,266 @@ def set_tipo_cnc(maq_id, tipo):
         df.to_csv(ARQUIVO_CNC, index=False)
     else:
         pd.DataFrame([{"Maquina": maq_id, "Tipo": tipo}]).to_csv(ARQUIVO_CNC, index=False)
+
+# --- FUNÇÕES DE RELATÓRIO E FECHAMENTO AUTOMÁTICO ---
+def get_turno_logico(dt=None):
+    if dt is None: dt = datetime.now(FUSO_BR)
+    t = dt.time()
+    d = dt.date()
+    if dtime(6, 30) <= t < dtime(14, 30): return d.strftime("%d/%m/%Y"), "1° TURNO"
+    elif dtime(14, 30) <= t < dtime(22, 30): return d.strftime("%d/%m/%Y"), "2° TURNO"
+    else:
+        if t < dtime(6, 30): d -= timedelta(days=1)
+        return d.strftime("%d/%m/%Y"), "3° TURNO"
+
+def processar_padrao(df_all, maquinas, prefixo_setor):
+    linhas = []
+    for maq in maquinas:
+        if not maq.startswith(prefixo_setor): continue
+        df_maq = df_all[df_all['Maquina'] == maq]
+        ciclo_ativo, status_limpo, hora_prep, preparador = False, "", "", ""
+        for _, row in df_maq.iterrows():
+            st_val, h_val = str(row['Status']), str(row['Hora'])
+            if "Energia Restaurada" in st_val: continue
+            
+            prep_atual = ""
+            if "[Prep:" in st_val: prep_atual = st_val.split("[Prep:")[1].split("]")[0].strip()
+            elif "[Prep. Sugerido:" in st_val: prep_atual = st_val.split("[Prep. Sugerido:")[1].split("]")[0].strip()
+            elif "[PREP:" in st_val.upper(): prep_atual = st_val.upper().split("[PREP:")[1].split("]")[0].strip()
+            if prep_atual: preparador = prep_atual
+
+            if "PREPARAÇÃO" in st_val or "SEQUÊNCIA" in st_val or "AGUARDANDO" in st_val:
+                if not ciclo_ativo:
+                    ciclo_ativo, hora_prep = True, h_val
+                    if "[AGENDADO:" in st_val:
+                        try: hora_prep = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
+                        except: pass
+                    s_limpo = st_val.split("[")[0].strip().upper().replace("PREPARAÇÃO - ", "")
+                    status_limpo = s_limpo if s_limpo else "SETUP"
+            elif "PREPARANDO" in st_val:
+                if not ciclo_ativo: ciclo_ativo, hora_prep = True, h_val
+                status_limpo = "PREPARANDO"
+            elif ("PRODUZINDO" in st_val or "PARADA" in st_val or "MANUTENÇÃO" in st_val) and ciclo_ativo:
+                if "Queda de Energia" in st_val: continue
+                num_maq, str_prep = maq.replace(f"{prefixo_setor} ", ""), f" - {preparador}" if preparador else ""
+                if "PRODUZINDO" in st_val:
+                    status_final = "MÁQUINA LIBERADA"
+                    if "[Obs:" in st_val:
+                        try: str_prep += f" (Obs: {st_val.split('[Obs:')[1].split(']')[0].strip()})"
+                        except: pass
+                elif "MANUTENÇÃO" in st_val: status_final = "SETUP INTERROMPIDO (MANUTENÇÃO)"
+                else: status_final = "SETUP INTERROMPIDO (PARADA)"
+                tags_prod = extrair_tags_producao(st_val)
+                linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_final}{str_prep} {tags_prod}\n\n"))
+                ciclo_ativo, preparador = False, ""
+                
+        if ciclo_ativo:
+            num_maq, str_prep = maq.replace(f"{prefixo_setor} ", ""), f" - {preparador}" if preparador else ""
+            tags_prod = extrair_tags_producao(df_maq.iloc[-1]['Status'])
+            linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_limpo}{str_prep} {tags_prod}\n\n"))
+    linhas.sort(key=lambda x: get_sort_key(x[0]))
+    return "".join([item[1] for item in linhas])
+
+def gerar_relatorio_tempos(df_all, maquinas, prefixo):
+    texto_saida = []
+    def salvar_ciclo(maq_num, h_agenda, h_inicio, h_assumido, h_fim, p1, p2, st_final=""):
+        if h_inicio is None: return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Aguardando preparador desde as {h_agenda}.\nPreparador sugerido: AGUARDANDO OPERADOR\n\n")
+        
+        t_espera_mins = diff_mins(h_agenda, h_inicio, eh_espera=True) if h_agenda else 0
+        t_espera = format_tempo(t_espera_mins)
+        h_conclusao = h_fim if h_fim else datetime.now(FUSO_BR).strftime("%H:%M")
+        txt_maq = f"Máquina {maq_num}: Aguardou {t_espera} até o preparador iniciar.\n"
+        
+        is_finished, is_interrompido = "PRODUZINDO" in st_final, "PARADA" in st_final or "MANUTENÇÃO" in st_final
+        obs_texto = ""
+        if "[Obs:" in st_final:
+            try: obs_texto = f" | Obs: {st_final.split('[Obs:')[1].split(']')[0].strip()}"
+            except: pass
+        
+        if is_finished: txt_estado = "finalizado"
+        elif is_interrompido: txt_estado = "interrompido"
+        else: txt_estado = "EM ANDAMENTO"
+        
+        if p2 is not None:
+            t1, t2 = format_tempo(diff_mins(h_inicio, h_assumido)), format_tempo(diff_mins(h_assumido, h_conclusao))
+            if h_fim: txt_maq += f"Setup {txt_estado}! Iniciado por {p1} e assumido por {p2}.\nO 1º levou {t1} e o 2º {t2}.{obs_texto}\n\n"
+            else: txt_maq += f"Setup {txt_estado}! Iniciado por {p1} e assumido por {p2}.\nO 1º levou {t1} e o 2º está preparando há {t2}.\n\n"
+        else:
+            t_tot = format_tempo(diff_mins(h_inicio, h_conclusao))
+            if h_fim: txt_maq += f"Setup {txt_estado}! Levou {t_tot}. Preparador responsável: {p1}.{obs_texto}\n\n"
+            else: txt_maq += f"Setup {txt_estado} há {t_tot} até o momento. Preparador responsável: {p1}.\n\n"
+        return (h_agenda if h_agenda else h_inicio, txt_maq)
+
+    for maq in maquinas:
+        if not maq.startswith(prefixo): continue
+        df_hist = df_all[df_all['Maquina'] == maq]
+        ciclo_ativo, hora_agenda, hora_inicio, hora_assumido, hora_fim, prep_1, prep_2 = False, None, None, None, None, None, None
+        for _, h_row in df_hist.iterrows():
+            st_val, h_val = str(h_row['Status']).upper(), str(h_row['Hora'])
+            if "ENERGIA RESTAURADA" in st_val: continue
+            
+            if "PREPARAÇÃO" in st_val or "SEQUÊNCIA" in st_val or "AGUARDANDO" in st_val:
+                if not ciclo_ativo:
+                    ciclo_ativo, hora_agenda = True, h_val
+                    if "[AGENDADO:" in st_val:
+                        try: hora_agenda = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
+                        except: pass
+                    hora_inicio, hora_assumido, hora_fim, prep_1, prep_2 = None, None, None, None, None
+            elif "PREPARANDO" in st_val:
+                ciclo_ativo = True
+                if not hora_agenda: hora_agenda = h_val
+                if "[ASSUMIDO]" in st_val:
+                    hora_assumido = h_val
+                    try: prep_2 = st_val.split("[PREP:")[1].split("]")[0].strip()
+                    except: pass
+                else:
+                    if hora_inicio is None: hora_inicio = h_val
+                    try: prep_1 = st_val.split("[PREP:")[1].split("]")[0].strip()
+                    except: pass
+            elif ("PRODUZINDO" in st_val or "PARADA" in st_val or "MANUTENÇÃO" in st_val) and ciclo_ativo:
+                if "QUEDA DE ENERGIA" in st_val: continue
+                hora_fim = h_val
+                texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda, hora_inicio, hora_assumido, hora_fim, prep_1, prep_2, st_val))
+                ciclo_ativo = False
+        if ciclo_ativo: texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda, hora_inicio, hora_assumido, None, prep_1, prep_2, ""))
+    texto_saida.sort(key=lambda x: get_sort_key(x[0]))
+    return "".join([i[1] for i in texto_saida])
+
+def gerar_textos_fechamento(data_alvo, df_completo):
+    df_ultimo_geral = df_completo.drop_duplicates(subset=['Maquina'], keep='last') if not df_completo.empty else df_completo
+    setup_mask = df_completo['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA|AGUARDANDO|PREPARANDO', na=False)
+    maquinas_com_setup = df_completo[setup_mask]['Maquina'].unique() if not df_completo.empty else []
+
+    texto_padrao = f"*PLANTA AFIACAO E RETIFICA {data_alvo}*\n\n"
+    texto_padrao += "*OCORRÊNCIAS DE QUEDA DE ENERGIA*\n\n"
+    if not df_completo.empty:
+        df_energia = df_completo[df_completo['Status'].str.contains('Energia', na=False, case=False)]
+        if not df_energia.empty:
+            quedas = df_energia[df_energia['Status'].str.contains("PARADA")]['Hora'].unique()
+            retornos = df_energia[df_energia['Status'].str.contains("Restaurada")]['Hora'].unique()
+            
+            quedas_list = list(quedas)
+            retornos_list = list(retornos)
+            
+            for i, h_q in enumerate(quedas_list):
+                h_r = retornos_list[i] if i < len(retornos_list) else "Sem retorno"
+                duração = format_tempo(diff_mins(h_q, h_r)) if h_r != "Sem retorno" else "Em andamento"
+                turno_queda = obter_turno_por_horario(h_q)
+                texto_padrao += f"- Data: {data_alvo} | Turno: {turno_queda} | Queda às {h_q} | Restaurada às {h_r} (Duração: {duração})\n"
+            texto_padrao += "\n"
+        else: texto_padrao += "Nenhuma queda de energia registrada.\n\n"
+    
+    texto_padrao += "*MAQUINAS EM MANUTENÇAO*\n\n"
+    manutencao_rows = df_ultimo_geral[df_ultimo_geral['Status'].str.contains('MANUTENÇÃO', na=False)]
+    if manutencao_rows.empty: texto_padrao += "N/A\n\n"
+    else:
+        for _, row in manutencao_rows.iterrows():
+            num_maq = row['Maquina'].replace("AFC ", "").replace("RTF ", "")
+            texto_padrao += f"{num_maq} - MANUTENÇÃO - {row['Hora']}\n"
+        texto_padrao += "\n"
+
+    texto_padrao += "*MÁQUINAS PARADAS*\n\n"
+    parada_rows = df_ultimo_geral[df_ultimo_geral['Status'].str.contains('PARADA', na=False) & ~df_ultimo_geral['Status'].str.contains('Energia', na=False)]
+    if parada_rows.empty: texto_padrao += "N/A\n\n"
+    else:
+        for _, row in parada_rows.iterrows():
+            num_maq = row['Maquina'].replace("AFC ", "").replace("RTF ", "")
+            motivo = row['Status'].replace("PARADA - Motivo: ", "")
+            texto_padrao += f"{num_maq} - PARADA - {row['Hora']} ({motivo})\n"
+        texto_padrao += "\n"
+
+    texto_padrao += "*PREPARAÇÕES/AJUSTES*\n\n"
+    str_rtf = processar_padrao(df_completo, maquinas_com_setup, "RTF")
+    texto_padrao += str_rtf if str_rtf else "N/A\n\n"
+    texto_padrao += "*AFIADORAS*\n\n"
+    str_afc = processar_padrao(df_completo, maquinas_com_setup, "AFC")
+    texto_padrao += str_afc if str_afc else "N/A\n\n"
+    
+    texto_padrao += "*EQUIPE / AUSÊNCIAS*\n\n"
+    if os.path.exists(ARQUIVO_EQUIPE):
+        df_eq = pd.read_csv(ARQUIVO_EQUIPE)
+        if df_eq.empty: texto_padrao += "N/A\n\n"
+        else:
+            for _, row in df_eq.iterrows(): texto_padrao += f"{row['Nome']} - {row['Tipo'].upper()}\n"
+            texto_padrao += "\n"
+    else: texto_padrao += "N/A\n\n"
+
+    texto_tempos = f"*RELATÓRIO DE DESEMPENHO E TEMPOS - {data_alvo}*\n\n"
+    texto_tempos += "*RETIFICAS*\n\n"
+    str_t_rtf = gerar_relatorio_tempos(df_completo, maquinas_com_setup, "RTF")
+    texto_tempos += str_t_rtf if str_t_rtf else "Nenhuma preparação registrada.\n\n"
+    texto_tempos += "*AFIADORAS*\n\n"
+    str_t_afc = gerar_relatorio_tempos(df_completo, maquinas_com_setup, "AFC")
+    texto_tempos += str_t_afc if str_t_afc else "Nenhuma preparação registrada.\n\n"
+
+    return texto_padrao, texto_tempos
+
+def executar_fechamento_silencioso(data_alvo, turno_alvo):
+    df_completo = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
+    
+    texto_padrao, texto_tempos = gerar_textos_fechamento(data_alvo, df_completo)
+    
+    novo_hist = pd.DataFrame([{"Data": data_alvo, "Turno": turno_alvo, "Relatorio_Padrao": texto_padrao, "Relatorio_Tempos": texto_tempos}])
+    if os.path.exists(ARQUIVO_HISTORICO): pd.concat([pd.read_csv(ARQUIVO_HISTORICO), novo_hist], ignore_index=True).to_csv(ARQUIVO_HISTORICO, index=False)
+    else: novo_hist.to_csv(ARQUIVO_HISTORICO, index=False)
+    
+    if not df_completo.empty:
+        df_eventos = df_completo.copy()
+        df_eventos['Data_Registro'] = data_alvo
+        df_eventos['Turno_Registro'] = turno_alvo
+        if os.path.exists(ARQUIVO_HISTORICO_EVENTOS): pd.concat([pd.read_csv(ARQUIVO_HISTORICO_EVENTOS), df_eventos], ignore_index=True).to_csv(ARQUIVO_HISTORICO_EVENTOS, index=False)
+        else: df_eventos.to_csv(ARQUIVO_HISTORICO_EVENTOS, index=False)
+    
+    df_novo = []
+    for maq in df_completo['Maquina'].unique():
+        df_maq = df_completo[df_completo['Maquina'] == maq]
+        
+        is_power_down = "Queda de Energia" in str(df_maq.iloc[-1]['Status'])
+        
+        last_prod_idx = -1
+        for idx in df_maq.index:
+            if "PRODUZINDO" in str(df_maq.loc[idx, 'Status']).upper(): last_prod_idx = idx
+        
+        if last_prod_idx != -1:
+            df_recorte = df_maq.loc[last_prod_idx+1:].copy()
+            if df_recorte.empty: df_recorte = df_maq.iloc[-1:].copy()
+        else: 
+            df_recorte = df_maq.copy()
+        
+        if not is_power_down:
+            df_recorte = df_recorte[~df_recorte['Status'].str.contains("Queda de Energia", case=False, na=False)]
+            df_recorte['Status'] = df_recorte['Status'].astype(str).str.replace(" [Energia Restaurada]", "", regex=False)
+            
+            if df_recorte.empty:
+                last_row = df_maq.iloc[-1:].copy()
+                last_row['Status'] = last_row['Status'].astype(str).str.replace(" [Energia Restaurada]", "", regex=False)
+                df_recorte = pd.DataFrame([last_row])
+                
+        df_novo.append(df_recorte)
+    
+    if df_novo: pd.concat(df_novo).to_csv(ARQUIVO_DADOS, index=False)
+    else: pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"]).to_csv(ARQUIVO_DADOS, index=False)
+    
+    if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
+
+def checar_e_auto_encerrar():
+    curr_d, curr_t = get_turno_logico()
+    
+    if not os.path.exists(ARQUIVO_FECHAMENTO):
+        pd.DataFrame([{"Data": curr_d, "Turno": curr_t}]).to_csv(ARQUIVO_FECHAMENTO, index=False)
+        return
+        
+    try:
+        df_fechamento = pd.read_csv(ARQUIVO_FECHAMENTO)
+        last_d = str(df_fechamento.iloc[0]['Data'])
+        last_t = str(df_fechamento.iloc[0]['Turno'])
+    except:
+        pd.DataFrame([{"Data": curr_d, "Turno": curr_t}]).to_csv(ARQUIVO_FECHAMENTO, index=False)
+        return
+        
+    if last_d != curr_d or last_t != curr_t:
+        executar_fechamento_silencioso(last_d, last_t)
+        pd.DataFrame([{"Data": curr_d, "Turno": curr_t}]).to_csv(ARQUIVO_FECHAMENTO, index=False)
 
 # --- FUNÇÕES DE AUTO-CORREÇÃO DE TURNOS E QUEDA DE ENERGIA ---
 def verificar_virada_turno():
@@ -304,6 +564,7 @@ def mudar_tela(nome_tela):
     st.rerun()
 
 def ler_status_atual():
+    checar_e_auto_encerrar() # <--- Executa o auto-close a cada interação antes de listar as máquinas
     verificar_virada_turno()
     if not os.path.exists(ARQUIVO_DADOS): return {}
     try:
@@ -1106,192 +1367,13 @@ def tela_relatorio():
     st.markdown("#### 📋 Fechamento e Relatório de Turno")
     col1, col2 = st.columns(2)
     gerar = col1.button("👁️ Visualizar", use_container_width=True)
-    encerrar = col2.button("🛑 ENCERRAR TURNO", type="primary", use_container_width=True)
+    encerrar = col2.button("🛑 ENCERRAR TURNO MANUALMENTE", type="primary", use_container_width=True)
         
     if gerar or encerrar:
-        data_hoje = datetime.now(FUSO_BR).strftime("%d/%m/%Y")
+        curr_d, curr_t = get_turno_logico()
         df_completo = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
-        df_ultimo_geral = df_completo.drop_duplicates(subset=['Maquina'], keep='last') if not df_completo.empty else df_completo
-        setup_mask = df_completo['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA|AGUARDANDO|PREPARANDO', na=False)
-        maquinas_com_setup = df_completo[setup_mask]['Maquina'].unique() if not df_completo.empty else []
-
-        # --- 1. RELATÓRIO PADRÃO (LIMPO) ---
-        texto_padrao = f"*PLANTA AFIACAO E RETIFICA {data_hoje}*\n\n"
-        texto_padrao += "*OCORRÊNCIAS DE QUEDA DE ENERGIA*\n\n"
-        if not df_completo.empty:
-            df_energia = df_completo[df_completo['Status'].str.contains('Energia', na=False, case=False)]
-            if not df_energia.empty:
-                quedas = df_energia[df_energia['Status'].str.contains("PARADA")]['Hora'].unique()
-                retornos = df_energia[df_energia['Status'].str.contains("Restaurada")]['Hora'].unique()
-                
-                quedas_list = list(quedas)
-                retornos_list = list(retornos)
-                
-                for i, h_q in enumerate(quedas_list):
-                    h_r = retornos_list[i] if i < len(retornos_list) else "Sem retorno"
-                    duração = format_tempo(diff_mins(h_q, h_r)) if h_r != "Sem retorno" else "Em andamento"
-                    turno_queda = obter_turno_por_horario(h_q)
-                    
-                    texto_padrao += f"- Data: {data_hoje} | Turno: {turno_queda} | Queda às {h_q} | Restaurada às {h_r} (Duração: {duração})\n"
-                texto_padrao += "\n"
-            else: texto_padrao += "Nenhuma queda de energia registrada.\n\n"
         
-        texto_padrao += "*MAQUINAS EM MANUTENÇAO*\n\n"
-        manutencao_rows = df_ultimo_geral[df_ultimo_geral['Status'].str.contains('MANUTENÇÃO', na=False)]
-        if manutencao_rows.empty: texto_padrao += "N/A\n\n"
-        else:
-            for _, row in manutencao_rows.iterrows():
-                num_maq = row['Maquina'].replace("AFC ", "").replace("RTF ", "")
-                texto_padrao += f"{num_maq} - MANUTENÇÃO - {row['Hora']}\n"
-            texto_padrao += "\n"
-
-        texto_padrao += "*MÁQUINAS PARADAS*\n\n"
-        parada_rows = df_ultimo_geral[df_ultimo_geral['Status'].str.contains('PARADA', na=False) & ~df_ultimo_geral['Status'].str.contains('Energia', na=False)]
-        if parada_rows.empty: texto_padrao += "N/A\n\n"
-        else:
-            for _, row in parada_rows.iterrows():
-                num_maq = row['Maquina'].replace("AFC ", "").replace("RTF ", "")
-                motivo = row['Status'].replace("PARADA - Motivo: ", "")
-                texto_padrao += f"{num_maq} - PARADA - {row['Hora']} ({motivo})\n"
-            texto_padrao += "\n"
-
-        texto_padrao += "*PREPARAÇÕES/AJUSTES*\n\n"
-        def processar_padrao(df_all, maquinas, prefixo_setor):
-            linhas = []
-            for maq in maquinas:
-                if not maq.startswith(prefixo_setor): continue
-                df_maq = df_all[df_all['Maquina'] == maq]
-                ciclo_ativo, status_limpo, hora_prep, preparador = False, "", "", ""
-                for _, row in df_maq.iterrows():
-                    st_val, h_val = str(row['Status']), str(row['Hora'])
-                    if "Energia Restaurada" in st_val: continue
-                    
-                    prep_atual = ""
-                    if "[Prep:" in st_val: prep_atual = st_val.split("[Prep:")[1].split("]")[0].strip()
-                    elif "[Prep. Sugerido:" in st_val: prep_atual = st_val.split("[Prep. Sugerido:")[1].split("]")[0].strip()
-                    elif "[PREP:" in st_val.upper(): prep_atual = st_val.upper().split("[PREP:")[1].split("]")[0].strip()
-                    if prep_atual: preparador = prep_atual
-
-                    if "PREPARAÇÃO" in st_val or "SEQUÊNCIA" in st_val or "AGUARDANDO" in st_val:
-                        if not ciclo_ativo:
-                            ciclo_ativo, hora_prep = True, h_val
-                            if "[AGENDADO:" in st_val:
-                                try: hora_prep = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
-                                except: pass
-                            s_limpo = st_val.split("[")[0].strip().upper().replace("PREPARAÇÃO - ", "")
-                            status_limpo = s_limpo if s_limpo else "SETUP"
-                    elif "PREPARANDO" in st_val:
-                        if not ciclo_ativo: ciclo_ativo, hora_prep = True, h_val
-                        status_limpo = "PREPARANDO"
-                    elif ("PRODUZINDO" in st_val or "PARADA" in st_val or "MANUTENÇÃO" in st_val) and ciclo_ativo:
-                        if "Queda de Energia" in st_val: continue
-                        num_maq, str_prep = maq.replace(f"{prefixo_setor} ", ""), f" - {preparador}" if preparador else ""
-                        if "PRODUZINDO" in st_val:
-                            status_final = "MÁQUINA LIBERADA"
-                            if "[Obs:" in st_val:
-                                try: str_prep += f" (Obs: {st_val.split('[Obs:')[1].split(']')[0].strip()})"
-                                except: pass
-                        elif "MANUTENÇÃO" in st_val: status_final = "SETUP INTERROMPIDO (MANUTENÇÃO)"
-                        else: status_final = "SETUP INTERROMPIDO (PARADA)"
-                        tags_prod = extrair_tags_producao(st_val)
-                        linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_final}{str_prep} {tags_prod}\n\n"))
-                        ciclo_ativo, preparador = False, ""
-                        
-                if ciclo_ativo:
-                    num_maq, str_prep = maq.replace(f"{prefixo_setor} ", ""), f" - {preparador}" if preparador else ""
-                    tags_prod = extrair_tags_producao(df_maq.iloc[-1]['Status'])
-                    linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_limpo}{str_prep} {tags_prod}\n\n"))
-            linhas.sort(key=lambda x: get_sort_key(x[0]))
-            return "".join([item[1] for item in linhas])
-
-        texto_padrao += "*RETIFICAS*\n\n"
-        str_rtf = processar_padrao(df_completo, maquinas_com_setup, "RTF")
-        texto_padrao += str_rtf if str_rtf else "N/A\n\n"
-        texto_padrao += "*AFIADORAS*\n\n"
-        str_afc = processar_padrao(df_completo, maquinas_com_setup, "AFC")
-        texto_padrao += str_afc if str_afc else "N/A\n\n"
-        texto_padrao += "*EQUIPE / AUSÊNCIAS*\n\n"
-        if os.path.exists(ARQUIVO_EQUIPE):
-            df_eq = pd.read_csv(ARQUIVO_EQUIPE)
-            if df_eq.empty: texto_padrao += "N/A\n\n"
-            else:
-                for _, row in df_eq.iterrows(): texto_padrao += f"{row['Nome']} - {row['Tipo'].upper()}\n"
-                texto_padrao += "\n"
-        else: texto_padrao += "N/A\n\n"
-
-        # --- 2. RELATÓRIO SEPARADO DE TEMPOS E RESPONSÁVEIS ---
-        texto_tempos = f"*RELATÓRIO DE DESEMPENHO E TEMPOS - {data_hoje}*\n\n"
-        def gerar_relatorio_tempos(df_all, maquinas, prefixo):
-            texto_saida = []
-            def salvar_ciclo(maq_num, h_agenda, h_inicio, h_assumido, h_fim, p1, p2, st_final=""):
-                if h_inicio is None: return (h_agenda if h_agenda else '00:00', f"Máquina {maq_num}: Aguardando preparador desde as {h_agenda}.\nPreparador sugerido: AGUARDANDO OPERADOR\n\n")
-                
-                t_espera_mins = diff_mins(h_agenda, h_inicio, eh_espera=True) if h_agenda else 0
-                t_espera = format_tempo(t_espera_mins)
-                h_conclusao = h_fim if h_fim else datetime.now(FUSO_BR).strftime("%H:%M")
-                txt_maq = f"Máquina {maq_num}: Aguardou {t_espera} até o preparador iniciar.\n"
-                
-                is_finished, is_interrompido = "PRODUZINDO" in st_final, "PARADA" in st_final or "MANUTENÇÃO" in st_final
-                obs_texto = ""
-                if "[Obs:" in st_final:
-                    try: obs_texto = f" | Obs: {st_final.split('[Obs:')[1].split(']')[0].strip()}"
-                    except: pass
-                
-                if is_finished: txt_estado = "finalizado"
-                elif is_interrompido: txt_estado = "interrompido"
-                else: txt_estado = "EM ANDAMENTO"
-                
-                if p2 is not None:
-                    t1, t2 = format_tempo(diff_mins(h_inicio, h_assumido)), format_tempo(diff_mins(h_assumido, h_conclusao))
-                    if h_fim: txt_maq += f"Setup {txt_estado}! Iniciado por {p1} e assumido por {p2}.\nO 1º levou {t1} e o 2º {t2}.{obs_texto}\n\n"
-                    else: txt_maq += f"Setup {txt_estado}! Iniciado por {p1} e assumido por {p2}.\nO 1º levou {t1} e o 2º está preparando há {t2}.\n\n"
-                else:
-                    t_tot = format_tempo(diff_mins(h_inicio, h_conclusao))
-                    if h_fim: txt_maq += f"Setup {txt_estado}! Levou {t_tot}. Preparador responsável: {p1}.{obs_texto}\n\n"
-                    else: txt_maq += f"Setup {txt_estado} há {t_tot} até o momento. Preparador responsável: {p1}.\n\n"
-                return (h_agenda if h_agenda else h_inicio, txt_maq)
-
-            for maq in maquinas:
-                if not maq.startswith(prefixo): continue
-                df_hist = df_all[df_all['Maquina'] == maq]
-                ciclo_ativo, hora_agenda, hora_inicio, hora_assumido, hora_fim, prep_1, prep_2 = False, None, None, None, None, None, None
-                for _, h_row in df_hist.iterrows():
-                    st_val, h_val = str(h_row['Status']).upper(), str(h_row['Hora'])
-                    if "ENERGIA RESTAURADA" in st_val: continue
-                    
-                    if "PREPARAÇÃO" in st_val or "SEQUÊNCIA" in st_val or "AGUARDANDO" in st_val:
-                        if not ciclo_ativo:
-                            ciclo_ativo, hora_agenda = True, h_val
-                            if "[AGENDADO:" in st_val:
-                                try: hora_agenda = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
-                                except: pass
-                            hora_inicio, hora_assumido, hora_fim, prep_1, prep_2 = None, None, None, None, None
-                    elif "PREPARANDO" in st_val:
-                        ciclo_ativo = True
-                        if not hora_agenda: hora_agenda = h_val
-                        if "[ASSUMIDO]" in st_val:
-                            hora_assumido = h_val
-                            try: prep_2 = st_val.split("[PREP:")[1].split("]")[0].strip()
-                            except: pass
-                        else:
-                            if hora_inicio is None: hora_inicio = h_val
-                            try: prep_1 = st_val.split("[PREP:")[1].split("]")[0].strip()
-                            except: pass
-                    elif ("PRODUZINDO" in st_val or "PARADA" in st_val or "MANUTENÇÃO" in st_val) and ciclo_ativo:
-                        if "QUEDA DE ENERGIA" in st_val: continue
-                        hora_fim = h_val
-                        texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda, hora_inicio, hora_assumido, hora_fim, prep_1, prep_2, st_val))
-                        ciclo_ativo = False
-                if ciclo_ativo: texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda, hora_inicio, hora_assumido, None, prep_1, prep_2, ""))
-            texto_saida.sort(key=lambda x: get_sort_key(x[0]))
-            return "".join([i[1] for i in texto_saida])
-
-        texto_tempos += "*RETIFICAS*\n\n"
-        str_t_rtf = gerar_relatorio_tempos(df_completo, maquinas_com_setup, "RTF")
-        texto_tempos += str_t_rtf if str_t_rtf else "Nenhuma preparação registrada.\n\n"
-        texto_tempos += "*AFIADORAS*\n\n"
-        str_t_afc = gerar_relatorio_tempos(df_completo, maquinas_com_setup, "AFC")
-        texto_tempos += str_t_afc if str_t_afc else "Nenhuma preparação registrada.\n\n"
+        texto_padrao, texto_tempos = gerar_textos_fechamento(curr_d, df_completo)
 
         st.markdown("##### 📄 Relatório 1 (Padrão e Limpo)")
         st.code(texto_padrao, language="text")
@@ -1299,49 +1381,8 @@ def tela_relatorio():
         st.code(texto_tempos, language="text")
         
         if encerrar:
-            novo_hist = pd.DataFrame([{"Data": data_hoje, "Turno": st.session_state['turno'], "Relatorio_Padrao": texto_padrao, "Relatorio_Tempos": texto_tempos}])
-            if os.path.exists(ARQUIVO_HISTORICO): pd.concat([pd.read_csv(ARQUIVO_HISTORICO), novo_hist], ignore_index=True).to_csv(ARQUIVO_HISTORICO, index=False)
-            else: novo_hist.to_csv(ARQUIVO_HISTORICO, index=False)
-            
-            if not df_completo.empty:
-                df_eventos = df_completo.copy()
-                df_eventos['Data_Registro'] = data_hoje
-                df_eventos['Turno_Registro'] = st.session_state['turno']
-                if os.path.exists(ARQUIVO_HISTORICO_EVENTOS): pd.concat([pd.read_csv(ARQUIVO_HISTORICO_EVENTOS), df_eventos], ignore_index=True).to_csv(ARQUIVO_HISTORICO_EVENTOS, index=False)
-                else: df_eventos.to_csv(ARQUIVO_HISTORICO_EVENTOS, index=False)
-            
-            df_novo = []
-            for maq in df_completo['Maquina'].unique():
-                df_maq = df_completo[df_completo['Maquina'] == maq]
-                
-                is_power_down = "Queda de Energia" in str(df_maq.iloc[-1]['Status'])
-                
-                last_prod_idx = -1
-                for idx in df_maq.index:
-                    if "PRODUZINDO" in str(df_maq.loc[idx, 'Status']).upper(): last_prod_idx = idx
-                
-                if last_prod_idx != -1:
-                    df_recorte = df_maq.loc[last_prod_idx+1:].copy()
-                    if df_recorte.empty: df_recorte = df_maq.iloc[-1:].copy()
-                else: 
-                    df_recorte = df_maq.copy()
-                
-                if not is_power_down:
-                    df_recorte = df_recorte[~df_recorte['Status'].str.contains("Queda de Energia", case=False, na=False)]
-                    df_recorte['Status'] = df_recorte['Status'].astype(str).str.replace(" [Energia Restaurada]", "", regex=False)
-                    
-                    if df_recorte.empty:
-                        last_row = df_maq.iloc[-1:].copy()
-                        last_row['Status'] = last_row['Status'].astype(str).str.replace(" [Energia Restaurada]", "", regex=False)
-                        df_recorte = pd.DataFrame([last_row])
-                        
-                df_novo.append(df_recorte)
-            
-            if df_novo: pd.concat(df_novo).to_csv(ARQUIVO_DADOS, index=False)
-            else: pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"]).to_csv(ARQUIVO_DADOS, index=False)
-            
-            if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
-            st.success("✨ Turno encerrado! Relatórios salvos no histórico e banco pronto para o próximo turno (sem as quedas de energia passadas).")
+            executar_fechamento_silencioso(curr_d, curr_t)
+            st.success("✨ Turno encerrado manualmente! O banco de dados foi limpo e está pronto para continuar.")
             time.sleep(2); st.rerun()
 
 # --- ROTEADOR ---
