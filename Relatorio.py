@@ -566,16 +566,23 @@ def painel_controle_maquina(maq_id, setor):
                     except: pass
                     
                 nome_input = st.text_input("Nome do Preparador:", value=sug_nome if sug_nome else "")
-                is_guia_ou_seq = "GUIA" in status_atual or "SEQUÊNCIA" in status_atual
+                
+                is_guia = "GUIA" in status_atual
+                is_seq = "SEQUÊNCIA" in status_atual
+                is_comum = not is_guia and not is_seq
                 
                 st.markdown("📦 **Dados da Preparação**")
-                if not is_guia_ou_seq:
+                nova_ordem_input = ""
+                novo_item_input = ""
+                
+                if is_comum:
                     nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", placeholder="Ex: 987654")
                     novo_item_input = st.text_input("Novo Item (Entrando):", placeholder="Ex: 313324")
-                else:
-                    nova_ordem_input = ""
-                    novo_item_input = "" 
-                    st.info("ℹ️ Preparação de Guia/Sequência: A Ordem e o Item atuais serão mantidos.")
+                elif is_seq:
+                    nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", placeholder="Ex: 987654")
+                    st.info("ℹ️ Sequência: O Item atual será mantido. Informe apenas a nova OP.")
+                elif is_guia:
+                    st.info("ℹ️ Preparação de Guia: A Ordem e o Item atuais serão mantidos. Nenhuma nova OP é necessária.")
                 
                 st.markdown("⏰ **Adiar Agendamento (Opcional)**")
                 col_adiar1, col_adiar2 = st.columns([3, 2])
@@ -623,8 +630,11 @@ def painel_controle_maquina(maq_id, setor):
                     else: st.error("⚠️ Informe um nome para sugerir!")
                         
                 if btn_iniciar:
-                    if not is_guia_ou_seq and (not nova_ordem_input.strip() or not novo_item_input.strip()):
+                    # Validando de acordo com as 3 regras: Comum, Sequência, Guia
+                    if is_comum and (not nova_ordem_input.strip() or not novo_item_input.strip()):
                         st.error("⚠️ Para INICIAR a preparação, informe a Nova Ordem e o Item!")
+                    elif is_seq and not nova_ordem_input.strip():
+                        st.error("⚠️ Para INICIAR a Sequência, informe a Nova Ordem (OP)!")
                     else:
                         nome_final = nome_input if nome_input.strip() else st.session_state['operador']
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
@@ -632,24 +642,32 @@ def painel_controle_maquina(maq_id, setor):
                         info_atual = obter_info_maquina(maq_id, setor)
                         tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
                         
-                        if not is_guia_ou_seq:
+                        if is_comum:
                             tags_prod = re.sub(r' \[Ordem:.*?\]', '', tags_prod) 
                             tags_prod = re.sub(r' \[Novo Item:.*?\]', '', tags_prod) 
                             tags_prod = re.sub(r' \[Item:.*?\]', '', tags_prod) 
                             tags_prod = re.sub(r' \[Item Atual:.*?\]', '', tags_prod) 
+                        elif is_seq:
+                            tags_prod = re.sub(r' \[Ordem:.*?\]', '', tags_prod)
+                            # Não remove a tag do item pois ele permanece
                         
                         st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}] {tags_prod}".strip()
-                        if not is_guia_ou_seq:
+                        
+                        if is_comum:
                             st_andamento += f" [Ordem: {nova_ordem_input.strip().upper()}]"
                             st_andamento += f" [Novo Item: {novo_item_input.strip().upper()}]"
+                            dar_baixa_armario(nova_ordem_input.strip())
+                        elif is_seq:
+                            st_andamento += f" [Ordem: {nova_ordem_input.strip().upper()}]"
                             dar_baixa_armario(nova_ordem_input.strip())
                             
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
                         
-                        if is_guia_ou_seq: st.success("✅ Preparação iniciada! Setup mantido.")
-                        else: st.success("✅ Preparação iniciada! Ordem liberada do armário. Timer ativado.")
+                        if is_guia: st.success("✅ Preparação iniciada! Setup mantido sem alterar OP ou Item.")
+                        elif is_seq: st.success("✅ Sequência iniciada! OP atualizada e Item mantido.")
+                        else: st.success("✅ Preparação iniciada! OP e Item liberados do armário.")
                         time.sleep(0.5)
                         st.rerun()
 
@@ -1241,4 +1259,3 @@ elif st.session_state['tela_atual'] == 'rtf': tela_rtf()
 elif st.session_state['tela_atual'] == 'equipe': tela_equipe()
 elif st.session_state['tela_atual'] == 'editar': tela_editar()
 elif st.session_state['tela_atual'] == 'relatorio': tela_relatorio()
-elif st.session_state['tela_atual'] == 'armarios': tela_armarios()
