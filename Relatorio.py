@@ -26,7 +26,8 @@ TODAS_RTF = ["5-903", "8-086", "10-817", "12-962", "14-971", "16-183", "19-926",
 CSS_APP = """
 <style>
     .stApp { background-color: #09090B !important; }
-    h1, h2, h3, h4, h5, p, span, div[data-testid="stMarkdownContainer"] { 
+    /* Corrigido o bug do st.expander removendo o 'span' desta regra global */
+    h1, h2, h3, h4, h5, p, div[data-testid="stMarkdownContainer"] > p { 
         color: #F4F4F5 !important; 
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important; 
     }
@@ -82,6 +83,14 @@ def turno_atual_horario():
     if dtime(6, 30) <= agora < dtime(14, 30): return "1° TURNO"
     elif dtime(14, 30) <= agora < dtime(22, 30): return "2° TURNO"
     else: return "3° TURNO"
+
+def obter_turno_por_horario(hora_str):
+    try:
+        t = datetime.strptime(hora_str, "%H:%M").time()
+        if dtime(6, 30) <= t < dtime(14, 30): return "1° TURNO"
+        elif dtime(14, 30) <= t < dtime(22, 30): return "2° TURNO"
+        else: return "3° TURNO"
+    except: return "DESCONHECIDO"
 
 def pode_logar(turno_val):
     agora = datetime.now(FUSO_BR).time()
@@ -1115,10 +1124,15 @@ def tela_relatorio():
                 quedas = df_energia[df_energia['Status'].str.contains("PARADA")]['Hora'].unique()
                 retornos = df_energia[df_energia['Status'].str.contains("Restaurada")]['Hora'].unique()
                 
-                for h_q in quedas:
-                    h_r = retornos[0] if len(retornos) > 0 else "Sem retorno"
+                quedas_list = list(quedas)
+                retornos_list = list(retornos)
+                
+                for i, h_q in enumerate(quedas_list):
+                    h_r = retornos_list[i] if i < len(retornos_list) else "Sem retorno"
                     duração = format_tempo(diff_mins(h_q, h_r)) if h_r != "Sem retorno" else "Em andamento"
-                    texto_padrao += f"- Queda registrada às {h_q} | Restaurada às {h_r} (Duração: {duração})\n"
+                    turno_queda = obter_turno_por_horario(h_q)
+                    
+                    texto_padrao += f"- Data: {data_hoje} | Turno: {turno_queda} | Queda às {h_q} | Restaurada às {h_r} (Duração: {duração})\n"
                 texto_padrao += "\n"
             else: texto_padrao += "Nenhuma queda de energia registrada.\n\n"
         
@@ -1299,19 +1313,35 @@ def tela_relatorio():
             df_novo = []
             for maq in df_completo['Maquina'].unique():
                 df_maq = df_completo[df_completo['Maquina'] == maq]
+                
+                is_power_down = "Queda de Energia" in str(df_maq.iloc[-1]['Status'])
+                
                 last_prod_idx = -1
                 for idx in df_maq.index:
                     if "PRODUZINDO" in str(df_maq.loc[idx, 'Status']).upper(): last_prod_idx = idx
+                
                 if last_prod_idx != -1:
-                    df_recorte = df_maq.loc[last_prod_idx+1:]
-                    df_novo.append(df_recorte if not df_recorte.empty else df_maq.iloc[-1:])
-                else: df_novo.append(df_maq)
+                    df_recorte = df_maq.loc[last_prod_idx+1:].copy()
+                    if df_recorte.empty: df_recorte = df_maq.iloc[-1:].copy()
+                else: 
+                    df_recorte = df_maq.copy()
+                
+                if not is_power_down:
+                    df_recorte = df_recorte[~df_recorte['Status'].str.contains("Queda de Energia", case=False, na=False)]
+                    df_recorte['Status'] = df_recorte['Status'].astype(str).str.replace(" [Energia Restaurada]", "", regex=False)
+                    
+                    if df_recorte.empty:
+                        last_row = df_maq.iloc[-1:].copy()
+                        last_row['Status'] = last_row['Status'].astype(str).str.replace(" [Energia Restaurada]", "", regex=False)
+                        df_recorte = pd.DataFrame([last_row])
+                        
+                df_novo.append(df_recorte)
             
             if df_novo: pd.concat(df_novo).to_csv(ARQUIVO_DADOS, index=False)
             else: pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"]).to_csv(ARQUIVO_DADOS, index=False)
             
             if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
-            st.success("✨ Turno encerrado! Relatórios salvos no histórico e banco pronto para o próximo turno.")
+            st.success("✨ Turno encerrado! Relatórios salvos no histórico e banco pronto para o próximo turno (sem as quedas de energia passadas).")
             time.sleep(2); st.rerun()
 
 # --- ROTEADOR ---
