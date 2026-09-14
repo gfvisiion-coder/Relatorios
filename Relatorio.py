@@ -1406,28 +1406,60 @@ def tela_armarios():
     df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Item': str, 'Status': str, 'Data_Hora': str})
     if 'Item' not in df_arm.columns: df_arm['Item'] = ""
 
-    aba1, aba2 = st.tabs(["👁️ Visão Geral", "➕ Alimentar Armário (Pré-Set)"])
+    aba1, aba2 = st.tabs(["👁️ Visão Física (Gavetas)", "➕ Alimentar Armário (Pré-Set)"])
 
-    # --- ABA 1: VISUALIZAÇÃO DOS ARMÁRIOS ---
+    # --- ABA 1: VISUALIZAÇÃO FÍSICA DOS ARMÁRIOS ---
     with aba1:
-        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Acompanhe o status atual de cada gaveta/posição nos armários.</p>", unsafe_allow_html=True)
+        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Visão estrutural dos armários. Gavetas com borda colorida possuem setup preparado.</p>", unsafe_allow_html=True)
+        
         armarios_lista = ["AFC 1", "AFC 2", "RTF 1", "RTF 2"]
         
-        c_afc, c_rtf = st.columns(2)
-        
-        for i, arm in enumerate(armarios_lista):
-            coluna_alvo = c_afc if "AFC" in arm else c_rtf
-            df_filtrado = df_arm[df_arm['Armario'] == arm].copy()
+        # Renderiza 2 armários lado a lado
+        for row_idx in range(0, len(armarios_lista), 2):
+            c1, c2 = st.columns(2)
+            colunas_ui = [c1, c2]
             
-            def colorir_status(val):
-                if val == 'VAZIO': return 'color: #A1A1AA;'
-                return 'color: #2DD4BF; font-weight: bold;'
-            
-            with coluna_alvo.expander(f"📦 {arm} - ({len(df_filtrado[df_filtrado['Status'] != 'VAZIO'])} ocupados)", expanded=True):
-                st.dataframe(
-                    df_filtrado[['Posicao', 'Ordem', 'Item', 'Status', 'Data_Hora']].style.map(colorir_status, subset=['Status']),
-                    use_container_width=True, hide_index=True, height=250
-                )
+            for col_i in range(2):
+                if row_idx + col_i < len(armarios_lista):
+                    arm = armarios_lista[row_idx + col_i]
+                    col_ui = colunas_ui[col_i]
+                    
+                    # Filtra e ordena as 24 posições do armário atual
+                    df_filtrado = df_arm[df_arm['Armario'] == arm].sort_values(by='Posicao')
+                    ocupados = len(df_filtrado[df_filtrado['Status'] != 'VAZIO'])
+                    
+                    with col_ui.container(border=True):
+                        st.markdown(f"<h5 style='text-align: center; color: #2DD4BF; margin-bottom: 15px;'>📦 {arm} <br><span style='font-size: 12px; color: #A1A1AA;'>({ocupados}/24 ocupados)</span></h5>", unsafe_allow_html=True)
+                        
+                        # Renderizar grid de gavetas: 6 linhas x 4 colunas = 24 gavetas
+                        gavetas = df_filtrado.to_dict('records')
+                        for linha in range(0, 24, 4):
+                            cols_gaveta = st.columns(4)
+                            for c in range(4):
+                                if linha + c < 24:
+                                    gav = gavetas[linha + c]
+                                    num = gav['Posicao']
+                                    status = gav['Status']
+                                    
+                                    # Estilização condicional (Vazio vs Ocupado)
+                                    if status == 'VAZIO':
+                                        bg = "#18181B"
+                                        border = "#3F3F46"
+                                        txt = "<br><span style='color: #52525B; font-size: 10px;'>VAZIO</span>"
+                                    else:
+                                        bg = "linear-gradient(135deg, #0D9488 0%, #0F766E 100%)"
+                                        border = "#5EEAD4"
+                                        op_f = str(gav['Ordem']).replace('.0', '').replace('nan', '')
+                                        it_f = str(gav['Item']).replace('.0', '').replace('nan', '')
+                                        txt = f"<span style='color: #FFFFFF; font-size: 11px; font-weight: bold;'>OP: {op_f}</span><br><span style='color: #CCFBF1; font-size: 10px;'>{it_f}</span>"
+                                        
+                                    box_html = f"""
+                                    <div style='background: {bg}; border: 1px solid {border}; border-radius: 6px; padding: 4px; text-align: center; height: 65px; margin-bottom: 8px; line-height: 1.2; display: flex; flex-direction: column; justify-content: center;'>
+                                        <div style='font-size: 11px; font-weight: 800; color: #F4F4F5; opacity: 0.8;'>G-{num}</div>
+                                        <div>{txt}</div>
+                                    </div>
+                                    """
+                                    cols_gaveta[c].markdown(box_html, unsafe_allow_html=True)
 
     # --- ABA 2: ALIMENTAR ARMÁRIO (EXCLUSIVO PRÉ-SET / ADM) ---
     with aba2:
@@ -1454,7 +1486,6 @@ def tela_armarios():
                     elif pos_sel is None:
                         st.error("⚠️ Não há posições disponíveis selecionadas!")
                     else:
-                        # Força a remoção de qualquer ".0" caso ocorra uma digitação errada
                         ordem_limpa = ordem_in.strip().upper().replace(".0", "")
                         item_limpo = item_in.strip().upper().replace(".0", "")
                         
@@ -1467,26 +1498,26 @@ def tela_armarios():
                                 datetime.now(FUSO_BR).strftime("%H:%M")
                             ]
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
-                            st.success(f"✅ Ferramental da OP {ordem_limpa} guardado na Posição {pos_sel} do {armario_sel}!")
+                            st.success(f"✅ Ferramental da OP {ordem_limpa} guardado na Gaveta {pos_sel} do {armario_sel}!")
                             time.sleep(1.5)
                             st.rerun()
                             
-            with st.expander("🛠️ Correção: Esvaziar Posição Manualmente"):
+            with st.expander("🛠️ Correção: Esvaziar Gaveta Manualmente"):
                 c_limpar1, c_limpar2 = st.columns(2)
                 arm_limpar = c_limpar1.selectbox("Armário p/ Limpar:", ["AFC 1", "AFC 2", "RTF 1", "RTF 2"])
                 pos_ocupadas = df_arm[(df_arm['Armario'] == arm_limpar) & (df_arm['Status'] != 'VAZIO')]['Posicao'].tolist()
-                pos_limpar = c_limpar2.selectbox("Posição Ocupada:", pos_ocupadas if pos_ocupadas else ["Nenhuma"])
+                pos_limpar = c_limpar2.selectbox("Gaveta Ocupada:", pos_ocupadas if pos_ocupadas else ["Nenhuma"])
                 
-                if st.button("🗑️ Liberar Posição"):
+                if st.button("🗑️ Liberar Gaveta"):
                     if pos_limpar != "Nenhuma":
                         idx_l = df_arm[(df_arm['Armario'] == arm_limpar) & (df_arm['Posicao'] == pos_limpar)].index
                         df_arm.loc[idx_l, ['Ordem', 'Item', 'Status', 'Data_Hora']] = ["", "", "VAZIO", datetime.now(FUSO_BR).strftime("%H:%M")]
                         df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
-                        st.success("✅ Posição liberada!")
+                        st.success("✅ Gaveta liberada!")
                         time.sleep(1)
                         st.rerun()
         else:
-            st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode inserir itens nos armários. O seu acesso permite apenas visualizar as posições ocupadas.")
+            st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode inserir itens nos armários. O seu acesso permite apenas visualizar as posições.")
 
 # --- ROTEADOR ---
 if st.session_state['tela_atual'] == 'login': tela_login()
