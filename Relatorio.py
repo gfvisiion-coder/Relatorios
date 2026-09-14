@@ -537,36 +537,116 @@ def restaurar_queda_energia(setor):
         df = pd.concat([df, pd.DataFrame(novas_linhas)], ignore_index=True)
         df.to_csv(ARQUIVO_DADOS, index=False)
 
-# --- FUNÇÕES DE ARMÁRIOS ---
+# --- FUNÇÕES DE ARMÁRIOS E ALERTAS GLOBAIS ---
 def inicializar_armarios():
     precisa_criar = False
+    dados_antigos = []
+    
     if not os.path.exists(ARQUIVO_ARMARIOS):
         precisa_criar = True
     else:
         try:
-            df_temp = pd.read_csv(ARQUIVO_ARMARIOS)
-            if "Afiadoras 04 a 28" not in df_temp['Armario'].values:
+            df_temp = pd.read_csv(ARQUIVO_ARMARIOS, dtype=str)
+            if "Retíficas 05 a 28" not in df_temp['Armario'].values or "Afiadoras 04 a 28" not in df_temp['Armario'].values:
                 precisa_criar = True
+                ocupadas = df_temp[df_temp['Status'] != 'VAZIO']
+                dados_antigos = ocupadas.to_dict('records')
         except:
             precisa_criar = True
             
     if precisa_criar:
         dados = []
         afc_nums = sorted([int(m.split('-')[0]) for m in TODAS_AFC])
-        rtf_nums = sorted([int(m.split('-')[0]) for m in TODAS_RTF if int(m.split('-')[0]) >= 5])
+        rtf_nums_raw = sorted([int(m.split('-')[0]) for m in TODAS_RTF])
+        
+        rtf_nums = [m for m in rtf_nums_raw if m >= 5 and m not in [6, 17]]
         
         mapa_armarios = {
             "Afiadoras 04 a 28": [m for m in afc_nums if m <= 28],
             "Afiadoras 29 a 41": [m for m in afc_nums if m >= 29],
-            "Retíficas 05 a 22": [m for m in rtf_nums if m <= 22],
-            "Retíficas 23 a 42": [m for m in rtf_nums if m >= 23]
+            "Retíficas 05 a 28": [m for m in rtf_nums if m <= 28],
+            "Retíficas 29 a 42": [m for m in rtf_nums if m >= 29]
         }
         
         for arm, maquinas in mapa_armarios.items():
             for maq in maquinas:
                 dados.append({"Armario": arm, "Posicao": str(maq), "Ordem": "", "Item": "", "Status": "VAZIO", "Data_Hora": ""})
                 
-        pd.DataFrame(dados).to_csv(ARQUIVO_ARMARIOS, index=False)
+        df_novo = pd.DataFrame(dados)
+        
+        for row in dados_antigos:
+            pos = str(row.get('Posicao', ''))
+            arm_antigo = str(row.get('Armario', ''))
+            
+            idx_exato = df_novo[df_novo['Posicao'] == pos].index
+            if not idx_exato.empty:
+                df_novo.loc[idx_exato[0], 'Ordem'] = str(row.get('Ordem', ''))
+                df_novo.loc[idx_exato[0], 'Item'] = str(row.get('Item', ''))
+                df_novo.loc[idx_exato[0], 'Status'] = str(row.get('Status', 'VAZIO'))
+                df_novo.loc[idx_exato[0], 'Data_Hora'] = str(row.get('Data_Hora', ''))
+            else:
+                tipo_maq = "Afiadoras" if "AFC" in arm_antigo else "Retíficas"
+                idx_vazio = df_novo[(df_novo['Armario'].str.contains(tipo_maq)) & (df_novo['Status'] == 'VAZIO')].index
+                if not idx_vazio.empty:
+                    df_novo.loc[idx_vazio[0], 'Ordem'] = str(row.get('Ordem', ''))
+                    df_novo.loc[idx_vazio[0], 'Item'] = str(row.get('Item', ''))
+                    df_novo.loc[idx_vazio[0], 'Status'] = str(row.get('Status', 'VAZIO'))
+                    df_novo.loc[idx_vazio[0], 'Data_Hora'] = str(row.get('Data_Hora', ''))
+        
+        df_novo.to_csv(ARQUIVO_ARMARIOS, index=False)
+
+def exibir_alertas_preset():
+    if st.session_state.get('perfil') not in ['preset', 'adm']: return
+    
+    if os.path.exists(ARQUIVO_ALERTAS):
+        df_alertas_toast = pd.read_csv(ARQUIVO_ALERTAS)
+        if not df_alertas_toast.empty:
+            ultimo_alerta = df_alertas_toast.iloc[-1]
+            if 'ultimo_alerta_visto' not in st.session_state or st.session_state['ultimo_alerta_visto'] != str(ultimo_alerta.to_dict()):
+                st.session_state['ultimo_alerta_visto'] = str(ultimo_alerta.to_dict())
+                nome_prep = ultimo_alerta.get('Preparador', 'SISTEMA')
+                st.toast(f"Retirada! {nome_prep} pegou a OP {ultimo_alerta['Ordem_Retirada']} da MAQ {ultimo_alerta['Maquina']}!", icon="🔔")
+
+    agora_dt = datetime.now(FUSO_BR)
+    alertas_urgentes = []
+    if os.path.exists(ARQUIVO_DADOS) and os.path.exists(ARQUIVO_ARMARIOS):
+        try:
+            df_dados = pd.read_csv(ARQUIVO_DADOS).drop_duplicates(subset=['Maquina'], keep='last')
+            df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Posicao': str, 'Status': str})
+            
+            for _, row in df_dados.iterrows():
+                st_raw = str(row['Status'])
+                maq_id_full = str(row['Maquina']) 
+                
+                if "[AGENDADO:" in st_raw:
+                    hora_alvo = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
+                    h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M").replace(year=agora_dt.year, month=agora_dt.month, day=agora_dt.day, tzinfo=FUSO_BR)
+                    
+                    if h_alvo_dt < agora_dt and (agora_dt - h_alvo_dt).total_seconds() > 12 * 3600:
+                        h_alvo_dt += timedelta(days=1)
+                    elif h_alvo_dt > agora_dt and (h_alvo_dt - agora_dt).total_seconds() > 12 * 3600:
+                        h_alvo_dt -= timedelta(days=1)
+                    
+                    delta_mins = (h_alvo_dt - agora_dt).total_seconds() / 60
+                    
+                    if -60 <= delta_mins <= 90:
+                        maq_num_only = maq_id_full.split(" ")[1] 
+                        gaveta_num = maq_num_only.split("-")[0] 
+                        
+                        gaveta_row = df_arm[df_arm['Posicao'] == gaveta_num]
+                        if not gaveta_row.empty and gaveta_row.iloc[0]['Status'] == 'VAZIO':
+                            alertas_urgentes.append({'maquina': maq_id_full, 'gaveta': gaveta_num, 'hora': hora_alvo, 'delta': int(delta_mins)})
+        except: pass
+        
+    if alertas_urgentes:
+        html_alertas = "<div class='alerta-pisca'>"
+        html_alertas += "<h4 style='margin-top:0; color:#fca5a5;'>🚨 ALERTA DE PREPARAÇÃO IMINENTE</h4>"
+        for alerta in sorted(alertas_urgentes, key=lambda x: x['delta']):
+            tempo_txt = f"em {alerta['delta']} min" if alerta['delta'] >= 0 else f"atrasado há {abs(alerta['delta'])} min"
+            html_alertas += f"<p style='color:#fee2e2; margin-bottom:5px; font-size:15px;'>• <b>{alerta['maquina']}</b> agendada para <b>{alerta['hora']}</b> ({tempo_txt}) -> <b>GAVETA {alerta['gaveta']} VAZIA!</b></p>"
+        html_alertas += "</div>"
+        st.markdown(html_alertas, unsafe_allow_html=True)
+
 
 def dar_baixa_armario(ordem_alvo, operador_nome="SISTEMA"):
     if not ordem_alvo or not str(ordem_alvo).strip() or not os.path.exists(ARQUIVO_ARMARIOS): return
@@ -1156,6 +1236,8 @@ def tela_login():
             else: st.error("⚠️ Credenciais inválidas.")
 
 def tela_menu():
+    exibir_alertas_preset() # Exibe os alertas e o painel gigante no menu!
+    
     perfil = st.session_state['perfil']
     if perfil == 'adm': setor_txt = "Gerência"
     elif st.session_state['setor_usuario'] == 'TECNICO': setor_txt = "Técnico (Geral)"
@@ -1502,69 +1584,17 @@ def tela_relatorio():
             time.sleep(2); st.rerun()
 
 def tela_armarios():
+    exibir_alertas_preset()
+    
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### 🗄️ Gestão de Armários (Pré-Set)")
     
     inicializar_armarios()
     df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Item': str, 'Status': str, 'Data_Hora': str, 'Posicao': str, 'Armario': str})
     if 'Item' not in df_arm.columns: df_arm['Item'] = ""
-    
-    # --- SISTEMA DE ALERTA DE URGÊNCIAS (GAVETA VAZIA EM AGENDAMENTO PRÓXIMO E TOAST DE RETIRADA) ---
-    if st.session_state['perfil'] in ['preset', 'adm']:
-        
-        # Dispara Toast caso alguém tenha retirado algo recentemente
-        if os.path.exists(ARQUIVO_ALERTAS):
-            df_alertas_toast = pd.read_csv(ARQUIVO_ALERTAS)
-            if not df_alertas_toast.empty:
-                ultimo_alerta = df_alertas_toast.iloc[-1]
-                if 'ultimo_alerta_visto' not in st.session_state or st.session_state['ultimo_alerta_visto'] != str(ultimo_alerta.to_dict()):
-                    st.session_state['ultimo_alerta_visto'] = str(ultimo_alerta.to_dict())
-                    nome_prep = ultimo_alerta.get('Preparador', 'SISTEMA')
-                    st.toast(f"Retirada! {nome_prep} pegou a OP {ultimo_alerta['Ordem_Retirada']} da MAQ {ultimo_alerta['Maquina']}!", icon="🔔")
-
-        agora_dt = datetime.now(FUSO_BR)
-        alertas_urgentes = []
-        if os.path.exists(ARQUIVO_DADOS):
-            try:
-                df_dados = pd.read_csv(ARQUIVO_DADOS).drop_duplicates(subset=['Maquina'], keep='last')
-                for _, row in df_dados.iterrows():
-                    st_raw = str(row['Status'])
-                    maq_id_full = str(row['Maquina']) 
-                    
-                    if "[AGENDADO:" in st_raw:
-                        hora_alvo = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
-                        h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M").replace(year=agora_dt.year, month=agora_dt.month, day=agora_dt.day, tzinfo=FUSO_BR)
-                        
-                        if h_alvo_dt < agora_dt and (agora_dt - h_alvo_dt).total_seconds() > 12 * 3600:
-                            h_alvo_dt += timedelta(days=1)
-                        elif h_alvo_dt > agora_dt and (h_alvo_dt - agora_dt).total_seconds() > 12 * 3600:
-                            h_alvo_dt -= timedelta(days=1)
-                        
-                        delta_mins = (h_alvo_dt - agora_dt).total_seconds() / 60
-                        
-                        if -60 <= delta_mins <= 90:
-                            maq_num_only = maq_id_full.split(" ")[1] 
-                            gaveta_num = maq_num_only.split("-")[0] 
-                            
-                            gaveta_row = df_arm[df_arm['Posicao'] == gaveta_num]
-                            if not gaveta_row.empty and gaveta_row.iloc[0]['Status'] == 'VAZIO':
-                                alertas_urgentes.append({'maquina': maq_id_full, 'gaveta': gaveta_num, 'hora': hora_alvo, 'delta': int(delta_mins)})
-            except: pass
-            
-        if alertas_urgentes:
-            st.toast("🚨 URGENTE: Máquinas agendadas com gaveta vazia!", icon="🚨")
-            
-            html_alertas = "<div class='alerta-pisca'>"
-            html_alertas += "<h4 style='margin-top:0; color:#fca5a5;'>🚨 ALERTA DE PREPARAÇÃO IMINENTE</h4>"
-            for alerta in sorted(alertas_urgentes, key=lambda x: x['delta']):
-                tempo_txt = f"em {alerta['delta']} min" if alerta['delta'] >= 0 else f"atrasado há {abs(alerta['delta'])} min"
-                html_alertas += f"<p style='color:#fee2e2; margin-bottom:5px; font-size:15px;'>• <b>{alerta['maquina']}</b> agendada para <b>{alerta['hora']}</b> ({tempo_txt}) -> <b>GAVETA {alerta['gaveta']} VAZIA!</b></p>"
-            html_alertas += "</div>"
-            st.markdown(html_alertas, unsafe_allow_html=True)
 
     gaveta = st.session_state.get('gaveta_selecionada', None)
 
-    # --- MODAL / PAINEL DE AÇÃO NO TOPO ---
     if gaveta:
         arm_sel = gaveta['armario']
         pos_sel = gaveta['posicao']
@@ -1647,7 +1677,7 @@ def tela_armarios():
     with aba1:
         st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Visão estrutural. <b>Clique diretamente na gaveta</b> para alimentar (guardar) ou corrigir a OP.</p>", unsafe_allow_html=True)
         
-        armarios_lista = ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 22", "Retíficas 23 a 42"]
+        armarios_lista = ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"]
         
         for row_idx in range(0, len(armarios_lista), 2):
             c1, c2 = st.columns(2)
@@ -1700,7 +1730,7 @@ def tela_armarios():
             with st.form("form_alimentar_lista", clear_on_submit=True):
                 st.markdown("📥 **Guardar Ferramental / Setup**")
                 c1, c2 = st.columns(2)
-                armario_sel = c1.selectbox("Selecione o Armário:", ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 22", "Retíficas 23 a 42"])
+                armario_sel = c1.selectbox("Selecione o Armário:", ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"])
                 
                 pos_vazias = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Status'] == 'VAZIO')]
                 pos_vazias_lista = pos_vazias['Posicao'].tolist()
