@@ -1470,7 +1470,7 @@ def tela_armarios():
                                         
                                     box_html = f"""
                                     <div style='background: {bg}; border: 1px solid {border}; border-radius: 6px; padding: 4px; text-align: center; height: 65px; margin-bottom: 8px; line-height: 1.2; display: flex; flex-direction: column; justify-content: center;'>
-                                        <div style='font-size: 11px; font-weight: 800; color: #F4F4F5; opacity: 0.8;'>MAQ {num}</div>
+                                        <div style='font-size: 13px; font-weight: 800; color: #14B8A6; margin-bottom: 2px;'>MÁQUINA {num}</div>
                                         <div>{txt}</div>
                                     </div>
                                     """
