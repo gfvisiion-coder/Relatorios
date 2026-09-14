@@ -71,6 +71,21 @@ CSS_APP = """
         white-space: pre-wrap !important;
     }
     
+    /* Animação de Alerta Urgente (Pisca-Pisca) */
+    @keyframes pulse-red {
+        0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+    .alerta-pisca {
+        animation: pulse-red 2s infinite;
+        background-color: #450a0a !important;
+        border: 2px solid #ef4444 !important;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    
     header { visibility: hidden; }
 </style>
 """
@@ -512,7 +527,6 @@ def restaurar_queda_energia(setor):
 # --- FUNÇÕES DE ARMÁRIOS ---
 def inicializar_armarios():
     precisa_criar = False
-    
     if not os.path.exists(ARQUIVO_ARMARIOS):
         precisa_criar = True
     else:
@@ -541,7 +555,8 @@ def inicializar_armarios():
                 
         pd.DataFrame(dados).to_csv(ARQUIVO_ARMARIOS, index=False)
 
-def dar_baixa_armario(ordem_alvo):
+# Recebe o operador como argumento para salvar no histórico de Alertas
+def dar_baixa_armario(ordem_alvo, operador_nome="SISTEMA"):
     if not ordem_alvo or not str(ordem_alvo).strip() or not os.path.exists(ARQUIVO_ARMARIOS): return
     try:
         ordem_formatada = str(ordem_alvo).strip().upper().replace(".0", "")
@@ -557,12 +572,19 @@ def dar_baixa_armario(ordem_alvo):
             armario_removido = str(df_arm.loc[idx_ordem[0], 'Armario'])
             
             hora_br_str = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M")
-            novo_alerta = {"Data_Hora": hora_br_str, "Armario": armario_removido, "Maquina": maq_removida, "Ordem_Retirada": ordem_formatada, "Item": item_removido}
+            novo_alerta = {
+                "Data_Hora": hora_br_str, 
+                "Armario": armario_removido, 
+                "Maquina": maq_removida, 
+                "Ordem_Retirada": ordem_formatada, 
+                "Item": item_removido,
+                "Preparador": operador_nome
+            }
             
             if os.path.exists(ARQUIVO_ALERTAS):
                 df_alerta = pd.read_csv(ARQUIVO_ALERTAS)
                 df_alerta = pd.concat([df_alerta, pd.DataFrame([novo_alerta])], ignore_index=True)
-                df_alerta.tail(100).to_csv(ARQUIVO_ALERTAS, index=False) # Guarda os últimos 100
+                df_alerta.tail(100).to_csv(ARQUIVO_ALERTAS, index=False)
             else:
                 pd.DataFrame([novo_alerta]).to_csv(ARQUIVO_ALERTAS, index=False)
             
@@ -769,7 +791,7 @@ def painel_controle_maquina(maq_id, setor):
                     
                     if "[Ordem:" in st_atual:
                         op_ext = st_atual.split("[Ordem:")[1].split("]")[0].strip()
-                        dar_baixa_armario(op_ext)
+                        dar_baixa_armario(op_ext, st.session_state.get('operador', 'SISTEMA'))
                     
                     salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
                     st.session_state['maq_ativa'] = None
@@ -820,7 +842,7 @@ def painel_controle_maquina(maq_id, setor):
                     tags_prod = tags_prod.replace("[Item Atual:", "[Item:")
                     st_final = f"PRODUZINDO {tags_prod}".strip()
                     op_ext = st_atual.split("[Ordem:")[1].split("]")[0].strip()
-                    dar_baixa_armario(op_ext)
+                    dar_baixa_armario(op_ext, st.session_state.get('operador', 'SISTEMA'))
                     salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
                     st.session_state['maq_ativa'] = None
                     del st.session_state[flow_key]
@@ -863,7 +885,7 @@ def painel_controle_maquina(maq_id, setor):
                         if pcs_hora.strip(): st_final += f" [Pçs/Hora: {pcs_hora.strip()}]"
                         if obs.strip(): st_final += f" [Obs: {obs.strip()}]"
                         
-                        dar_baixa_armario(ordem_limpa)
+                        dar_baixa_armario(ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
@@ -946,7 +968,7 @@ def painel_controle_maquina(maq_id, setor):
                         if ordem_limpa: st_final += f" [Ordem: {ordem_limpa}]"
                         if item_limpo: st_final += f" [Item Atual: {item_limpo}]"
                         
-                        if ordem_limpa: dar_baixa_armario(ordem_limpa)
+                        if ordem_limpa: dar_baixa_armario(ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
                             
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
@@ -974,7 +996,6 @@ def painel_controle_maquina(maq_id, setor):
                 nova_ordem_input = ""
                 
                 if is_comum:
-                    # REMOVIDO: novo_item_input (O sistema pegará do armário automaticamente)
                     nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", placeholder="Ex: 987654")
                     st.info("ℹ️ O Item da peça será puxado automaticamente do armário baseado nesta OP.")
                 elif is_seq:
@@ -1057,10 +1078,10 @@ def painel_controle_maquina(maq_id, setor):
                             item_buscado = buscar_item_por_ordem(nova_ordem_limpa)
                             st_andamento += f" [Ordem: {nova_ordem_limpa}]"
                             st_andamento += f" [Novo Item: {item_buscado}]"
-                            dar_baixa_armario(nova_ordem_limpa)
+                            dar_baixa_armario(nova_ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
                         elif is_seq:
                             st_andamento += f" [Ordem: {nova_ordem_limpa}]"
-                            dar_baixa_armario(nova_ordem_limpa)
+                            dar_baixa_armario(nova_ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
                             
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
@@ -1481,6 +1502,18 @@ def tela_armarios():
     
     # --- SISTEMA DE ALERTA DE URGÊNCIAS (GAVETA VAZIA EM AGENDAMENTO PRÓXIMO) ---
     if st.session_state['perfil'] in ['preset', 'adm']:
+        
+        # Dispara Toast caso alguém tenha retirado algo recentemente
+        if os.path.exists(ARQUIVO_ALERTAS):
+            df_alertas_toast = pd.read_csv(ARQUIVO_ALERTAS)
+            if not df_alertas_toast.empty:
+                ultimo_alerta = df_alertas_toast.iloc[-1]
+                # Usa session state para não ficar mostrando o toast toda vez que a tela recarregar
+                if 'ultimo_alerta_visto' not in st.session_state or st.session_state['ultimo_alerta_visto'] != str(ultimo_alerta.to_dict()):
+                    st.session_state['ultimo_alerta_visto'] = str(ultimo_alerta.to_dict())
+                    nome_prep = ultimo_alerta.get('Preparador', 'SISTEMA')
+                    st.toast(f"Retirada! {nome_prep} retirou a OP {ultimo_alerta['Ordem_Retirada']} (MAQ {ultimo_alerta['Maquina']})!", icon="🔔")
+
         agora_dt = datetime.now(FUSO_BR)
         alertas_urgentes = []
         if os.path.exists(ARQUIVO_DADOS):
@@ -1511,15 +1544,17 @@ def tela_armarios():
             except: pass
             
         if alertas_urgentes:
-            st.markdown("""
-            <div style='background: #3f0000; padding: 12px; border-radius: 8px; border-left: 5px solid #ff4444; margin-bottom: 10px;'>
-                <h5 style='margin:0; color: #ff9999 !important;'>⚠️ ATENÇÃO: PREPARAÇÕES AGENDADAS E GAVETA VAZIA</h5>
-            </div>
-            """, unsafe_allow_html=True)
+            st.toast("🚨 URGENTE: Máquinas agendadas com gaveta vazia!", icon="🚨")
+            
+            # BLOCO PULSANTE
+            html_alertas = "<div class='alerta-pisca'>"
+            html_alertas += "<h4 style='margin-top:0; color:#fca5a5;'>🚨 ALERTA DE PREPARAÇÃO IMINENTE</h4>"
             for alerta in sorted(alertas_urgentes, key=lambda x: x['delta']):
                 tempo_txt = f"em {alerta['delta']} min" if alerta['delta'] >= 0 else f"atrasado há {abs(alerta['delta'])} min"
-                st.error(f"🚨 **{alerta['maquina']}** está agendada para as **{alerta['hora']}** ({tempo_txt}), mas a gaveta da **MÁQUINA {alerta['gaveta']} ESTÁ VAZIA!**")
-            st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
+                html_alertas += f"<p style='color:#fee2e2; margin-bottom:5px;'>• <b>{alerta['maquina']}</b> agendada para <b>{alerta['hora']}</b> ({tempo_txt}) -> <b>GAVETA {alerta['gaveta']} VAZIA!</b></p>"
+            html_alertas += "</div>"
+            
+            st.markdown(html_alertas, unsafe_allow_html=True)
 
     gaveta = st.session_state.get('gaveta_selecionada', None)
 
@@ -1695,7 +1730,7 @@ def tela_armarios():
                     st.markdown("<div style='margin-top: 29px;'></div>", unsafe_allow_html=True)
                     if col_btn.button("🗑️ Excluir OP", use_container_width=True):
                         if op_para_remover:
-                            dar_baixa_armario(op_para_remover)
+                            dar_baixa_armario(op_para_remover, st.session_state.get('operador', 'SISTEMA'))
                             st.success(f"✅ A OP {op_para_remover} foi removida e a gaveta está vazia novamente!")
                             time.sleep(1)
                             st.rerun()
@@ -1711,6 +1746,7 @@ def tela_armarios():
         if os.path.exists(ARQUIVO_ALERTAS):
             df_alertas = pd.read_csv(ARQUIVO_ALERTAS)
             if not df_alertas.empty:
+                # Exibe a coluna Preparador na tabela
                 st.dataframe(df_alertas.sort_values(by="Data_Hora", ascending=False), use_container_width=True, hide_index=True)
                 if st.session_state['perfil'] in ['preset', 'adm']:
                     if st.button("🗑️ Limpar Histórico de Alertas", type="secondary"):
