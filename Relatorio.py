@@ -497,7 +497,7 @@ def restaurar_queda_energia(setor):
         df = pd.concat([df, pd.DataFrame(novas_linhas)], ignore_index=True)
         df.to_csv(ARQUIVO_DADOS, index=False)
 
-# --- RESTANTE DAS FUNÇÕES ARMARIOS E UI... ---
+# --- FUNÇÕES DE ARMÁRIOS ---
 def inicializar_armarios():
     if not os.path.exists(ARQUIVO_ARMARIOS):
         dados = []
@@ -510,7 +510,8 @@ def dar_baixa_armario(ordem_alvo):
     if not ordem_alvo or not str(ordem_alvo).strip() or not os.path.exists(ARQUIVO_ARMARIOS): return
     try:
         ordem_formatada = str(ordem_alvo).strip().upper().replace(".0", "")
-        df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Status': str, 'Data_Hora': str})
+        # Força leitura como string p/ não gerar .0
+        df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Item': str, 'Status': str, 'Data_Hora': str})
         if 'Item' not in df_arm.columns: df_arm['Item'] = ""
         df_arm['Ordem_busca'] = df_arm['Ordem'].astype(str).str.strip().str.upper().str.replace(".0", "", regex=False)
         idx_ordem = df_arm[df_arm['Ordem_busca'] == ordem_formatada].index
@@ -564,7 +565,7 @@ def mudar_tela(nome_tela):
     st.rerun()
 
 def ler_status_atual():
-    checar_e_auto_encerrar() # <--- Executa o auto-close a cada interação antes de listar as máquinas
+    checar_e_auto_encerrar()
     verificar_virada_turno()
     if not os.path.exists(ARQUIVO_DADOS): return {}
     try:
@@ -789,11 +790,16 @@ def painel_controle_maquina(maq_id, setor):
                         st.error("⚠️ A Ordem e o Item são obrigatórios!")
                     else:
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                        st_final = f"PRODUZINDO [Ordem: {ordem.strip().upper()}] [Item: {item.strip().upper()}]"
+                        
+                        # Limpa qualquer .0 na string do item
+                        item_limpo = item.strip().upper().replace(".0", "")
+                        ordem_limpa = ordem.strip().upper().replace(".0", "")
+                        
+                        st_final = f"PRODUZINDO [Ordem: {ordem_limpa}] [Item: {item_limpo}]"
                         if pcs_hora.strip(): st_final += f" [Pçs/Hora: {pcs_hora.strip()}]"
                         if obs.strip(): st_final += f" [Obs: {obs.strip()}]"
                         
-                        dar_baixa_armario(ordem.strip())
+                        dar_baixa_armario(ordem_limpa)
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
@@ -861,10 +867,13 @@ def painel_controle_maquina(maq_id, setor):
                         if is_agendado and hora_relatorio.strip(): st_final += f" [AGENDADO:{hora_relatorio.strip()}]"
                         else: st_final = f"AGUARDANDO PREPARADOR - {st_final}"
                         
-                        if ordem_atual.strip(): st_final += f" [Ordem: {ordem_atual.strip().upper()}]"
-                        if item_atual.strip(): st_final += f" [Item Atual: {item_atual.strip().upper()}]"
+                        ordem_limpa = ordem_atual.strip().upper().replace(".0", "")
+                        item_limpo = item_atual.strip().upper().replace(".0", "")
+
+                        if ordem_limpa: st_final += f" [Ordem: {ordem_limpa}]"
+                        if item_limpo: st_final += f" [Item Atual: {item_limpo}]"
                         
-                        if ordem_atual.strip(): dar_baixa_armario(ordem_atual.strip())
+                        if ordem_limpa: dar_baixa_armario(ordem_limpa)
                             
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
@@ -968,13 +977,16 @@ def painel_controle_maquina(maq_id, setor):
                         
                         st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}] {tags_prod}".strip()
                         
+                        nova_ordem_limpa = nova_ordem_input.strip().upper().replace(".0", "")
+                        novo_item_limpo = novo_item_input.strip().upper().replace(".0", "")
+
                         if is_comum:
-                            st_andamento += f" [Ordem: {nova_ordem_input.strip().upper()}]"
-                            st_andamento += f" [Novo Item: {novo_item_input.strip().upper()}]"
-                            dar_baixa_armario(nova_ordem_input.strip())
+                            st_andamento += f" [Ordem: {nova_ordem_limpa}]"
+                            st_andamento += f" [Novo Item: {novo_item_limpo}]"
+                            dar_baixa_armario(nova_ordem_limpa)
                         elif is_seq:
-                            st_andamento += f" [Ordem: {nova_ordem_input.strip().upper()}]"
-                            dar_baixa_armario(nova_ordem_input.strip())
+                            st_andamento += f" [Ordem: {nova_ordem_limpa}]"
+                            dar_baixa_armario(nova_ordem_limpa)
                             
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
@@ -1385,6 +1397,97 @@ def tela_relatorio():
             st.success("✨ Turno encerrado manualmente! O banco de dados foi limpo e está pronto para continuar.")
             time.sleep(2); st.rerun()
 
+def tela_armarios():
+    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    st.markdown("#### 🗄️ Gestão de Armários (Pré-Set)")
+    
+    inicializar_armarios()
+    # Força a leitura do arquivo tratando Item e Ordem puramente como string, impedindo o formato float (ex: 323232.0)
+    df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Item': str, 'Status': str, 'Data_Hora': str})
+    if 'Item' not in df_arm.columns: df_arm['Item'] = ""
+
+    aba1, aba2 = st.tabs(["👁️ Visão Geral", "➕ Alimentar Armário (Pré-Set)"])
+
+    # --- ABA 1: VISUALIZAÇÃO DOS ARMÁRIOS ---
+    with aba1:
+        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Acompanhe o status atual de cada gaveta/posição nos armários.</p>", unsafe_allow_html=True)
+        armarios_lista = ["AFC 1", "AFC 2", "RTF 1", "RTF 2"]
+        
+        c_afc, c_rtf = st.columns(2)
+        
+        for i, arm in enumerate(armarios_lista):
+            coluna_alvo = c_afc if "AFC" in arm else c_rtf
+            df_filtrado = df_arm[df_arm['Armario'] == arm].copy()
+            
+            def colorir_status(val):
+                if val == 'VAZIO': return 'color: #A1A1AA;'
+                return 'color: #2DD4BF; font-weight: bold;'
+            
+            with coluna_alvo.expander(f"📦 {arm} - ({len(df_filtrado[df_filtrado['Status'] != 'VAZIO'])} ocupados)", expanded=True):
+                st.dataframe(
+                    df_filtrado[['Posicao', 'Ordem', 'Item', 'Status', 'Data_Hora']].style.map(colorir_status, subset=['Status']),
+                    use_container_width=True, hide_index=True, height=250
+                )
+
+    # --- ABA 2: ALIMENTAR ARMÁRIO (EXCLUSIVO PRÉ-SET / ADM) ---
+    with aba2:
+        if st.session_state['perfil'] in ['preset', 'adm']:
+            with st.form("form_alimentar", clear_on_submit=True):
+                st.markdown("📥 **Guardar Ferramental / Setup**")
+                c1, c2 = st.columns(2)
+                armario_sel = c1.selectbox("Selecione o Armário:", ["AFC 1", "AFC 2", "RTF 1", "RTF 2"])
+                
+                pos_vazias = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Status'] == 'VAZIO')]['Posicao'].tolist()
+                
+                if not pos_vazias:
+                    st.warning(f"O {armario_sel} está cheio!")
+                    pos_sel = None
+                else:
+                    pos_sel = c2.selectbox("Posição Disponível:", pos_vazias)
+
+                ordem_in = st.text_input("Ordem de Produção (OP):", placeholder="Ex: 987654")
+                item_in = st.text_input("Item / Peça:", placeholder="Ex: 313324")
+
+                if st.form_submit_button("📥 GUARDAR NO ARMÁRIO", type="primary"):
+                    if not ordem_in.strip() or not item_in.strip():
+                        st.error("⚠️ A Ordem (OP) e o Item são obrigatórios!")
+                    elif pos_sel is None:
+                        st.error("⚠️ Não há posições disponíveis selecionadas!")
+                    else:
+                        # Força a remoção de qualquer ".0" caso ocorra uma digitação errada
+                        ordem_limpa = ordem_in.strip().upper().replace(".0", "")
+                        item_limpo = item_in.strip().upper().replace(".0", "")
+                        
+                        idx = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Posicao'] == pos_sel)].index
+                        if not idx.empty:
+                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora']] = [
+                                ordem_limpa, 
+                                item_limpo, 
+                                "AGUARDANDO MÁQUINA", 
+                                datetime.now(FUSO_BR).strftime("%H:%M")
+                            ]
+                            df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
+                            st.success(f"✅ Ferramental da OP {ordem_limpa} guardado na Posição {pos_sel} do {armario_sel}!")
+                            time.sleep(1.5)
+                            st.rerun()
+                            
+            with st.expander("🛠️ Correção: Esvaziar Posição Manualmente"):
+                c_limpar1, c_limpar2 = st.columns(2)
+                arm_limpar = c_limpar1.selectbox("Armário p/ Limpar:", ["AFC 1", "AFC 2", "RTF 1", "RTF 2"])
+                pos_ocupadas = df_arm[(df_arm['Armario'] == arm_limpar) & (df_arm['Status'] != 'VAZIO')]['Posicao'].tolist()
+                pos_limpar = c_limpar2.selectbox("Posição Ocupada:", pos_ocupadas if pos_ocupadas else ["Nenhuma"])
+                
+                if st.button("🗑️ Liberar Posição"):
+                    if pos_limpar != "Nenhuma":
+                        idx_l = df_arm[(df_arm['Armario'] == arm_limpar) & (df_arm['Posicao'] == pos_limpar)].index
+                        df_arm.loc[idx_l, ['Ordem', 'Item', 'Status', 'Data_Hora']] = ["", "", "VAZIO", datetime.now(FUSO_BR).strftime("%H:%M")]
+                        df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
+                        st.success("✅ Posição liberada!")
+                        time.sleep(1)
+                        st.rerun()
+        else:
+            st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode inserir itens nos armários. O seu acesso permite apenas visualizar as posições ocupadas.")
+
 # --- ROTEADOR ---
 if st.session_state['tela_atual'] == 'login': tela_login()
 elif st.session_state['tela_atual'] == 'menu': tela_menu()
@@ -1396,3 +1499,4 @@ elif st.session_state['tela_atual'] == 'rtf': tela_rtf()
 elif st.session_state['tela_atual'] == 'equipe': tela_equipe()
 elif st.session_state['tela_atual'] == 'editar': tela_editar()
 elif st.session_state['tela_atual'] == 'relatorio': tela_relatorio()
+elif st.session_state['tela_atual'] == 'armarios': tela_armarios()
