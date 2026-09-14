@@ -1476,8 +1476,50 @@ def tela_armarios():
     st.markdown("#### 🗄️ Gestão de Armários (Pré-Set)")
     
     inicializar_armarios()
-    df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Item': str, 'Status': str, 'Data_Hora': str, 'Posicao': str})
+    df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Item': str, 'Status': str, 'Data_Hora': str, 'Posicao': str, 'Armario': str})
     if 'Item' not in df_arm.columns: df_arm['Item'] = ""
+    
+    # --- SISTEMA DE ALERTA DE URGÊNCIAS (GAVETA VAZIA EM AGENDAMENTO PRÓXIMO) ---
+    if st.session_state['perfil'] in ['preset', 'adm']:
+        agora_dt = datetime.now(FUSO_BR)
+        alertas_urgentes = []
+        if os.path.exists(ARQUIVO_DADOS):
+            try:
+                df_dados = pd.read_csv(ARQUIVO_DADOS).drop_duplicates(subset=['Maquina'], keep='last')
+                for _, row in df_dados.iterrows():
+                    st_raw = str(row['Status'])
+                    maq_id_full = str(row['Maquina']) 
+                    
+                    if "[AGENDADO:" in st_raw:
+                        hora_alvo = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
+                        h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M").replace(year=agora_dt.year, month=agora_dt.month, day=agora_dt.day, tzinfo=FUSO_BR)
+                        
+                        if h_alvo_dt < agora_dt and (agora_dt - h_alvo_dt).total_seconds() > 12 * 3600:
+                            h_alvo_dt += timedelta(days=1)
+                        elif h_alvo_dt > agora_dt and (h_alvo_dt - agora_dt).total_seconds() > 12 * 3600:
+                            h_alvo_dt -= timedelta(days=1)
+                        
+                        delta_mins = (h_alvo_dt - agora_dt).total_seconds() / 60
+                        
+                        if -60 <= delta_mins <= 90:
+                            maq_num_only = maq_id_full.split(" ")[1] 
+                            gaveta_num = maq_num_only.split("-")[0] 
+                            
+                            gaveta_row = df_arm[df_arm['Posicao'] == gaveta_num]
+                            if not gaveta_row.empty and gaveta_row.iloc[0]['Status'] == 'VAZIO':
+                                alertas_urgentes.append({'maquina': maq_id_full, 'gaveta': gaveta_num, 'hora': hora_alvo, 'delta': int(delta_mins)})
+            except: pass
+            
+        if alertas_urgentes:
+            st.markdown("""
+            <div style='background: #3f0000; padding: 12px; border-radius: 8px; border-left: 5px solid #ff4444; margin-bottom: 10px;'>
+                <h5 style='margin:0; color: #ff9999 !important;'>⚠️ ATENÇÃO: PREPARAÇÕES AGENDADAS E GAVETA VAZIA</h5>
+            </div>
+            """, unsafe_allow_html=True)
+            for alerta in sorted(alertas_urgentes, key=lambda x: x['delta']):
+                tempo_txt = f"em {alerta['delta']} min" if alerta['delta'] >= 0 else f"atrasado há {abs(alerta['delta'])} min"
+                st.error(f"🚨 **{alerta['maquina']}** está agendada para as **{alerta['hora']}** ({tempo_txt}), mas a gaveta da **MÁQUINA {alerta['gaveta']} ESTÁ VAZIA!**")
+            st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
 
     gaveta = st.session_state.get('gaveta_selecionada', None)
 
@@ -1541,7 +1583,7 @@ def tela_armarios():
         
         st.divider()
 
-    aba1, aba2, aba3 = st.tabs(["👁️ Visão Física (Gavetas)", "➕ Alimentar / Excluir (Pré-Set)", "🔔 Alertas de Retirada"])
+    aba1, aba2, aba3 = st.tabs(["👁️ Visão Física (Gavetas)", "➕ Alimentar / Excluir (Pré-Set)", "🔔 Alertas e Histórico"])
 
     # --- ABA 1: VISUALIZAÇÃO FÍSICA DOS ARMÁRIOS ---
     with aba1:
