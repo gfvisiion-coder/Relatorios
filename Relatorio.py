@@ -119,16 +119,18 @@ ARQUIVO_FECHAMENTO = "ultimo_fechamento.csv"
 
 # --- FUNÇÕES UTILITÁRIAS ---
 def turno_atual_horario():
+    # Define o Turno Vigente para o Dashboard (Virada às :20)
     agora = datetime.now(FUSO_BR).time()
     if dtime(6, 20) <= agora < dtime(14, 20): return "1° TURNO"
     elif dtime(14, 20) <= agora < dtime(22, 20): return "2° TURNO"
     else: return "3° TURNO"
 
 def obter_turno_por_horario(hora_str):
+    # Define o turno real da PREPARAÇÃO (Virada às :30)
     try:
         t = datetime.strptime(hora_str, "%H:%M").time()
-        if dtime(6, 20) <= t < dtime(14, 20): return "1° TURNO"
-        elif dtime(14, 20) <= t < dtime(22, 20): return "2° TURNO"
+        if dtime(6, 30) <= t < dtime(14, 30): return "1° TURNO"
+        elif dtime(14, 30) <= t < dtime(22, 30): return "2° TURNO"
         else: return "3° TURNO"
     except: return "DESCONHECIDO"
 
@@ -620,24 +622,32 @@ def exibir_alertas_preset():
                 st_raw = str(row['Status'])
                 maq_id_full = str(row['Maquina']) 
                 
-                if "[AGENDADO:" in st_raw:
-                    hora_alvo = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
-                    h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M").replace(year=agora_dt.year, month=agora_dt.month, day=agora_dt.day, tzinfo=FUSO_BR)
-                    
-                    if h_alvo_dt < agora_dt and (agora_dt - h_alvo_dt).total_seconds() > 12 * 3600:
-                        h_alvo_dt += timedelta(days=1)
-                    elif h_alvo_dt > agora_dt and (h_alvo_dt - agora_dt).total_seconds() > 12 * 3600:
-                        h_alvo_dt -= timedelta(days=1)
-                    
-                    delta_mins = (h_alvo_dt - agora_dt).total_seconds() / 60
-                    
-                    if -60 <= delta_mins <= 90:
-                        maq_num_only = maq_id_full.split(" ")[1] 
-                        gaveta_num = maq_num_only.split("-")[0] 
+                if "[AGENDADO:" in st_raw or "AGENDADA PARA" in st_raw:
+                    hora_alvo = ""
+                    if "AGENDADA PARA" in st_raw:
+                        try: hora_alvo = st_raw.split("AGENDADA PARA")[1].strip()
+                        except: pass
+                    elif "[AGENDADO:" in st_raw:
+                        try: hora_alvo = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
+                        except: pass
                         
-                        gaveta_row = df_arm[df_arm['Posicao'] == gaveta_num]
-                        if not gaveta_row.empty and gaveta_row.iloc[0]['Status'] == 'VAZIO':
-                            alertas_urgentes.append({'maquina': maq_id_full, 'gaveta': gaveta_num, 'hora': hora_alvo, 'delta': int(delta_mins)})
+                    if hora_alvo:
+                        h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M").replace(year=agora_dt.year, month=agora_dt.month, day=agora_dt.day, tzinfo=FUSO_BR)
+                        
+                        if h_alvo_dt < agora_dt and (agora_dt - h_alvo_dt).total_seconds() > 12 * 3600:
+                            h_alvo_dt += timedelta(days=1)
+                        elif h_alvo_dt > agora_dt and (h_alvo_dt - agora_dt).total_seconds() > 12 * 3600:
+                            h_alvo_dt -= timedelta(days=1)
+                        
+                        delta_mins = (h_alvo_dt - agora_dt).total_seconds() / 60
+                        
+                        if -60 <= delta_mins <= 90:
+                            maq_num_only = maq_id_full.split(" ")[1] 
+                            gaveta_num = maq_num_only.split("-")[0] 
+                            
+                            gaveta_row = df_arm[df_arm['Posicao'] == gaveta_num]
+                            if not gaveta_row.empty and gaveta_row.iloc[0]['Status'] == 'VAZIO':
+                                alertas_urgentes.append({'maquina': maq_id_full, 'gaveta': gaveta_num, 'hora': hora_alvo, 'delta': int(delta_mins)})
         except: pass
         
     if alertas_urgentes:
@@ -710,7 +720,7 @@ def get_status_icon(status_str):
 
 def extrair_tags_producao(status_str):
     tags = ""
-    for marcador in ["[Item Atual:", "[Novo Item:", "[Ordem:", "[Item:", "[Pçs/Hora:", "[Obs:"]:
+    for marcador in ["[Item Atual:", "[Novo Item:", "[Ordem:", "[Item:", "[Pçs/Hora:", "[Obs:", "[Fim Previsto:"]:
         if marcador in status_str:
             try: tags += f" {marcador} {status_str.split(marcador)[1].split(']')[0].strip()}]"
             except: pass
@@ -726,6 +736,8 @@ if 'celula_selecionada' not in st.session_state: st.session_state['celula_seleci
 if 'maq_ativa' not in st.session_state: st.session_state['maq_ativa'] = None
 if 'gaveta_selecionada' not in st.session_state: st.session_state['gaveta_selecionada'] = None
 if 'logout_realizado' not in st.session_state: st.session_state['logout_realizado'] = False
+if 'fila_prev_sel' not in st.session_state: st.session_state['fila_prev_sel'] = None
+if 'setor_prev_sel' not in st.session_state: st.session_state['setor_prev_sel'] = None
 
 # --- RESTAURAÇÃO DE LOGIN POR COOKIE ---
 if not st.session_state['operador'] and not st.session_state['logout_realizado']:
@@ -742,6 +754,8 @@ def mudar_tela(nome_tela):
     st.session_state['celula_selecionada'] = None
     st.session_state['maq_ativa'] = None
     st.session_state['gaveta_selecionada'] = None
+    st.session_state['fila_prev_sel'] = None
+    st.session_state['setor_prev_sel'] = None
     st.rerun()
 
 def ler_status_atual():
@@ -949,6 +963,7 @@ def painel_controle_maquina(maq_id, setor):
                 tags_prod = extrair_tags_producao(st_atual)
                 tags_prod = tags_prod.replace("[Novo Item:", "[Item:")
                 tags_prod = tags_prod.replace("[Item Atual:", "[Item:")
+                tags_prod = re.sub(r' \[Fim Previsto:.*?\]', '', tags_prod)
                 
                 st_final = f"PRODUZINDO {tags_prod}".strip()
                 
@@ -1037,6 +1052,9 @@ def painel_controle_maquina(maq_id, setor):
                     except: pass
                 elif "[AGENDADO:" in st_atual:
                     try: hora_pre_fill = st_atual.split("[AGENDADO:")[1].split("]")[0].strip()
+                    except: pass
+                elif "[Fim Previsto:" in st_atual:
+                    try: hora_pre_fill = st_atual.split("[Fim Previsto:")[1].split("]")[0].strip()
                     except: pass
                     
                 hora_relatorio = st.text_input("⏰ Horário Alvo (Aparecerá no Relatório):", value=hora_pre_fill, placeholder="Ex: 12:30")
@@ -1181,7 +1199,12 @@ def painel_controle_maquina(maq_id, setor):
                         if info_atual:
                             raw_st = str(info_atual['Status'])
                             raw_st = re.sub(r' \[Prep\. Sugerido:.*?\]', '', raw_st)
-                            if "[AGENDADO:" in raw_st: raw_st = raw_st.replace(" [AGENDADO:", f" [Prep. Sugerido: {nome_input.strip().upper()}] [AGENDADO:")
+                            if "AGENDADA PARA" in raw_st:
+                                hora_agend = raw_st.split("AGENDADA PARA")[1].strip()
+                                st_base = raw_st.split(" AGENDADA PARA")[0]
+                                raw_st = f"{st_base} [Prep. Sugerido: {nome_input.strip().upper()}] [AGENDADO:{hora_agend}]"
+                            elif "[AGENDADO:" in raw_st: 
+                                raw_st = raw_st.replace(" [AGENDADO:", f" [Prep. Sugerido: {nome_input.strip().upper()}] [AGENDADO:")
                             else: raw_st += f" [Prep. Sugerido: {nome_input.strip().upper()}]"
                             
                             hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
@@ -1381,42 +1404,65 @@ def tela_checkup():
         for m in lista:
             st_val = status_dict.get(f"{s_nome} {m}", "PRODUZINDO")
             
-            if "PRODUZINDO" not in st_val or "AGENDADO" in st_val or "AGENDADA" in st_val or "AGUARDANDO" in st_val:
+            # Entra na lista se tiver problema, agendamento ou PREVISÃO de parada
+            if "PRODUZINDO" not in st_val or "AGENDADO" in st_val or "AGENDADA" in st_val or "AGUARDANDO" in st_val or "[Fim Previsto:" in st_val:
                 
                 turno_pendencia = turno_vigente_real 
-                is_agendamento = False
+                h_alvo = ""
                 
                 if "AGENDADA PARA" in st_val:
-                    is_agendamento = True
-                    try:
-                        h_alvo = st_val.split("AGENDADA PARA")[1].strip()
-                        turno_pendencia = obter_turno_por_horario(h_alvo)
+                    try: h_alvo = st_val.split("AGENDADA PARA")[1].strip()
                     except: pass
                 elif "[AGENDADO:" in st_val:
-                    is_agendamento = True
-                    try:
-                        h_alvo = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
-                        turno_pendencia = obter_turno_por_horario(h_alvo)
+                    try: h_alvo = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
                     except: pass
+                elif "[Fim Previsto:" in st_val:
+                    try: h_alvo = st_val.split("[Fim Previsto:")[1].split("]")[0].strip()
+                    except: pass
+                    
+                if h_alvo:
+                    turno_pendencia = obter_turno_por_horario(h_alvo)
                 
                 item_lista = (s_nome, m, st_val)
                 
-                if is_agendamento and turno_pendencia != turno_vigente_real:
+                is_agendamento_ou_prev = "AGENDADA PARA" in st_val or "[AGENDADO:" in st_val or "[Fim Previsto:" in st_val
+                
+                is_futuro_real = False
+                if is_agendamento_ou_prev and h_alvo:
+                    try:
+                        agora_dt = datetime.now(FUSO_BR)
+                        h_alvo_dt = datetime.strptime(h_alvo, "%H:%M").replace(year=agora_dt.year, month=agora_dt.month, day=agora_dt.day, tzinfo=FUSO_BR)
+                        
+                        # Tratamento para virada de meia noite
+                        if h_alvo_dt < agora_dt and (agora_dt - h_alvo_dt).total_seconds() > 12 * 3600:
+                            h_alvo_dt += timedelta(days=1)
+                        elif h_alvo_dt > agora_dt and (h_alvo_dt - agora_dt).total_seconds() > 12 * 3600:
+                            h_alvo_dt -= timedelta(days=1)
+                            
+                        delta_mins = (h_alvo_dt - agora_dt).total_seconds() / 60
+                        
+                        # Se for para outro turno e a hora ainda não passou (ou passou menos de 30 min)
+                        if delta_mins > -30 and turno_pendencia != turno_vigente_real:
+                            is_futuro_real = True
+                    except: pass
+                
+                if is_futuro_real:
                     if turno_pendencia in preparacoes_futuras:
                         preparacoes_futuras[turno_pendencia].append(item_lista)
                 else:
-                    incidencias_turno_atual.append(item_lista)
+                    if "PRODUZINDO" not in st_val or "[Fim Previsto:" in st_val:
+                        incidencias_turno_atual.append(item_lista)
                     
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo']:
         painel_controle_maquina(st.session_state['maq_ativa'], st.session_state['setor_ativo'])
         st.divider()
 
-    aba_atual, aba_futuro = st.tabs(["🚨 Turno Vigente", "🔮 Preparações Futuras"])
+    aba_atual, aba_futuro, aba_previsao = st.tabs(["🚨 Turno Vigente", "🔮 Preparações Futuras", "⏱️ Lançar Previsões"])
 
     with aba_atual:
-        st.markdown(f"**Exibindo incidências e setups programados para o {turno_vigente_real}**")
+        st.markdown(f"**Exibindo incidências e paradas previstas para o {turno_vigente_real}**")
         if not incidencias_turno_atual: 
-            st.success("✨ Ótimo! Nenhuma incidência ou setup previsto para o momento.")
+            st.success("✨ Ótimo! Nenhuma incidência ou parada prevista para o momento.")
         else:
             for setor_m, maq_m, st_m in incidencias_turno_atual:
                 icone = get_status_icon(st_m)
@@ -1426,12 +1472,12 @@ def tela_checkup():
                     st.rerun()
 
     with aba_futuro:
-        st.markdown("**Programação de Setups por Turno**")
+        st.markdown("**Programação de Setups e Paradas por Turno**")
         filtro_turno = st.radio("Selecione o Turno para visualizar:", ["1° TURNO", "2° TURNO", "3° TURNO"], horizontal=True)
         
         lista_futura = preparacoes_futuras[filtro_turno]
         if not lista_futura:
-            st.info(f"Nenhum setup programado futuramente para o {filtro_turno}.")
+            st.info(f"Nenhum setup ou parada programada futuramente para o {filtro_turno}.")
         else:
             for setor_m, maq_m, st_m in lista_futura:
                 icone = get_status_icon(st_m)
@@ -1439,6 +1485,141 @@ def tela_checkup():
                     st.session_state['maq_ativa'] = maq_m
                     st.session_state['setor_ativo'] = setor_m
                     st.rerun()
+
+    with aba_previsao:
+        st.markdown("#### ⏱️ Lançar Previsão de Parada por Fila")
+        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Selecione a fila e digite o horário (HH:MM) previsto para as máquinas pararem.</p>", unsafe_allow_html=True)
+
+        if setor_atual in ['TECNICO', 'GERAL', 'GERÊNCIA', 'PRESET'] or perfil == 'adm':
+            c_s1, c_s2 = st.columns(2)
+            if c_s1.button("Setor: AFIAÇÃO", use_container_width=True): st.session_state['setor_prev_sel'] = 'AFC'; st.session_state['fila_prev_sel'] = None; st.rerun()
+            if c_s2.button("Setor: RETÍFICA", use_container_width=True): st.session_state['setor_prev_sel'] = 'RTF'; st.session_state['fila_prev_sel'] = None; st.rerun()
+            setor_foco = st.session_state.get('setor_prev_sel', 'AFC')
+        else:
+            setor_foco = "AFC" if setor_atual == "AFC" else "RTF"
+            
+        st.markdown(f"**Lançando previsões para: {setor_foco}**")
+        st.markdown("<hr style='margin: 5px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
+        
+        if st.session_state.get('fila_prev_sel') is None:
+            if st.button("📍 Fila 1", use_container_width=True): st.session_state['fila_prev_sel'] = 'fila_1'; st.rerun()
+            if st.button("📍 Fila 2", use_container_width=True): st.session_state['fila_prev_sel'] = 'fila_2'; st.rerun()
+            if st.button("📍 Fila 3", use_container_width=True): st.session_state['fila_prev_sel'] = 'fila_3'; st.rerun()
+            if st.button("📍 Fila 4", use_container_width=True): st.session_state['fila_prev_sel'] = 'fila_4'; st.rerun()
+            
+            if setor_foco == 'RTF':
+                st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
+                if st.button("⚫ Centerless (CNC1)", use_container_width=True): st.session_state['fila_prev_sel'] = 'centerless'; st.rerun()
+                if st.button("🟤 Facetadoras (CNC2)", use_container_width=True): st.session_state['fila_prev_sel'] = 'facetadoras'; st.rerun()
+        else:
+            if st.button("⬅️ Voltar para seleção de Fila", key="voltar_fila_prev"): st.session_state['fila_prev_sel'] = None; st.rerun()
+            
+            maquinas_foco = []
+            if setor_foco == 'AFC':
+                if st.session_state['fila_prev_sel'] == 'fila_1': maquinas_foco = ["6-868", "9-088", "7-743", "11-365", "13-964", "15-973", "17-140", "19-760", "21-206", "23-165", "25-209", "27-431"]
+                elif st.session_state['fila_prev_sel'] == 'fila_2': maquinas_foco = ["8-247", "4-427", "10-812", "12-367", "14-967", "16-975", "18-957", "20-774", "22-813", "24-761", "26-635", "28-432"]
+                elif st.session_state['fila_prev_sel'] == 'fila_3': maquinas_foco = ["29-078", "31-969", "33-160", "35-131", "37-892", "39-905", "41-141"]
+                elif st.session_state['fila_prev_sel'] == 'fila_4': maquinas_foco = ["30-161", "32-081", "34-132", "36-084", "38-596", "40-142"]
+            else:
+                tipos_dict = ler_tipos_cnc()
+                base_f1 = ["5-903", "8-086", "10-817", "12-962", "14-971", "16-183", "19-926", "21-270", "23-753", "25-258", "27-917"]
+                base_f2 = ["7-267", "9-815", "11-363", "13-969", "15-977", "18-925", "20-927", "22-916", "24-259", "26-260", "28-954"]
+                base_f3 = ["29-785", "31-806", "33-807", "35-885", "37-857", "39-856"]
+                base_f4 = ["30-786", "32-918", "34-842", "36-854", "38-881", "40-912", "42-885"]
+                todas_cnc1 = [m for m in TODAS_RTF if tipos_dict.get(m) == "RTF_CNC1"]
+                todas_cnc2 = [m for m in TODAS_RTF if tipos_dict.get(m) == "RTF_CNC2"]
+                todas_cnc3 = [m for m in TODAS_RTF if tipos_dict.get(m) == "RTF_CNC3"]
+                
+                if st.session_state['fila_prev_sel'] == 'fila_1': maquinas_foco = [m for m in base_f1 if m in todas_cnc3]
+                elif st.session_state['fila_prev_sel'] == 'fila_2': maquinas_foco = [m for m in base_f2 if m in todas_cnc3]
+                elif st.session_state['fila_prev_sel'] == 'fila_3': maquinas_foco = [m for m in base_f3 if m in todas_cnc3]
+                elif st.session_state['fila_prev_sel'] == 'fila_4': 
+                    nativos = set(base_f1 + base_f2 + base_f3 + base_f4)
+                    extraviados = [m for m in todas_cnc3 if m not in nativos]
+                    maquinas_foco = [m for m in base_f4 if m in todas_cnc3] + extraviados
+                elif st.session_state['fila_prev_sel'] == 'centerless': maquinas_foco = todas_cnc1
+                elif st.session_state['fila_prev_sel'] == 'facetadoras': maquinas_foco = todas_cnc2
+
+            maquinas_produzindo = []
+            for m in ordenar_maquinas(maquinas_foco):
+                st_val = status_dict.get(f"{setor_foco} {m}", "PRODUZINDO")
+                if "PRODUZINDO" in st_val:
+                    hora_prevista = ""
+                    if "[Fim Previsto:" in st_val:
+                        try: hora_prevista = st_val.split("[Fim Previsto:")[1].split("]")[0].strip()
+                        except: pass
+                    
+                    op_atual = ""
+                    if "[Ordem:" in st_val:
+                        try: op_atual = st_val.split("[Ordem:")[1].split("]")[0].strip()
+                        except: pass
+                        
+                    maquinas_produzindo.append({
+                        "Setor": setor_foco,
+                        "Maquina": m,
+                        "OP": op_atual,
+                        "HoraAntiga": hora_prevista,
+                        "StatusRaw": st_val
+                    })
+
+            if not maquinas_produzindo:
+                st.info(f"Nenhuma máquina em produção nesta fila no momento.")
+            else:
+                with st.form(f"form_previsoes_linhas_{setor_foco}_{st.session_state['fila_prev_sel']}"):
+                    col1, col2, col3 = st.columns([2, 3, 2])
+                    col1.markdown("**Máquina**")
+                    col2.markdown("**Ordem (OP)**")
+                    col3.markdown("**Hora Parada**")
+                    
+                    st.markdown("<hr style='margin: 5px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
+                    
+                    inputs_previsao = {}
+                    for obj in maquinas_produzindo:
+                        c1, c2, c3 = st.columns([2, 3, 2])
+                        c1.markdown(f"<p style='margin-top: 10px;'>{obj['Setor']} <b>{obj['Maquina']}</b></p>", unsafe_allow_html=True)
+                        c2.markdown(f"<p style='margin-top: 10px;'>{obj['OP'] if obj['OP'] else '-'}</p>", unsafe_allow_html=True)
+                        nova_hora = c3.text_input("Hora", value=obj['HoraAntiga'], key=f"prev_{obj['Setor']}_{obj['Maquina']}", label_visibility="collapsed", placeholder="HH:MM")
+                        
+                        inputs_previsao[f"{obj['Setor']} {obj['Maquina']}"] = {
+                            "nova": nova_hora,
+                            "antiga": obj['HoraAntiga'],
+                            "setor": obj['Setor'],
+                            "maq": obj['Maquina'],
+                            "st_raw": obj['StatusRaw']
+                        }
+                        
+                    st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
+                    submit_prev = st.form_submit_button("💾 Salvar Previsões", type="primary", use_container_width=True)
+                    
+                    if submit_prev:
+                        hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                        novas_linhas = []
+                        
+                        for key_maq, dados in inputs_previsao.items():
+                            hora_nova = str(dados['nova']).strip()
+                            hora_antiga = str(dados['antiga']).strip()
+                            
+                            if hora_nova != hora_antiga:
+                                st_val = dados['st_raw']
+                                if "[Fim Previsto:" in st_val:
+                                    st_val = re.sub(r' \[Fim Previsto:.*?\]', '', st_val)
+                                    
+                                if hora_nova:
+                                    st_final = f"{st_val} [Fim Previsto: {hora_nova}]".strip()
+                                else:
+                                    st_final = st_val.strip()
+                                    
+                                novas_linhas.append({"Setor": dados['setor'], "Maquina": key_maq, "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str})
+                                
+                        if novas_linhas:
+                            df_dados = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
+                            df_dados = pd.concat([df_dados, pd.DataFrame(novas_linhas)], ignore_index=True)
+                            df_dados.to_csv(ARQUIVO_DADOS, index=False)
+                            st.success("✅ Previsões atualizadas com sucesso!")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.info("Nenhuma alteração de horário detectada.")
 
 def tela_minhas_incidencias():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
@@ -1509,7 +1690,7 @@ def tela_afc():
 
 def tela_rtf():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
-    st.markdown("#### ⚙️ Set Retífica — Filas")
+    st.markdown("#### ⚙️ Setor Retífica — Filas")
     
     st.markdown("""
     <div style='background-color: #3f0000; padding: 12px; border-radius: 8px; border-left: 5px solid #ff4444; margin-bottom: 15px;'>
