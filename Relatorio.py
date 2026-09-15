@@ -120,15 +120,15 @@ ARQUIVO_FECHAMENTO = "ultimo_fechamento.csv"
 # --- FUNÇÕES UTILITÁRIAS ---
 def turno_atual_horario():
     agora = datetime.now(FUSO_BR).time()
-    if dtime(6, 30) <= agora <= dtime(14, 40): return "1° TURNO"
-    elif dtime(14, 41) <= agora <= dtime(22, 40): return "2° TURNO"
+    if dtime(6, 20) <= agora < dtime(14, 20): return "1° TURNO"
+    elif dtime(14, 20) <= agora < dtime(22, 20): return "2° TURNO"
     else: return "3° TURNO"
 
 def obter_turno_por_horario(hora_str):
     try:
         t = datetime.strptime(hora_str, "%H:%M").time()
-        if dtime(6, 30) <= t <= dtime(14, 40): return "1° TURNO"
-        elif dtime(14, 41) <= t <= dtime(22, 40): return "2° TURNO"
+        if dtime(6, 20) <= t < dtime(14, 20): return "1° TURNO"
+        elif dtime(14, 20) <= t < dtime(22, 20): return "2° TURNO"
         else: return "3° TURNO"
     except: return "DESCONHECIDO"
 
@@ -202,10 +202,10 @@ def get_turno_logico(dt=None):
     if dt is None: dt = datetime.now(FUSO_BR)
     t = dt.time()
     d = dt.date()
-    if dtime(6, 30) <= t <= dtime(14, 40): return d.strftime("%d/%m/%Y"), "1° TURNO"
-    elif dtime(14, 41) <= t <= dtime(22, 40): return d.strftime("%d/%m/%Y"), "2° TURNO"
+    if dtime(6, 20) <= t < dtime(14, 20): return d.strftime("%d/%m/%Y"), "1° TURNO"
+    elif dtime(14, 20) <= t < dtime(22, 20): return d.strftime("%d/%m/%Y"), "2° TURNO"
     else:
-        if t < dtime(6, 30): d -= timedelta(days=1)
+        if t < dtime(6, 20): d -= timedelta(days=1)
         return d.strftime("%d/%m/%Y"), "3° TURNO"
 
 def processar_padrao(df_all, maquinas, prefixo_setor):
@@ -466,9 +466,9 @@ def verificar_virada_turno():
     agora = datetime.now(FUSO_BR).time()
     turno_real = turno_atual_horario()
     
-    if turno_real == "1° TURNO": hora_corte = "06:30"
-    elif turno_real == "2° TURNO": hora_corte = "14:40"
-    else: hora_corte = "22:40"
+    if turno_real == "1° TURNO": hora_corte = "06:20"
+    elif turno_real == "2° TURNO": hora_corte = "14:20"
+    else: hora_corte = "22:20"
     
     novas_linhas = []
     maquinas = df['Maquina'].unique()
@@ -483,9 +483,9 @@ def verificar_virada_turno():
             mins_passados = diff_mins(hora_registro, datetime.now(FUSO_BR).strftime("%H:%M"))
             
             if mins_passados > 0: 
-                if turno_real == "1° TURNO" and diff_mins(hora_registro, "06:30") > 0 and diff_mins("06:30", hora_registro) > 12*60: precisa_cortar = True
-                elif turno_real == "2° TURNO" and diff_mins(hora_registro, "14:40") > 0 and diff_mins(hora_registro, "14:40") < 8*60: precisa_cortar = True
-                elif turno_real == "3° TURNO" and diff_mins(hora_registro, "22:40") > 0 and diff_mins(hora_registro, "22:40") < 8*60: precisa_cortar = True
+                if turno_real == "1° TURNO" and diff_mins(hora_registro, "06:20") > 0 and diff_mins("06:20", hora_registro) > 12*60: precisa_cortar = True
+                elif turno_real == "2° TURNO" and diff_mins(hora_registro, "14:20") > 0 and diff_mins(hora_registro, "14:20") < 8*60: precisa_cortar = True
+                elif turno_real == "3° TURNO" and diff_mins(hora_registro, "22:20") > 0 and diff_mins(hora_registro, "22:20") < 8*60: precisa_cortar = True
                 else: precisa_cortar = False
                 
                 if precisa_cortar:
@@ -759,7 +759,21 @@ def ler_status_atual():
             maq = row['Maquina']
             st_raw = str(row['Status']).replace(" [Energia Restaurada]", "") 
             
-            if "[AGENDADO:" in st_raw:
+            if "AGENDADA PARA" in st_raw:
+                try:
+                    hora_alvo = st_raw.split("AGENDADA PARA")[1].strip()
+                    tipo_agendado = st_raw.split(" AGENDADA PARA")[0]
+                    h_agora = datetime.strptime(agora_str, "%H:%M")
+                    h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M")
+                    if h_alvo_dt < h_agora and (h_agora - h_alvo_dt).total_seconds() > 12 * 3600: h_alvo_dt += timedelta(days=1)
+                        
+                    if h_agora < h_alvo_dt: status_calculado[maq] = f"{tipo_agendado} AGENDADA PARA {hora_alvo}"
+                    else: 
+                        sug = f" [Prep. Sugerido: {st_raw.split('[Prep. Sugerido:')[1].split(']')[0].strip()}]" if "[Prep. Sugerido:" in st_raw else ""
+                        tags = extrair_tags_producao(st_raw)
+                        status_calculado[maq] = f"AGUARDANDO PREPARADOR{sug} {tags}".strip()
+                except: status_calculado[maq] = st_raw
+            elif "[AGENDADO:" in st_raw:
                 try:
                     hora_alvo = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
                     tipo_agendado = st_raw.split(" [AGENDADO:")[0]
@@ -1147,7 +1161,10 @@ def painel_controle_maquina(maq_id, setor):
                         info_atual = obter_info_maquina(maq_id, setor)
                         if info_atual:
                             raw_st = str(info_atual['Status'])
-                            if "[AGENDADO:" in raw_st: raw_st = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{novo_horario_adiar.strip()}]", raw_st)
+                            if "AGENDADA PARA" in raw_st:
+                                raw_st = re.sub(r'AGENDADA PARA \d{2}:\d{2}', f"AGENDADA PARA {novo_horario_adiar.strip()}", raw_st)
+                            elif "[AGENDADO:" in raw_st: 
+                                raw_st = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{novo_horario_adiar.strip()}]", raw_st)
                             else: raw_st += f" [AGENDADO:{novo_horario_adiar.strip()}]"
                             
                             salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": raw_st, "Hora": novo_horario_adiar.strip()}, ARQUIVO_DADOS)
@@ -1492,7 +1509,7 @@ def tela_afc():
 
 def tela_rtf():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
-    st.markdown("#### ⚙️ Setor Retífica — Filas")
+    st.markdown("#### ⚙️ Set Retífica — Filas")
     
     st.markdown("""
     <div style='background-color: #3f0000; padding: 12px; border-radius: 8px; border-left: 5px solid #ff4444; margin-bottom: 15px;'>
