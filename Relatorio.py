@@ -854,12 +854,17 @@ def painel_controle_maquina(maq_id, setor):
         else: st.warning(f"🟡 Status Atual: {status_atual} desde {hora_atual}{timer_str}")
             
         flow_key = f"flow_{maq_id}"
-        if flow_key not in st.session_state: st.session_state[flow_key] = "pergunta"
-        st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
-        
         is_setup_ativo = "PREPARANDO" in status_atual or "SEQUÊNCIA" in status_atual
+        is_espera = "AGUARDANDO PREPARADOR" in status_atual or "AGENDADO" in status_atual or "AGENDADA" in status_atual
         
-        if "AGUARDANDO PREPARADOR" in status_atual or "AGENDADO" in status_atual or "AGENDADA" in status_atual: st.session_state[flow_key] = "acoes_espera"
+        # Inicializa a tela na opção correta, mas respeita a navegação do usuário
+        if flow_key not in st.session_state:
+            if is_espera:
+                st.session_state[flow_key] = "acoes_espera"
+            else:
+                st.session_state[flow_key] = "pergunta"
+                
+        st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
         
         if is_setup_ativo and st.session_state[flow_key] == "pergunta":
             with st.form(f"form_fast_track_{maq_id}"):
