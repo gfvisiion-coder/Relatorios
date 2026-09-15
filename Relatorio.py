@@ -1018,7 +1018,10 @@ def painel_controle_maquina(maq_id, setor):
                 st_atual = str(info_atual['Status']) if info_atual else ""
                 
                 hora_pre_fill = ""
-                if "[AGENDADO:" in st_atual:
+                if "AGENDADA PARA" in st_atual:
+                    try: hora_pre_fill = st_atual.split("AGENDADA PARA")[1].strip()
+                    except: pass
+                elif "[AGENDADO:" in st_atual:
                     try: hora_pre_fill = st_atual.split("[AGENDADO:")[1].split("]")[0].strip()
                     except: pass
                     
@@ -1115,9 +1118,12 @@ def painel_controle_maquina(maq_id, setor):
                 
                 bloquear_inicio = False
                 msg_bloqueio = ""
-                if "[AGENDADO:" in status_atual:
+                if "[AGENDADO:" in status_atual or "AGENDADA PARA" in status_atual:
                     try:
-                        hora_agend = status_atual.split("[AGENDADO:")[1].split("]")[0].strip()
+                        if "AGENDADA PARA" in status_atual:
+                            hora_agend = status_atual.split("AGENDADA PARA")[1].strip()
+                        else:
+                            hora_agend = status_atual.split("[AGENDADO:")[1].split("]")[0].strip()
                         turno_agend = obter_turno_por_horario(hora_agend)
                         if turno_agend != st.session_state.get('turno') and st.session_state.get('perfil') != 'adm':
                             bloquear_inicio = True
@@ -1343,7 +1349,8 @@ def tela_checkup():
     status_dict = ler_status_atual()
     perfil = st.session_state['perfil']
     setor_atual = st.session_state['setor_usuario']
-    turno_atual_logado = st.session_state.get('turno', turno_atual_horario())
+    
+    turno_vigente_real = turno_atual_horario()
     
     if setor_atual in ['TECNICO', 'GERAL', 'GERÊNCIA', 'PRESET'] or perfil == 'adm': 
         setores_alvo = [("AFC", TODAS_AFC), ("RTF", TODAS_RTF)]
@@ -1359,9 +1366,17 @@ def tela_checkup():
             
             if "PRODUZINDO" not in st_val or "AGENDADO" in st_val or "AGENDADA" in st_val or "AGUARDANDO" in st_val:
                 
-                turno_pendencia = turno_atual_logado 
+                turno_pendencia = turno_vigente_real 
+                is_agendamento = False
                 
-                if "[AGENDADO:" in st_val:
+                if "AGENDADA PARA" in st_val:
+                    is_agendamento = True
+                    try:
+                        h_alvo = st_val.split("AGENDADA PARA")[1].strip()
+                        turno_pendencia = obter_turno_por_horario(h_alvo)
+                    except: pass
+                elif "[AGENDADO:" in st_val:
+                    is_agendamento = True
                     try:
                         h_alvo = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
                         turno_pendencia = obter_turno_por_horario(h_alvo)
@@ -1369,9 +1384,7 @@ def tela_checkup():
                 
                 item_lista = (s_nome, m, st_val)
                 
-                is_agendamento = "AGENDADO" in st_val or "AGENDADA" in st_val
-                
-                if is_agendamento and turno_pendencia != turno_atual_logado:
+                if is_agendamento and turno_pendencia != turno_vigente_real:
                     if turno_pendencia in preparacoes_futuras:
                         preparacoes_futuras[turno_pendencia].append(item_lista)
                 else:
@@ -1384,7 +1397,7 @@ def tela_checkup():
     aba_atual, aba_futuro = st.tabs(["🚨 Turno Vigente", "🔮 Preparações Futuras"])
 
     with aba_atual:
-        st.markdown(f"**Exibindo incidências e setups programados para o {turno_atual_logado}**")
+        st.markdown(f"**Exibindo incidências e setups programados para o {turno_vigente_real}**")
         if not incidencias_turno_atual: 
             st.success("✨ Ótimo! Nenhuma incidência ou setup previsto para o momento.")
         else:
