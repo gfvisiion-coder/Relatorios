@@ -935,7 +935,6 @@ def painel_controle_maquina(maq_id, setor):
                 tags_prod = extrair_tags_producao(st_atual)
                 tags_prod = tags_prod.replace("[Novo Item:", "[Item:")
                 tags_prod = tags_prod.replace("[Item Atual:", "[Item:")
-                # Limpa a previsão se for botar produzindo, se quiser
                 tags_prod = re.sub(r' \[Fim Previsto:.*?\]', '', tags_prod)
                 
                 st_final = f"PRODUZINDO {tags_prod}".strip()
@@ -1016,7 +1015,6 @@ def painel_controle_maquina(maq_id, setor):
             with st.form(f"form_prep_{maq_id}"):
                 st.markdown("⚙️ **Configuração de Preparação / Agendamento**")
                 
-                # --- AUTO-PREENCHIMENTO SE TIVER PREVISÃO ---
                 info_atual = obter_info_maquina(maq_id, setor)
                 st_atual = str(info_atual['Status']) if info_atual else ""
                 
@@ -1116,7 +1114,6 @@ def painel_controle_maquina(maq_id, setor):
                 
                 st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
                 
-                # --- LÓGICA DE BLOQUEIO POR TURNO ---
                 bloquear_inicio = False
                 msg_bloqueio = ""
                 if "[AGENDADO:" in status_atual:
@@ -1361,7 +1358,6 @@ def tela_checkup():
         for m in lista:
             st_val = status_dict.get(f"{s_nome} {m}", "PRODUZINDO")
             
-            # Entra na lista se tiver problema, agendamento ou PREVISÃO de parada
             if "PRODUZINDO" not in st_val or "AGENDADO" in st_val or "AGENDADA" in st_val or "AGUARDANDO" in st_val or "[Fim Previsto:" in st_val:
                 
                 turno_pendencia = turno_atual_logado 
@@ -1422,80 +1418,95 @@ def tela_checkup():
                     st.rerun()
 
     with aba_previsao:
-        st.markdown("#### ⏱️ Tabela de Previsão de Parada das Máquinas")
-        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Digite o horário (HH:MM) previsto para a máquina parar. Isso organizará as filas nas outras abas automaticamente.</p>", unsafe_allow_html=True)
+        st.markdown("#### ⏱️ Lançar Previsão de Parada por Linha")
+        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Digite o horário (HH:MM) previsto para a máquina parar.</p>", unsafe_allow_html=True)
 
         if setor_atual in ['TECNICO', 'GERAL', 'GERÊNCIA', 'PRESET'] or perfil == 'adm':
             lista_maq = TODAS_AFC + TODAS_RTF
         else:
             lista_maq = TODAS_AFC if setor_atual == "AFC" else TODAS_RTF
 
-        dados_tabela = []
+        maquinas_produzindo = []
         for m in lista_maq:
             setor_m = "AFC" if m in TODAS_AFC else "RTF"
             st_val = status_dict.get(f"{setor_m} {m}", "PRODUZINDO")
-
             if "PRODUZINDO" in st_val:
                 hora_prevista = ""
                 if "[Fim Previsto:" in st_val:
                     try: hora_prevista = st_val.split("[Fim Previsto:")[1].split("]")[0].strip()
                     except: pass
-
+                
                 op_atual = ""
                 if "[Ordem:" in st_val:
                     try: op_atual = st_val.split("[Ordem:")[1].split("]")[0].strip()
                     except: pass
-
-                dados_tabela.append({
+                    
+                maquinas_produzindo.append({
                     "Setor": setor_m,
-                    "Máquina": m,
-                    "Ordem (OP)": op_atual,
-                    "Hora de Parada": hora_prevista
+                    "Maquina": m,
+                    "OP": op_atual,
+                    "HoraAntiga": hora_prevista,
+                    "StatusRaw": st_val
                 })
 
-        if not dados_tabela:
+        if not maquinas_produzindo:
             st.info("Nenhuma máquina em produção no momento para lançar previsão.")
         else:
-            df_previsao = pd.DataFrame(dados_tabela)
-            df_editado = st.data_editor(
-                df_previsao,
-                disabled=["Setor", "Máquina", "Ordem (OP)"],
-                hide_index=True,
-                use_container_width=True
-            )
-
-            if st.button("💾 Salvar Previsões", type="primary", use_container_width=True):
-                hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                novas_linhas = []
+            with st.form("form_previsoes_linhas"):
+                col1, col2, col3 = st.columns([2, 3, 2])
+                col1.markdown("**Máquina**")
+                col2.markdown("**Ordem (OP)**")
+                col3.markdown("**Hora Parada**")
                 
-                for i, row in df_editado.iterrows():
-                    hora_nova = str(row["Hora de Parada"]).strip()
-                    hora_antiga = str(df_previsao.loc[i, "Hora de Parada"]).strip()
-
-                    if hora_nova != hora_antiga:
-                        setor_m = row["Setor"]
-                        maq_m = row["Máquina"]
-                        st_val = status_dict.get(f"{setor_m} {maq_m}", "")
-
-                        if "[Fim Previsto:" in st_val:
-                            st_val = re.sub(r' \[Fim Previsto:.*?\]', '', st_val)
-
-                        if hora_nova: 
-                            st_final = f"{st_val} [Fim Previsto: {hora_nova}]".strip()
-                        else:
-                            st_final = st_val.strip()
-
-                        novas_linhas.append({"Setor": setor_m, "Maquina": f"{setor_m} {maq_m}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str})
-
-                if novas_linhas:
-                    df_dados = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
-                    df_dados = pd.concat([df_dados, pd.DataFrame(novas_linhas)], ignore_index=True)
-                    df_dados.to_csv(ARQUIVO_DADOS, index=False)
-                    st.success("✅ Previsões atualizadas com sucesso!")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.info("Nenhuma alteração de horário detectada.")
+                st.markdown("<hr style='margin: 5px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
+                
+                inputs_previsao = {}
+                for obj in maquinas_produzindo:
+                    c1, c2, c3 = st.columns([2, 3, 2])
+                    c1.markdown(f"<p style='margin-top: 10px;'>{obj['Setor']} <b>{obj['Maquina']}</b></p>", unsafe_allow_html=True)
+                    c2.markdown(f"<p style='margin-top: 10px;'>{obj['OP'] if obj['OP'] else '-'}</p>", unsafe_allow_html=True)
+                    nova_hora = c3.text_input("Hora", value=obj['HoraAntiga'], key=f"prev_{obj['Setor']}_{obj['Maquina']}", label_visibility="collapsed", placeholder="HH:MM")
+                    
+                    inputs_previsao[f"{obj['Setor']} {obj['Maquina']}"] = {
+                        "nova": nova_hora,
+                        "antiga": obj['HoraAntiga'],
+                        "setor": obj['Setor'],
+                        "maq": obj['Maquina'],
+                        "st_raw": obj['StatusRaw']
+                    }
+                    
+                st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
+                submit_prev = st.form_submit_button("💾 Salvar Previsões", type="primary", use_container_width=True)
+                
+                if submit_prev:
+                    hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                    novas_linhas = []
+                    
+                    for key_maq, dados in inputs_previsao.items():
+                        hora_nova = str(dados['nova']).strip()
+                        hora_antiga = str(dados['antiga']).strip()
+                        
+                        if hora_nova != hora_antiga:
+                            st_val = dados['st_raw']
+                            if "[Fim Previsto:" in st_val:
+                                st_val = re.sub(r' \[Fim Previsto:.*?\]', '', st_val)
+                                
+                            if hora_nova:
+                                st_final = f"{st_val} [Fim Previsto: {hora_nova}]".strip()
+                            else:
+                                st_final = st_val.strip()
+                                
+                            novas_linhas.append({"Setor": dados['setor'], "Maquina": key_maq, "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str})
+                            
+                    if novas_linhas:
+                        df_dados = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
+                        df_dados = pd.concat([df_dados, pd.DataFrame(novas_linhas)], ignore_index=True)
+                        df_dados.to_csv(ARQUIVO_DADOS, index=False)
+                        st.success("✅ Previsões atualizadas com sucesso!")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.info("Nenhuma alteração de horário detectada.")
 
 def tela_minhas_incidencias():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
