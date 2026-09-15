@@ -649,7 +649,6 @@ def exibir_alertas_preset():
         html_alertas += "</div>"
         st.markdown(html_alertas, unsafe_allow_html=True)
 
-
 def dar_baixa_armario(ordem_alvo, operador_nome="SISTEMA"):
     if not ordem_alvo or not str(ordem_alvo).strip() or not os.path.exists(ARQUIVO_ARMARIOS): return
     try:
@@ -1117,7 +1116,6 @@ def painel_controle_maquina(maq_id, setor):
                     try:
                         hora_agend = status_atual.split("[AGENDADO:")[1].split("]")[0].strip()
                         turno_agend = obter_turno_por_horario(hora_agend)
-                        # Bloqueia se o turno for diferente e não for ADM
                         if turno_agend != st.session_state.get('turno') and st.session_state.get('perfil') != 'adm':
                             bloquear_inicio = True
                             msg_bloqueio = f"⚠️ Setup programado para o {turno_agend}. Apenas operadores daquele turno podem iniciar."
@@ -1287,6 +1285,7 @@ def tela_menu():
         if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True, type="primary"): mudar_tela('rtf')
         if st.button("🗄️ GERENCIAR ARMÁRIOS", use_container_width=True): mudar_tela('armarios')
         if st.button("🔍 INCIDÊNCIAS GERAL", use_container_width=True): mudar_tela('checkup')
+        if st.button("⏱️ PREVISÃO DE TÉRMINO", use_container_width=True): mudar_tela('previsao')
         if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
         if st.button("📋 RELATÓRIO GERAL CONSOLIDADO", use_container_width=True): mudar_tela('relatorio')
         if st.button("📊 HISTÓRICOS E EXPORTAÇÕES", use_container_width=True): mudar_tela('historico')
@@ -1301,12 +1300,14 @@ def tela_menu():
             if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True, type="primary"): mudar_tela('rtf')
         if st.button("🗄️ VISÃO DOS ARMÁRIOS", use_container_width=True): mudar_tela('armarios')
         if st.button("🔍 INCIDÊNCIAS DO SETOR", use_container_width=True): mudar_tela('checkup')
+        if st.button("⏱️ PREVISÃO DE TÉRMINO", use_container_width=True): mudar_tela('previsao')
         if st.button("⚡ MINHAS INCIDÊNCIAS", use_container_width=True, type="primary"): mudar_tela('minhas_incidencias')
         if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
         if st.button("📋 RELATÓRIO DE TURNO", use_container_width=True): mudar_tela('relatorio')
         if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
     else:
         if st.button("🔍 INCIDÊNCIAS DO SETOR", use_container_width=True): mudar_tela('checkup')
+        if st.button("⏱️ PREVISÃO DE TÉRMINO", use_container_width=True): mudar_tela('previsao')
         if st.button("📋 FECHAMENTO DE TURNO", use_container_width=True): mudar_tela('relatorio')
         if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
     
@@ -1334,6 +1335,88 @@ def render_grid_vertical(lista_maquinas, setor, status_dict):
                 st.session_state['setor_ativo'] = setor
                 st.rerun()
 
+def tela_previsao():
+    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    st.markdown("#### ⏱️ Previsão de Término das Máquinas")
+    st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Insira o horário previsto (HH:MM) para a máquina parar. Ela aparecerá na programação de incidências do turno correspondente a esse horário.</p>", unsafe_allow_html=True)
+
+    status_dict = ler_status_atual()
+    setor_atual = st.session_state['setor_usuario']
+    perfil = st.session_state['perfil']
+
+    if setor_atual in ['TECNICO', 'GERAL', 'GERÊNCIA', 'PRESET'] or perfil == 'adm':
+        lista_maq = TODAS_AFC + TODAS_RTF
+    else:
+        lista_maq = TODAS_AFC if setor_atual == "AFC" else TODAS_RTF
+
+    dados_tabela = []
+    for m in lista_maq:
+        setor_m = "AFC" if m in TODAS_AFC else "RTF"
+        st_val = status_dict.get(f"{setor_m} {m}", "PRODUZINDO")
+
+        if "PRODUZINDO" in st_val:
+            hora_prevista = ""
+            if "[Fim Previsto:" in st_val:
+                try: hora_prevista = st_val.split("[Fim Previsto:")[1].split("]")[0].strip()
+                except: pass
+
+            op_atual = ""
+            if "[Ordem:" in st_val:
+                try: op_atual = st_val.split("[Ordem:")[1].split("]")[0].strip()
+                except: pass
+
+            dados_tabela.append({
+                "Setor": setor_m,
+                "Máquina": m,
+                "Ordem (OP)": op_atual,
+                "Hora de Parada": hora_prevista
+            })
+
+    if not dados_tabela:
+        st.info("Nenhuma máquina em produção no momento para lançar previsão.")
+        return
+
+    df_previsao = pd.DataFrame(dados_tabela)
+    df_editado = st.data_editor(
+        df_previsao,
+        disabled=["Setor", "Máquina", "Ordem (OP)"],
+        hide_index=True,
+        use_container_width=True
+    )
+
+    if st.button("💾 Salvar Previsões", type="primary", use_container_width=True):
+        hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+        novas_linhas = []
+        
+        for i, row in df_editado.iterrows():
+            hora_nova = str(row["Hora de Parada"]).strip()
+            hora_antiga = str(df_previsao.loc[i, "Hora de Parada"]).strip()
+
+            if hora_nova != hora_antiga:
+                setor_m = row["Setor"]
+                maq_m = row["Máquina"]
+                st_val = status_dict.get(f"{setor_m} {maq_m}", "")
+
+                if "[Fim Previsto:" in st_val:
+                    st_val = re.sub(r' \[Fim Previsto:.*?\]', '', st_val)
+
+                if hora_nova: 
+                    st_final = f"{st_val} [Fim Previsto: {hora_nova}]".strip()
+                else:
+                    st_final = st_val.strip()
+
+                novas_linhas.append({"Setor": setor_m, "Maquina": f"{setor_m} {maq_m}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str})
+
+        if novas_linhas:
+            df_dados = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
+            df_dados = pd.concat([df_dados, pd.DataFrame(novas_linhas)], ignore_index=True)
+            df_dados.to_csv(ARQUIVO_DADOS, index=False)
+            st.success("✅ Previsões atualizadas com sucesso!")
+            time.sleep(1)
+            st.rerun()
+        else:
+            st.info("Nenhuma alteração de horário detectada.")
+
 def tela_checkup():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### 🔍 Incidências e Programação do Setor")
@@ -1355,25 +1438,30 @@ def tela_checkup():
     for s_nome, lista in setores_alvo:
         for m in lista:
             st_val = status_dict.get(f"{s_nome} {m}", "PRODUZINDO")
-            if "PRODUZINDO" not in st_val or "AGENDADO" in st_val or "AGENDADA" in st_val or "AGUARDANDO" in st_val:
+            
+            # Agora incluímos as máquinas PRODUZINDO que têm uma previsão de parada
+            if "PRODUZINDO" not in st_val or "AGENDADO" in st_val or "AGENDADA" in st_val or "AGUARDANDO" in st_val or "[Fim Previsto:" in st_val:
                 
                 turno_pendencia = turno_atual_logado 
                 
-                # Descobre de qual turno é esse agendamento
                 if "[AGENDADO:" in st_val:
                     try:
                         h_alvo = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
                         turno_pendencia = obter_turno_por_horario(h_alvo)
                     except: pass
+                elif "[Fim Previsto:" in st_val:
+                    try:
+                        h_alvo = st_val.split("[Fim Previsto:")[1].split("]")[0].strip()
+                        turno_pendencia = obter_turno_por_horario(h_alvo)
+                    except: pass
                 
                 item_lista = (s_nome, m, st_val)
                 
-                # Separa: Se for agendado para OUTRO turno, vai para a aba futura
-                if ("AGENDADO" in st_val or "AGENDADA" in st_val) and turno_pendencia != turno_atual_logado:
+                # Joga para aba futura se for agendamento ou previsão de parada para OUTRO turno
+                if ("AGENDADO" in st_val or "AGENDADA" in st_val or "[Fim Previsto:" in st_val) and turno_pendencia != turno_atual_logado:
                     if turno_pendencia in preparacoes_futuras:
                         preparacoes_futuras[turno_pendencia].append(item_lista)
                 else:
-                    # Máquinas paradas, em setup, ou agendadas para O MEU turno
                     incidencias_turno_atual.append(item_lista)
                     
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo']:
@@ -1383,9 +1471,9 @@ def tela_checkup():
     aba_atual, aba_futuro = st.tabs(["🚨 Turno Atual", "🔮 Preparações Futuras"])
 
     with aba_atual:
-        st.markdown(f"**Exibindo incidências e setups para o {turno_atual_logado}**")
+        st.markdown(f"**Exibindo incidências e paradas previstas para o {turno_atual_logado}**")
         if not incidencias_turno_atual: 
-            st.success("✨ Ótimo! Nenhuma incidência no momento.")
+            st.success("✨ Ótimo! Nenhuma incidência ou parada prevista para o momento.")
         else:
             for setor_m, maq_m, st_m in incidencias_turno_atual:
                 icone = get_status_icon(st_m)
@@ -1395,12 +1483,12 @@ def tela_checkup():
                     st.rerun()
 
     with aba_futuro:
-        st.markdown("**Programação de Setups por Turno**")
+        st.markdown("**Programação de Setups e Paradas por Turno**")
         filtro_turno = st.radio("Selecione o Turno para visualizar:", ["1° TURNO", "2° TURNO", "3° TURNO"], horizontal=True)
         
         lista_futura = preparacoes_futuras[filtro_turno]
         if not lista_futura:
-            st.info(f"Nenhum setup agendado futuramente para o {filtro_turno}.")
+            st.info(f"Nenhum setup ou parada programada futuramente para o {filtro_turno}.")
         else:
             for setor_m, maq_m, st_m in lista_futura:
                 icone = get_status_icon(st_m)
@@ -1879,6 +1967,7 @@ def tela_armarios():
 if st.session_state['tela_atual'] == 'login': tela_login()
 elif st.session_state['tela_atual'] == 'menu': tela_menu()
 elif st.session_state['tela_atual'] == 'checkup': tela_checkup()
+elif st.session_state['tela_atual'] == 'previsao': tela_previsao()
 elif st.session_state['tela_atual'] == 'historico': tela_historico()
 elif st.session_state['tela_atual'] == 'minhas_incidencias': tela_minhas_incidencias()
 elif st.session_state['tela_atual'] == 'afc': tela_afc()
