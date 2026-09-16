@@ -2150,8 +2150,14 @@ def tela_armarios():
             if os.path.exists(ARQUIVO_REBOLOS):
                 try:
                     df_rebolos = pd.read_excel(ARQUIVO_REBOLOS, dtype=str)
+                    
+                    # 1. FORÇA A LIMPEZA: Remove espaços em branco antes ou depois do nome das colunas
+                    df_rebolos.columns = df_rebolos.columns.str.strip()
+                    
                     if 'Item' in df_rebolos.columns:
-                        df_rebolos['Item_Busca'] = df_rebolos['Item'].astype(str).str.strip().str.upper().str.replace(".0", "", regex=False)
+                        # 2. FORÇA A LIMPEZA NO ITEM: Remove ".0" invisíveis do Excel que quebram a busca
+                        df_rebolos['Item_Busca'] = df_rebolos['Item'].astype(str).str.strip().str.upper()
+                        df_rebolos['Item_Busca'] = df_rebolos['Item_Busca'].apply(lambda x: x.split('.')[0] if x.endswith('.0') else x)
                 except Exception as e:
                     st.error(f"⚠️ Erro ao ler a planilha '{ARQUIVO_REBOLOS}': {e}")
                     pass
@@ -2160,7 +2166,6 @@ def tela_armarios():
             alertas_rebolo = []
             
             for maq, st_val in status_dict.items():
-                # Filtra máquinas que têm a tag de rebolo e não estão produzindo
                 if "(C/ REBOLO)" in st_val.upper() and "PRODUZINDO" not in st_val.upper():
                     hora_alvo = ""
                     if "AGENDADA PARA" in st_val.upper():
@@ -2174,22 +2179,17 @@ def tela_armarios():
                     
                     item_alvo = ""
                     
-                    # 1. BUSCA INTELIGENTE: Pega o Item que está fisicamente na gaveta do armário
                     try:
-                        setor_maq, maq_num = maq.split(" ", 1) # Ex: "AFC", "12-367"
-                        gaveta_num = maq_num.split("-")[0] # Pega só o "12" da máquina
-                        
+                        setor_maq, maq_num = maq.split(" ", 1)
+                        gaveta_num = maq_num.split("-")[0]
                         filtro_armario = "Afiadoras" if setor_maq == "AFC" else "Retíficas"
                         
-                        # Filtra no dataframe de armários
                         gaveta_row = df_arm[(df_arm['Posicao'] == gaveta_num) & (df_arm['Armario'].str.contains(filtro_armario))]
                         
                         if not gaveta_row.empty:
                             item_alvo = str(gaveta_row.iloc[0]['Item']).strip().replace('.0', '').replace('nan', '')
-                    except:
-                        pass
+                    except: pass
                         
-                    # 2. FALLBACK: Se o armário não tiver item, tenta puxar da string de status da máquina
                     if not item_alvo:
                         if "[Novo Item:" in st_val: item_alvo = st_val.split("[Novo Item:")[1].split("]")[0].strip()
                         elif "[Item Atual:" in st_val: item_alvo = st_val.split("[Item Atual:")[1].split("]")[0].strip()
@@ -2197,15 +2197,16 @@ def tela_armarios():
                     
                     rebolo1, rebolo2, tipo_reb, desc = "Não cadastrado", "-", "Não cadastrado", ""
                     
-                    # 3. Consulta o item no DataFrame de Rebolos
                     if item_alvo and not df_rebolos.empty and 'Item_Busca' in df_rebolos.columns:
                         item_busca = item_alvo.strip().upper().replace(".0", "")
                         match = df_rebolos[df_rebolos['Item_Busca'] == item_busca]
+                        
                         if not match.empty:
                             row_reb = match.iloc[0]
                             desc = str(row_reb.get('Descrição', row_reb.get('Descricao', ''))).strip()
-                            rebolo1 = str(row_reb.get('Rebolo', row_reb.get('Rebolo1', ''))).strip()
-                            rebolo2 = str(row_reb.get('Rebolo2', '')).strip()
+                            rebolo1 = str(row_reb.get('Rebolo', row_reb.get('Rebolo 1', ''))).strip()
+                            # 3. CORREÇÃO DA IMAGEM: Busca "Rebolo 2" (com espaço) ou "Rebolo2"
+                            rebolo2 = str(row_reb.get('Rebolo 2', row_reb.get('Rebolo2', ''))).strip()
                             tipo_reb = str(row_reb.get('Tipo', '')).strip()
                             
                             if rebolo1 == 'nan': rebolo1 = "Não cadastrado"
