@@ -2144,7 +2144,7 @@ def tela_armarios():
     with aba4:
         st.markdown("#### 🔄 Alertas e Detalhamento de Rebolos")
         if st.session_state.get('perfil') in ['preset', 'adm']:
-            st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Máquinas agendadas ou em andamento que necessitam de troca de rebolo, integradas ao banco de dados.</p>", unsafe_allow_html=True)
+            st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Máquinas agendadas ou em andamento que necessitam de troca de rebolo. O sistema busca o Item automaticamente no Armário correspondente à máquina.</p>", unsafe_allow_html=True)
             
             df_rebolos = pd.DataFrame()
             if os.path.exists(ARQUIVO_REBOLOS):
@@ -2160,6 +2160,7 @@ def tela_armarios():
             alertas_rebolo = []
             
             for maq, st_val in status_dict.items():
+                # Filtra máquinas que têm a tag de rebolo e não estão produzindo
                 if "(C/ REBOLO)" in st_val.upper() and "PRODUZINDO" not in st_val.upper():
                     hora_alvo = ""
                     if "AGENDADA PARA" in st_val.upper():
@@ -2171,15 +2172,32 @@ def tela_armarios():
                     
                     st_limpo = st_val.split("[")[0].strip()
                     
-                    # Tenta capturar o Item da string de status para buscar na planilha
                     item_alvo = ""
-                    if "[Novo Item:" in st_val: item_alvo = st_val.split("[Novo Item:")[1].split("]")[0].strip()
-                    elif "[Item Atual:" in st_val: item_alvo = st_val.split("[Item Atual:")[1].split("]")[0].strip()
-                    elif "[Item:" in st_val: item_alvo = st_val.split("[Item:")[1].split("]")[0].strip()
+                    
+                    # 1. BUSCA INTELIGENTE: Pega o Item que está fisicamente na gaveta do armário
+                    try:
+                        setor_maq, maq_num = maq.split(" ", 1) # Ex: "AFC", "12-367"
+                        gaveta_num = maq_num.split("-")[0] # Pega só o "12" da máquina
+                        
+                        filtro_armario = "Afiadoras" if setor_maq == "AFC" else "Retíficas"
+                        
+                        # Filtra no dataframe de armários
+                        gaveta_row = df_arm[(df_arm['Posicao'] == gaveta_num) & (df_arm['Armario'].str.contains(filtro_armario))]
+                        
+                        if not gaveta_row.empty:
+                            item_alvo = str(gaveta_row.iloc[0]['Item']).strip().replace('.0', '').replace('nan', '')
+                    except:
+                        pass
+                        
+                    # 2. FALLBACK: Se o armário não tiver item, tenta puxar da string de status da máquina
+                    if not item_alvo:
+                        if "[Novo Item:" in st_val: item_alvo = st_val.split("[Novo Item:")[1].split("]")[0].strip()
+                        elif "[Item Atual:" in st_val: item_alvo = st_val.split("[Item Atual:")[1].split("]")[0].strip()
+                        elif "[Item:" in st_val: item_alvo = st_val.split("[Item:")[1].split("]")[0].strip()
                     
                     rebolo1, rebolo2, tipo_reb, desc = "Não cadastrado", "-", "Não cadastrado", ""
                     
-                    # Consulta o item no DataFrame df_rebolos
+                    # 3. Consulta o item no DataFrame de Rebolos
                     if item_alvo and not df_rebolos.empty and 'Item_Busca' in df_rebolos.columns:
                         item_busca = item_alvo.strip().upper().replace(".0", "")
                         match = df_rebolos[df_rebolos['Item_Busca'] == item_busca]
@@ -2206,7 +2224,7 @@ def tela_armarios():
                         reb2_html = f"<p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🔄 Rebolo 2: <b style='color: #2DD4BF;'>{reb2}</b></p>" if reb2 and reb2 != '-' else ""
                         info_reb = f"""
                         <div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'>
-                            <p style='margin: 0; font-size: 13px; color: #A1A1AA;'>📦 Item: <b style='color: #F4F4F5;'>{item_alvo}</b> <span style='color:#71717A;'>{desc_str}</span></p>
+                            <p style='margin: 0; font-size: 13px; color: #A1A1AA;'>📦 Item no Armário: <b style='color: #F4F4F5;'>{item_alvo}</b> <span style='color:#71717A;'>{desc_str}</span></p>
                             <p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🔄 Rebolo 1: <b style='color: #2DD4BF;'>{reb1}</b></p>
                             {reb2_html}
                             <p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🏷️ Tipo: <b style='color: #F4F4F5;'>{tipo_reb}</b></p>
@@ -2215,7 +2233,7 @@ def tela_armarios():
                     else:
                         info_reb = f"""
                         <div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'>
-                            <p style='margin: 0; font-size: 13px; color: #ef4444;'>⚠️ Item não informado no apontamento. Impossível buscar rebolo.</p>
+                            <p style='margin: 0; font-size: 13px; color: #ef4444;'>⚠️ Gaveta vazia e item não informado no apontamento. Impossível buscar rebolo.</p>
                         </div>
                         """
 
