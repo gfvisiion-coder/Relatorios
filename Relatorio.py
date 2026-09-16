@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta, time as dtime
 import os
 import time
 import re
+import unicodedata
 import extra_streamlit_components as stx
 
 # --- CONFIGURAÇÃO BASE DO APP ---
@@ -116,7 +117,7 @@ ARQUIVO_ARMARIOS = "banco_armarios.csv"
 ARQUIVO_ALERTAS = "alertas_preset.csv"
 ARQUIVO_CNC = "banco_cnc.csv"
 ARQUIVO_FECHAMENTO = "ultimo_fechamento.csv"
-ARQUIVO_REBOLOS = "banco_rebolos.xlsx" # ATUALIZADO PARA .XLSX
+ARQUIVO_REBOLOS = "rebolos.xlsx" # NOVO NOME AQUI
 
 # --- FUNÇÕES UTILITÁRIAS ---
 def turno_atual_horario():
@@ -2151,7 +2152,6 @@ def tela_armarios():
             
             if os.path.exists(ARQUIVO_REBOLOS):
                 try:
-                    import unicodedata
                     # AGORA SIM: Lendo a aba específica 'Banco De Rebolos'
                     df_rebolos = pd.read_excel(ARQUIVO_REBOLOS, sheet_name='Banco De Rebolos', engine='openpyxl')
                     
