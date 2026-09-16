@@ -116,6 +116,7 @@ ARQUIVO_ARMARIOS = "banco_armarios.csv"
 ARQUIVO_ALERTAS = "alertas_preset.csv"
 ARQUIVO_CNC = "banco_cnc.csv"
 ARQUIVO_FECHAMENTO = "ultimo_fechamento.csv"
+ARQUIVO_REBOLOS = "banco_rebolos.xlsx" # ATUALIZADO PARA .XLSX
 
 # --- FUNÇÕES UTILITÁRIAS ---
 def turno_atual_horario():
@@ -145,7 +146,6 @@ def diff_mins(h_inicio, h_fim, eh_espera=False):
         t2 = datetime.strptime(h_fim, "%H:%M")
         diff = (t2 - t1).total_seconds() / 60
         
-        # Correção inteligente para evitar bug de 24 horas adicionais
         if diff < -720: diff += 1440
         elif diff > 720: diff -= 1440
             
@@ -2140,11 +2140,22 @@ def tela_armarios():
         else:
             st.info("Nenhum alerta registrado ainda.")
             
-    # --- ABA 4: AVISOS DE TROCA DE REBOLO ---
+    # --- ABA 4: AVISOS DE TROCA DE REBOLO COM DETALHES ---
     with aba4:
-        st.markdown("#### 🔄 Alertas de Troca de Rebolo")
+        st.markdown("#### 🔄 Alertas e Detalhamento de Rebolos")
         if st.session_state.get('perfil') in ['preset', 'adm']:
-            st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Máquinas agendadas ou em andamento que necessitam de troca de rebolo (Preparação ou Sequência).</p>", unsafe_allow_html=True)
+            st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Máquinas agendadas ou em andamento que necessitam de troca de rebolo, integradas ao banco de dados.</p>", unsafe_allow_html=True)
+            
+            df_rebolos = pd.DataFrame()
+            if os.path.exists(ARQUIVO_REBOLOS):
+                try:
+                    df_rebolos = pd.read_excel(ARQUIVO_REBOLOS, dtype=str)
+                    if 'Item' in df_rebolos.columns:
+                        df_rebolos['Item_Busca'] = df_rebolos['Item'].astype(str).str.strip().str.upper().str.replace(".0", "", regex=False)
+                except Exception as e:
+                    st.error(f"⚠️ Erro ao ler a planilha '{ARQUIVO_REBOLOS}': {e}")
+                    pass
+
             status_dict = ler_status_atual()
             alertas_rebolo = []
             
@@ -2159,15 +2170,60 @@ def tela_armarios():
                         except: pass
                     
                     st_limpo = st_val.split("[")[0].strip()
-                    alertas_rebolo.append((maq, hora_alvo, st_limpo))
+                    
+                    # Tenta capturar o Item da string de status para buscar na planilha
+                    item_alvo = ""
+                    if "[Novo Item:" in st_val: item_alvo = st_val.split("[Novo Item:")[1].split("]")[0].strip()
+                    elif "[Item Atual:" in st_val: item_alvo = st_val.split("[Item Atual:")[1].split("]")[0].strip()
+                    elif "[Item:" in st_val: item_alvo = st_val.split("[Item:")[1].split("]")[0].strip()
+                    
+                    rebolo1, rebolo2, tipo_reb, desc = "Não cadastrado", "-", "Não cadastrado", ""
+                    
+                    # Consulta o item no DataFrame df_rebolos
+                    if item_alvo and not df_rebolos.empty and 'Item_Busca' in df_rebolos.columns:
+                        item_busca = item_alvo.strip().upper().replace(".0", "")
+                        match = df_rebolos[df_rebolos['Item_Busca'] == item_busca]
+                        if not match.empty:
+                            row_reb = match.iloc[0]
+                            desc = str(row_reb.get('Descrição', row_reb.get('Descricao', ''))).strip()
+                            rebolo1 = str(row_reb.get('Rebolo', row_reb.get('Rebolo1', ''))).strip()
+                            rebolo2 = str(row_reb.get('Rebolo2', '')).strip()
+                            tipo_reb = str(row_reb.get('Tipo', '')).strip()
+                            
+                            if rebolo1 == 'nan': rebolo1 = "Não cadastrado"
+                            if rebolo2 == 'nan': rebolo2 = "-"
+                            if tipo_reb == 'nan': tipo_reb = "-"
+                            if desc == 'nan': desc = ""
+
+                    alertas_rebolo.append((maq, hora_alvo, st_limpo, item_alvo, desc, rebolo1, rebolo2, tipo_reb))
                     
             if alertas_rebolo:
-                for maq, hora, st_limpo in alertas_rebolo:
+                for maq, hora, st_limpo, item_alvo, desc, reb1, reb2, tipo_reb in alertas_rebolo:
                     h_txt = f"⏰ Agendado para as {hora}" if hora else "🔴 Em Andamento / Imediato"
+                    
+                    if item_alvo:
+                        desc_str = f"({desc})" if desc else ""
+                        reb2_html = f"<p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🔄 Rebolo 2: <b style='color: #2DD4BF;'>{reb2}</b></p>" if reb2 and reb2 != '-' else ""
+                        info_reb = f"""
+                        <div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'>
+                            <p style='margin: 0; font-size: 13px; color: #A1A1AA;'>📦 Item: <b style='color: #F4F4F5;'>{item_alvo}</b> <span style='color:#71717A;'>{desc_str}</span></p>
+                            <p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🔄 Rebolo 1: <b style='color: #2DD4BF;'>{reb1}</b></p>
+                            {reb2_html}
+                            <p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🏷️ Tipo: <b style='color: #F4F4F5;'>{tipo_reb}</b></p>
+                        </div>
+                        """
+                    else:
+                        info_reb = f"""
+                        <div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'>
+                            <p style='margin: 0; font-size: 13px; color: #ef4444;'>⚠️ Item não informado no apontamento. Impossível buscar rebolo.</p>
+                        </div>
+                        """
+
                     st.markdown(f"""
                     <div style='background-color: #422006; padding: 15px; border-radius: 8px; border-left: 5px solid #f59e0b; margin-bottom: 10px;'>
                         <h5 style='margin-top:0; margin-bottom:5px; color: #fbbf24;'>⚙️ Máquina {maq} irá trocar o rebolo</h5>
                         <p style='color: #fef3c7; margin-bottom:0; font-size:14px;'>{h_txt} <br><span style='font-size:13px; color:#d97706;'>Status Atual: {st_limpo}</span></p>
+                        {info_reb}
                     </div>
                     """, unsafe_allow_html=True)
             else:
