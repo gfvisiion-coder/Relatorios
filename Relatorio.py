@@ -2151,13 +2151,18 @@ def tela_armarios():
                 try:
                     df_rebolos = pd.read_excel(ARQUIVO_REBOLOS, dtype=str)
                     
-                    # 1. FORÇA A LIMPEZA: Remove espaços em branco antes ou depois do nome das colunas
-                    df_rebolos.columns = df_rebolos.columns.str.strip()
+                    # 1. BLINDAGEM DE COLUNAS: Remove espaços, acentos e deixa tudo maiúsculo
+                    df_rebolos.columns = (df_rebolos.columns
+                                          .str.strip()
+                                          .str.upper()
+                                          .str.replace(" ", "")
+                                          .str.replace("Ç", "C")
+                                          .str.replace("Ã", "A"))
                     
-                    if 'Item' in df_rebolos.columns:
-                        # 2. FORÇA A LIMPEZA NO ITEM: Remove ".0" invisíveis do Excel que quebram a busca
-                        df_rebolos['Item_Busca'] = df_rebolos['Item'].astype(str).str.strip().str.upper()
-                        df_rebolos['Item_Busca'] = df_rebolos['Item_Busca'].apply(lambda x: x.split('.')[0] if x.endswith('.0') else x)
+                    if 'ITEM' in df_rebolos.columns:
+                        # 2. BLINDAGEM DO ITEM: Garante que é string e remove ".0"
+                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM'].astype(str).str.strip().str.upper()
+                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM_BUSCA'].apply(lambda x: x.split('.')[0])
                 except Exception as e:
                     st.error(f"⚠️ Erro ao ler a planilha '{ARQUIVO_REBOLOS}': {e}")
                     pass
@@ -2197,22 +2202,24 @@ def tela_armarios():
                     
                     rebolo1, rebolo2, tipo_reb, desc = "Não cadastrado", "-", "Não cadastrado", ""
                     
-                    if item_alvo and not df_rebolos.empty and 'Item_Busca' in df_rebolos.columns:
-                        item_busca = item_alvo.strip().upper().replace(".0", "")
-                        match = df_rebolos[df_rebolos['Item_Busca'] == item_busca]
+                    if item_alvo and not df_rebolos.empty and 'ITEM_BUSCA' in df_rebolos.columns:
+                        # Limpa o item alvo também para garantir o 'match'
+                        item_busca = str(item_alvo).strip().upper().split('.')[0]
+                        match = df_rebolos[df_rebolos['ITEM_BUSCA'] == item_busca]
                         
                         if not match.empty:
                             row_reb = match.iloc[0]
-                            desc = str(row_reb.get('Descrição', row_reb.get('Descricao', ''))).strip()
-                            rebolo1 = str(row_reb.get('Rebolo', row_reb.get('Rebolo 1', ''))).strip()
-                            # 3. CORREÇÃO DA IMAGEM: Busca "Rebolo 2" (com espaço) ou "Rebolo2"
-                            rebolo2 = str(row_reb.get('Rebolo 2', row_reb.get('Rebolo2', ''))).strip()
-                            tipo_reb = str(row_reb.get('Tipo', '')).strip()
+                            # Como normalizamos as colunas lá em cima, agora a busca é exata
+                            desc = str(row_reb.get('DESCRICAO', '')).strip()
+                            rebolo1 = str(row_reb.get('REBOLO', row_reb.get('REBOLO1', ''))).strip()
+                            rebolo2 = str(row_reb.get('REBOLO2', '')).strip()
+                            tipo_reb = str(row_reb.get('TIPO', '')).strip()
                             
-                            if rebolo1 == 'nan': rebolo1 = "Não cadastrado"
-                            if rebolo2 == 'nan': rebolo2 = "-"
-                            if tipo_reb == 'nan': tipo_reb = "-"
-                            if desc == 'nan': desc = ""
+                            # Tratamento se o Excel devolver 'nan' ou vazio
+                            if rebolo1.lower() == 'nan' or not rebolo1: rebolo1 = "Não cadastrado"
+                            if rebolo2.lower() == 'nan' or not rebolo2: rebolo2 = "-"
+                            if tipo_reb.lower() == 'nan' or not tipo_reb: tipo_reb = "-"
+                            if desc.lower() == 'nan' or not desc: desc = ""
 
                     alertas_rebolo.append((maq, hora_alvo, st_limpo, item_alvo, desc, rebolo1, rebolo2, tipo_reb))
                     
