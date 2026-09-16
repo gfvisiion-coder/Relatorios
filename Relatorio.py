@@ -2147,20 +2147,31 @@ def tela_armarios():
             st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Máquinas agendadas ou em andamento que necessitam de troca de rebolo. O sistema busca o Item automaticamente no Armário correspondente à máquina.</p>", unsafe_allow_html=True)
             
             df_rebolos = pd.DataFrame()
+            erro_leitura = ""
+            
             if os.path.exists(ARQUIVO_REBOLOS):
                 try:
-                    # dtype=str força a ler o Excel estritamente como texto, evitando números com decimais (.0)
-                    df_rebolos = pd.read_excel(ARQUIVO_REBOLOS, engine='openpyxl', dtype=str)
+                    import unicodedata
+                    # AGORA SIM: Lendo a aba específica 'Banco De Rebolos'
+                    df_rebolos = pd.read_excel(ARQUIVO_REBOLOS, sheet_name='Banco De Rebolos', engine='openpyxl')
                     
-                    # Padroniza nomes das colunas: Tira acentos, espaços e deixa maiúsculo
-                    df_rebolos.columns = df_rebolos.columns.str.strip().str.upper().str.replace(" ", "").str.replace("Ç", "C").str.replace("Ã", "A")
+                    # 1. SUPER BLINDAGEM DE COLUNAS
+                    novas_colunas = []
+                    for col in df_rebolos.columns:
+                        col_str = str(col).upper()
+                        col_str = unicodedata.normalize('NFKD', col_str).encode('ASCII', 'ignore').decode('ASCII')
+                        col_str = col_str.replace(" ", "").replace("\n", "").strip()
+                        novas_colunas.append(col_str)
+                    df_rebolos.columns = novas_colunas
                     
                     if 'ITEM' in df_rebolos.columns:
-                        # Trata a coluna de itens para garantir o match
-                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM'].fillna("").astype(str).str.strip().str.upper()
-                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM_BUSCA'].apply(lambda x: x.replace(".0", "") if x.endswith(".0") else x)
+                        # 2. SUPER BLINDAGEM DO ITEM
+                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM'].astype(str).str.upper()
+                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM_BUSCA'].apply(lambda x: re.sub(r'\.0$', '', x.strip()))
                 except Exception as e:
-                    st.error(f"⚠️ Erro crítico ao ler a planilha '{ARQUIVO_REBOLOS}': {e}")
+                    erro_leitura = f"Erro do Python: {e}"
+            else:
+                erro_leitura = f"Arquivo '{ARQUIVO_REBOLOS}' não encontrado na pasta."
 
             status_dict = ler_status_atual()
             alertas_rebolo = []
@@ -2178,7 +2189,6 @@ def tela_armarios():
                     st_limpo = st_val.split("[")[0].strip()
                     item_alvo = ""
                     
-                    # 1. Busca no armário
                     try:
                         setor_maq, maq_num = maq.split(" ", 1)
                         gaveta_num = maq_num.split("-")[0]
@@ -2189,7 +2199,6 @@ def tela_armarios():
                             item_alvo = str(gaveta_row.iloc[0]['Item']).strip().replace('.0', '').replace('nan', '')
                     except: pass
                         
-                    # 2. Busca na string (fallback)
                     if not item_alvo:
                         if "[Novo Item:" in st_val: item_alvo = st_val.split("[Novo Item:")[1].split("]")[0].strip()
                         elif "[Item Atual:" in st_val: item_alvo = st_val.split("[Item Atual:")[1].split("]")[0].strip()
@@ -2199,17 +2208,18 @@ def tela_armarios():
                     debug_msg = ""
                     
                     if item_alvo:
-                        item_busca = str(item_alvo).strip().upper().replace(".0", "")
+                        item_busca = str(item_alvo).strip().upper()
+                        item_busca = re.sub(r'\.0$', '', item_busca)
                         
-                        if df_rebolos.empty:
-                            debug_msg = "⚠️ A planilha do Excel não foi carregada corretamente ou está vazia."
+                        # Injeta a mensagem de erro direto na tela se algo falhou antes
+                        if erro_leitura:
+                            debug_msg = f"⚠️ FALHA AO LER EXCEL: {erro_leitura}"
+                        elif df_rebolos.empty:
+                            debug_msg = "⚠️ A planilha foi lida, mas o Python achou que a aba 'Banco De Rebolos' estava em branco."
                         elif 'ITEM_BUSCA' not in df_rebolos.columns:
-                            debug_msg = f"⚠️ A coluna 'Item' não foi encontrada. Colunas lidas do Excel: {df_rebolos.columns.tolist()}"
+                            debug_msg = f"⚠️ Coluna de 'Item' não detectada. Colunas lidas: {df_rebolos.columns.tolist()}"
                         else:
-                            # Match exato
                             match = df_rebolos[df_rebolos['ITEM_BUSCA'] == item_busca]
-                            
-                            # Fallback de match parcial
                             if match.empty:
                                 match = df_rebolos[df_rebolos['ITEM_BUSCA'].str.contains(item_busca, regex=False, na=False)]
                                 
@@ -2225,8 +2235,7 @@ def tela_armarios():
                                 if tipo_reb.lower() in ['nan', 'none', '']: tipo_reb = "-"
                                 if desc.lower() in ['nan', 'none', '']: desc = ""
                             else:
-                                amostra = df_rebolos['ITEM_BUSCA'].dropna().head(5).tolist()
-                                debug_msg = f"🔍 DEBUG: Busquei o item '{item_busca}', mas não achei. Primeiros itens lidos do Excel: {amostra}..."
+                                debug_msg = f"🔍 DEBUG: Item '{item_busca}' não encontrado dentro da aba 'Banco De Rebolos'."
 
                     alertas_rebolo.append((maq, hora_alvo, st_limpo, item_alvo, desc, rebolo1, rebolo2, tipo_reb, debug_msg))
                     
@@ -2237,7 +2246,6 @@ def tela_armarios():
                     if item_alvo:
                         desc_str = f"({desc})" if desc else ""
                         reb2_html = f"<p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🔄 Rebolo 2: <b style='color: #2DD4BF;'>{reb2}</b></p>" if reb2 and reb2 != '-' else ""
-                        
                         dbg_html = f"<p style='margin: 10px 0 0 0; font-size: 11px; color: #ef4444; font-weight: bold;'>{dbg}</p>" if dbg else ""
                         
                         info_reb = f"""
