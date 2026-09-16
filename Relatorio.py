@@ -1318,7 +1318,6 @@ def tela_menu():
         except: pass 
         time.sleep(0.5); mudar_tela('login')
 
-# --- NOVA TELA: VISÃO GERAL DE FÁBRICA (Inteligente) ---
 def tela_visao_geral():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### 📊 Visão Geral da Fábrica — Máquinas e OPs")
@@ -1512,7 +1511,7 @@ def tela_checkup():
                 elif st.session_state['fila_prev_sel'] == 'fila_2': maquinas_foco = [m for m in base_f2 if m in todas_cnc3]
                 elif st.session_state['fila_prev_sel'] == 'fila_3': maquinas_foco = [m for m in base_f3 if m in todas_cnc3]
                 elif st.session_state['fila_prev_sel'] == 'fila_4': 
-                    nativos = set(base_fila_1 + base_fila_2 + base_fila_3 + base_fila_4) if 'base_fila_1' in locals() else set()
+                    nativos = set(base_f1 + base_f2 + base_f3 + base_f4)
                     extraviados = [m for m in todas_cnc3 if m not in nativos]
                     maquinas_foco = [m for m in base_f4 if m in todas_cnc3] + extraviados
                 elif st.session_state['fila_prev_sel'] == 'centerless': maquinas_foco = todas_cnc1
@@ -1837,10 +1836,9 @@ def tela_armarios():
             with st.form("form_alimentar"):
                 st.info("🟥 Esta gaveta está VAZIA. Insira os dados para guardar o setup ou selecione o motivo rápido.")
                 
-                # LISTA SUSPENSA DE MOTIVOS RÁPIDOS
                 motivos_rapidos = [
                     "-- Selecione um Motivo Rápido (Opcional) --",
-                    "Aguardando Cor",
+                    "Aguardando Jagura",
                     "Aguardando Almoxarifado",
                     "Aguardando PCP",
                     "Em Preparação",
@@ -1855,7 +1853,6 @@ def tela_armarios():
                 
                 c1, c2 = st.columns(2)
                 if c1.form_submit_button("📥 GUARDAR SETUP", type="primary", use_container_width=True):
-                    # Monta a observação final unindo o selectbox e o texto livre
                     obs_final = motivo_select if motivo_select != motivos_rapidos[0] else ""
                     if obs_in.strip():
                         obs_final = f"{obs_final} - {obs_in.strip()}" if obs_final else obs_in.strip()
@@ -1956,18 +1953,27 @@ def tela_armarios():
                                     gav = gavetas[linha + c]
                                     num = gav['Posicao']
                                     status = gav['Status']
-                                    if status == 'VAZIO': 
-                                        obs_vazio = str(gav.get('Observacao', '')).replace('nan', '').strip()
-                                        if obs_vazio:
-                                            btn_label = f"🟥 MAQ {num}\n{obs_vazio[:10]}..."
+                                    obs_val = str(gav.get('Observacao', '')).upper()
+                                    op_f = str(gav.get('Ordem', '')).replace('.0', '').replace('nan', '')
+                                    
+                                    if status == 'VAZIO':
+                                        if "AGUARDANDO COR" in obs_val:
+                                            btn_label = f"🎨 MAQ {num}\nAG. COR"
+                                        elif "ALMOXARIFADO" in obs_val:
+                                            btn_label = f"📦 MAQ {num}\nALMOX."
+                                        elif "PCP" in obs_val:
+                                            btn_label = f"📋 MAQ {num}\nPCP"
+                                        elif "PREPARAÇÃO" in obs_val:
+                                            btn_label = f"⚙️ MAQ {num}\nPREP."
+                                        elif "SEQUÊNCIA" in obs_val or "SEQUENCIA" in obs_val:
+                                            btn_label = f"🔄 MAQ {num}\nSEQ."
                                         else:
                                             btn_label = f"🟥 MAQ {num}\nVAZIO"
                                     else:
-                                        op_f = str(gav.get('Ordem', '')).replace('.0', '').replace('nan', '')
-                                        obs_f = str(gav.get('Observacao', '')).replace('nan', '').strip()
-                                        if op_f: btn_label = f"🟩 MAQ {num}\nOP: {op_f}"
-                                        elif obs_f: btn_label = f"🟩 MAQ {num}\nOBS: {obs_f[:8]}..."
-                                        else: btn_label = f"🟩 MAQ {num}\nOCUPADO"
+                                        if op_f:
+                                            btn_label = f"🟩 MAQ {num}\nOP: {op_f}"
+                                        else:
+                                            btn_label = f"🟩 MAQ {num}\nOCUPADO"
                                     
                                     if cols_gaveta[c].button(btn_label, key=f"btn_gav_{arm}_{num}", use_container_width=True):
                                         if st.session_state['perfil'] in ['preset', 'adm']:
