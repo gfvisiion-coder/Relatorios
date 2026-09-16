@@ -62,7 +62,6 @@ CSS_APP = """
         padding: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.4);
     }
     
-    /* CSS para os botões das Gavetas */
     div[data-testid="stButton"] > button {
         height: 60px !important;
         padding: 5px !important;
@@ -72,7 +71,6 @@ CSS_APP = """
         white-space: pre-wrap !important;
     }
     
-    /* Estilo para os TOASTS (Pop-ups laterais) */
     div[data-testid="stToast"] {
         background-color: #450a0a !important;
         border: 1px solid #ef4444 !important;
@@ -85,7 +83,6 @@ CSS_APP = """
         font-size: 16px !important;
     }
     
-    /* Animação de Alerta Urgente (Pisca-Pisca) */
     @keyframes pulse-red {
         0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
         70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
@@ -117,7 +114,7 @@ ARQUIVO_ARMARIOS = "banco_armarios.csv"
 ARQUIVO_ALERTAS = "alertas_preset.csv"
 ARQUIVO_CNC = "banco_cnc.csv"
 ARQUIVO_FECHAMENTO = "ultimo_fechamento.csv"
-ARQUIVO_REBOLOS = "rebolos.xlsx" # Deixe apenas assim!
+ARQUIVO_REBOLOS = "rebolos.xlsx"
 
 # --- FUNÇÕES UTILITÁRIAS ---
 def turno_atual_horario():
@@ -146,10 +143,8 @@ def diff_mins(h_inicio, h_fim, eh_espera=False):
         t1 = datetime.strptime(h_inicio, "%H:%M")
         t2 = datetime.strptime(h_fim, "%H:%M")
         diff = (t2 - t1).total_seconds() / 60
-        
         if diff < -720: diff += 1440
         elif diff > 720: diff -= 1440
-            
         if diff < 0: return 0
         return int(diff)
     except: return 0
@@ -170,14 +165,12 @@ def get_sort_key(time_str):
         return f"{h:02d}:{m:02d}"
     except: return str(time_str)
 
-# --- GERENCIAMENTO DE TIPO CNC (RTF) ---
 def ler_tipos_cnc():
     tipos = {}
     for m in TODAS_RTF:
         if m in ["6-6J1", "17-6J1"]: tipos[m] = "RTF_CNC1"
         elif m in ["3-426", "4-425"]: tipos[m] = "RTF_CNC2"
         else: tipos[m] = "RTF_CNC3"
-        
     if os.path.exists(ARQUIVO_CNC):
         try:
             df = pd.read_csv(ARQUIVO_CNC)
@@ -198,7 +191,6 @@ def set_tipo_cnc(maq_id, tipo):
     else:
         pd.DataFrame([{"Maquina": maq_id, "Tipo": tipo}]).to_csv(ARQUIVO_CNC, index=False)
 
-# --- FUNÇÕES DE RELATÓRIO E FECHAMENTO AUTOMÁTICO ---
 def get_turno_logico(dt=None):
     if dt is None: dt = datetime.now(FUSO_BR)
     t = dt.time()
@@ -261,15 +253,12 @@ def gerar_relatorio_tempos(df_all, maquinas, prefixo):
     texto_saida = []
     def salvar_ciclo(maq_num, h_agenda_orig, adiamentos, h_inicio, h_assumido, h_fim, p1, p2, st_final=""):
         h_agenda_str = h_agenda_orig if h_agenda_orig else '00:00'
-        
         if h_inicio is None: 
             txt = f"Máquina {maq_num}: Aguardando preparador desde as {h_agenda_str}.\n"
             if adiamentos: txt += f"Adiado para: {', '.join(adiamentos)}.\n"
             txt += "Preparador sugerido: AGUARDANDO OPERADOR\n\n"
             return (h_agenda_str, txt)
-        
         h_agenda_final = adiamentos[-1] if adiamentos else h_agenda_orig
-        
         t_espera_mins = diff_mins(h_agenda_final, h_inicio, eh_espera=True) if h_agenda_final else 0
         t_espera = format_tempo(t_espera_mins)
         h_conclusao = h_fim if h_fim else datetime.now(FUSO_BR).strftime("%H:%M")
@@ -385,7 +374,6 @@ def calcular_tempos_interrupcoes(df_all, palavra_chave):
     return texto if texto else "N/A\n\n"
 
 def gerar_textos_fechamento(data_alvo, df_completo):
-    df_ultimo_geral = df_completo.drop_duplicates(subset=['Maquina'], keep='last') if not df_completo.empty else df_completo
     setup_mask = df_completo['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA|AGUARDANDO|PREPARANDO', na=False)
     maquinas_com_setup = df_completo[setup_mask]['Maquina'].unique() if not df_completo.empty else []
 
@@ -438,7 +426,6 @@ def gerar_textos_fechamento(data_alvo, df_completo):
 
 def executar_fechamento_silencioso(data_alvo, turno_alvo):
     df_completo = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
-    
     texto_padrao, texto_tempos = gerar_textos_fechamento(data_alvo, df_completo)
     
     novo_hist = pd.DataFrame([{"Data": data_alvo, "Turno": turno_alvo, "Relatorio_Padrao": texto_padrao, "Relatorio_Tempos": texto_tempos}])
@@ -455,9 +442,7 @@ def executar_fechamento_silencioso(data_alvo, turno_alvo):
     df_novo = []
     for maq in df_completo['Maquina'].unique():
         df_maq = df_completo[df_completo['Maquina'] == maq]
-        
         is_power_down = "Queda de Energia" in str(df_maq.iloc[-1]['Status'])
-        
         last_prod_idx = -1
         for idx in df_maq.index:
             if "PRODUZINDO" in str(df_maq.loc[idx, 'Status']).upper(): last_prod_idx = idx
@@ -471,26 +456,21 @@ def executar_fechamento_silencioso(data_alvo, turno_alvo):
         if not is_power_down:
             df_recorte = df_recorte[~df_recorte['Status'].str.contains("Queda de Energia", case=False, na=False)]
             df_recorte['Status'] = df_recorte['Status'].astype(str).str.replace(" [Energia Restaurada]", "", regex=False)
-            
             if df_recorte.empty:
                 last_row = df_maq.iloc[-1:].copy()
                 last_row['Status'] = last_row['Status'].astype(str).str.replace(" [Energia Restaurada]", "", regex=False)
                 df_recorte = pd.DataFrame([last_row])
-                
         df_novo.append(df_recorte)
     
     if df_novo: pd.concat(df_novo).to_csv(ARQUIVO_DADOS, index=False)
     else: pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"]).to_csv(ARQUIVO_DADOS, index=False)
-    
     if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
 
 def checar_e_auto_encerrar():
     curr_d, curr_t = get_turno_logico()
-    
     if not os.path.exists(ARQUIVO_FECHAMENTO):
         pd.DataFrame([{"Data": curr_d, "Turno": curr_t}]).to_csv(ARQUIVO_FECHAMENTO, index=False)
         return
-        
     try:
         df_fechamento = pd.read_csv(ARQUIVO_FECHAMENTO)
         last_d = str(df_fechamento.iloc[0]['Data'])
@@ -498,28 +478,18 @@ def checar_e_auto_encerrar():
     except:
         pd.DataFrame([{"Data": curr_d, "Turno": curr_t}]).to_csv(ARQUIVO_FECHAMENTO, index=False)
         return
-        
     if last_d != curr_d or last_t != curr_t:
         executar_fechamento_silencioso(last_d, last_t)
         pd.DataFrame([{"Data": curr_d, "Turno": curr_t}]).to_csv(ARQUIVO_FECHAMENTO, index=False)
 
-# --- FUNÇÕES DE AUTO-CORREÇÃO DE TURNOS E QUEDA DE ENERGIA ---
 def verificar_virada_turno():
     if not os.path.exists(ARQUIVO_DADOS): return
     df = pd.read_csv(ARQUIVO_DADOS)
     if df.empty: return
-    
-    agora = datetime.now(FUSO_BR).time()
     turno_real = turno_atual_horario()
-    
-    if turno_real == "1° TURNO": hora_corte = "06:20"
-    elif turno_real == "2° TURNO": hora_corte = "14:20"
-    else: hora_corte = "22:20"
-    
+    hora_corte = "06:20" if turno_real == "1° TURNO" else ("14:20" if turno_real == "2° TURNO" else "22:20")
     novas_linhas = []
-    maquinas = df['Maquina'].unique()
-    
-    for maq in maquinas:
+    for maq in df['Maquina'].unique():
         df_maq = df[df['Maquina'] == maq]
         ultimo_registro = df_maq.iloc[-1]
         st_atual = str(ultimo_registro['Status'])
@@ -527,18 +497,14 @@ def verificar_virada_turno():
         
         if ("PREPARAÇÃO" in st_atual or "PREPARANDO" in st_atual or "SEQUÊNCIA" in st_atual) and ("[AGENDADO:" not in st_atual):
             mins_passados = diff_mins(hora_registro, datetime.now(FUSO_BR).strftime("%H:%M"))
-            
             if mins_passados > 0: 
-                if turno_real == "1° TURNO" and diff_mins(hora_registro, "06:20") > 0 and diff_mins("06:20", hora_registro) > 12*60: precisa_cortar = True
-                elif turno_real == "2° TURNO" and diff_mins(hora_registro, "14:20") > 0 and diff_mins(hora_registro, "14:20") < 8*60: precisa_cortar = True
-                elif turno_real == "3° TURNO" and diff_mins(hora_registro, "22:20") > 0 and diff_mins(hora_registro, "22:20") < 8*60: precisa_cortar = True
-                else: precisa_cortar = False
-                
+                precisa_cortar = (turno_real == "1° TURNO" and diff_mins(hora_registro, "06:20") > 0 and diff_mins("06:20", hora_registro) > 12*60) or \
+                                 (turno_real == "2° TURNO" and diff_mins(hora_registro, "14:20") > 0 and diff_mins(hora_registro, "14:20") < 8*60) or \
+                                 (turno_real == "3° TURNO" and diff_mins(hora_registro, "22:20") > 0 and diff_mins(hora_registro, "22:20") < 8*60)
                 if precisa_cortar:
                     tags = extrair_tags_producao(st_atual)
                     novo_st = f"AGUARDANDO PREPARADOR [Corte de Turno] {tags}".strip()
                     novas_linhas.append({"Setor": ultimo_registro['Setor'], "Maquina": maq, "Operador": "SISTEMA", "Status": novo_st, "Hora": hora_corte})
-                    
     if novas_linhas:
         df = pd.concat([df, pd.DataFrame(novas_linhas)], ignore_index=True)
         df.to_csv(ARQUIVO_DADOS, index=False)
@@ -547,16 +513,13 @@ def registrar_queda_energia(setor):
     lista_maquinas = TODAS_AFC if setor == "AFC" else TODAS_RTF
     df = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
     hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-    
     novas_linhas = []
     for maq_id in lista_maquinas:
         maq_full = f"{setor} {maq_id}"
         df_maq = df[df['Maquina'] == maq_full]
         st_atual = str(df_maq.iloc[-1]['Status']) if not df_maq.empty else "PRODUZINDO"
-        
         if "Queda de Energia" not in st_atual:
             novas_linhas.append({"Setor": setor, "Maquina": maq_full, "Operador": st.session_state.get('operador', 'SISTEMA'), "Status": "PARADA - Motivo: Queda de Energia", "Hora": hora_br_str})
-            
     if novas_linhas:
         df = pd.concat([df, pd.DataFrame(novas_linhas)], ignore_index=True)
         df.to_csv(ARQUIVO_DADOS, index=False)
@@ -566,7 +529,6 @@ def restaurar_queda_energia(setor):
     if not os.path.exists(ARQUIVO_DADOS): return
     df = pd.read_csv(ARQUIVO_DADOS)
     hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-    
     novas_linhas = []
     for maq_id in lista_maquinas:
         maq_full = f"{setor} {maq_id}"
@@ -578,16 +540,13 @@ def restaurar_queda_energia(setor):
                 st_recuperado = str(df_maq_valido.iloc[-1]['Status']) if not df_maq_valido.empty else "PRODUZINDO"
                 st_restaurado = f"{st_recuperado} [Energia Restaurada]"
                 novas_linhas.append({"Setor": setor, "Maquina": maq_full, "Operador": st.session_state.get('operador', 'SISTEMA'), "Status": st_restaurado, "Hora": hora_br_str})
-                
     if novas_linhas:
         df = pd.concat([df, pd.DataFrame(novas_linhas)], ignore_index=True)
         df.to_csv(ARQUIVO_DADOS, index=False)
 
-# --- FUNÇÕES DE ARMÁRIOS E ALERTAS GLOBAIS ---
 def inicializar_armarios():
     precisa_criar = False
     dados_antigos = []
-    
     if not os.path.exists(ARQUIVO_ARMARIOS):
         precisa_criar = True
     else:
@@ -604,26 +563,20 @@ def inicializar_armarios():
         dados = []
         afc_nums = sorted([int(m.split('-')[0]) for m in TODAS_AFC])
         rtf_nums_raw = sorted([int(m.split('-')[0]) for m in TODAS_RTF])
-        
         rtf_nums = [m for m in rtf_nums_raw if m >= 5 and m not in [6, 17]]
-        
         mapa_armarios = {
             "Afiadoras 04 a 28": [m for m in afc_nums if m <= 28],
             "Afiadoras 29 a 41": [m for m in afc_nums if m >= 29],
             "Retíficas 05 a 28": [m for m in rtf_nums if m <= 28],
             "Retíficas 29 a 42": [m for m in rtf_nums if m >= 29]
         }
-        
         for arm, maquinas in mapa_armarios.items():
             for maq in maquinas:
                 dados.append({"Armario": arm, "Posicao": str(maq), "Ordem": "", "Item": "", "Status": "VAZIO", "Data_Hora": "", "Observacao": ""})
-                
         df_novo = pd.DataFrame(dados)
-        
         for row in dados_antigos:
             pos = str(row.get('Posicao', ''))
             arm_antigo = str(row.get('Armario', ''))
-            
             idx_exato = df_novo[df_novo['Posicao'] == pos].index
             if not idx_exato.empty:
                 df_novo.loc[idx_exato[0], 'Ordem'] = str(row.get('Ordem', ''))
@@ -631,16 +584,6 @@ def inicializar_armarios():
                 df_novo.loc[idx_exato[0], 'Status'] = str(row.get('Status', 'VAZIO'))
                 df_novo.loc[idx_exato[0], 'Data_Hora'] = str(row.get('Data_Hora', ''))
                 df_novo.loc[idx_exato[0], 'Observacao'] = str(row.get('Observacao', ''))
-            else:
-                tipo_maq = "Afiadoras" if "AFC" in arm_antigo else "Retíficas"
-                idx_vazio = df_novo[(df_novo['Armario'].str.contains(tipo_maq)) & (df_novo['Status'] == 'VAZIO')].index
-                if not idx_vazio.empty:
-                    df_novo.loc[idx_vazio[0], 'Ordem'] = str(row.get('Ordem', ''))
-                    df_novo.loc[idx_vazio[0], 'Item'] = str(row.get('Item', ''))
-                    df_novo.loc[idx_vazio[0], 'Status'] = str(row.get('Status', 'VAZIO'))
-                    df_novo.loc[idx_vazio[0], 'Data_Hora'] = str(row.get('Data_Hora', ''))
-                    df_novo.loc[idx_vazio[0], 'Observacao'] = str(row.get('Observacao', ''))
-        
         df_novo.to_csv(ARQUIVO_ARMARIOS, index=False)
 
 def exibir_alertas_preset():
@@ -677,56 +620,61 @@ def exibir_alertas_preset():
                         
                     if hora_alvo:
                         h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M").replace(year=agora_dt.year, month=agora_dt.month, day=agora_dt.day, tzinfo=FUSO_BR)
-                        
                         if h_alvo_dt < agora_dt and (agora_dt - h_alvo_dt).total_seconds() > 12 * 3600:
                             h_alvo_dt += timedelta(days=1)
                         elif h_alvo_dt > agora_dt and (h_alvo_dt - agora_dt).total_seconds() > 12 * 3600:
                             h_alvo_dt -= timedelta(days=1)
                         
-                        delta_mins = (h_alvo_dt - agora_dt).total_seconds() / 60
+                        delta_mins = int((h_alvo_dt - agora_dt).total_seconds() / 60)
                         
-                        if -60 <= delta_mins <= 90:
+                        if -120 <= delta_mins <= 180:
                             maq_num_only = maq_id_full.split(" ")[1] 
                             gaveta_num = maq_num_only.split("-")[0] 
-                            
                             gaveta_row = df_arm[df_arm['Posicao'] == gaveta_num]
-                            if not gaveta_row.empty and gaveta_row.iloc[0]['Status'] == 'VAZIO':
-                                alertas_urgentes.append({'maquina': maq_id_full, 'gaveta': gaveta_num, 'hora': hora_alvo, 'delta': int(delta_mins)})
+                            
+                            is_vazio = True
+                            if not gaveta_row.empty:
+                                if str(gaveta_row.iloc[0]['Status']).strip().upper() != 'VAZIO':
+                                    is_vazio = False
+                            
+                            if is_vazio:
+                                alertas_urgentes.append({'maquina': maq_id_full, 'gaveta': gaveta_num, 'hora': hora_alvo, 'delta': delta_mins})
         except: pass
         
     if alertas_urgentes:
         html_alertas = "<div class='alerta-pisca'>"
-        html_alertas += "<h4 style='margin-top:0; color:#fca5a5;'>🚨 ALERTA DE PREPARAÇÃO IMINENTE</h4>"
+        html_alertas += "<h4 style='margin-top:0; color:#fca5a5;'>🚨 ALERTA DE GAVETA VAZIA / PREPARAÇÃO IMINENTE</h4>"
         for alerta in sorted(alertas_urgentes, key=lambda x: x['delta']):
-            tempo_txt = f"em {alerta['delta']} min" if alerta['delta'] >= 0 else f"atrasado há {abs(alerta['delta'])} min"
-            html_alertas += f"<p style='color:#fee2e2; margin-bottom:5px; font-size:15px;'>• <b>{alerta['maquina']}</b> agendada para <b>{alerta['hora']}</b> ({tempo_txt}) -> <b>GAVETA {alerta['gaveta']} VAZIA!</b></p>"
+            if alerta['delta'] > 0:
+                tempo_txt = f"falta(m) {alerta['delta']} min para a parada"
+            elif alerta['delta'] == 0:
+                tempo_txt = "é agora (neste momento)"
+            else:
+                tempo_txt = f"atrasado há {abs(alerta['delta'])} min"
+                
+            html_alertas += f"<p style='color:#fee2e2; margin-bottom:5px; font-size:15px;'>• Máquina <b>{alerta['maquina']}</b> (Gaveta {alerta['gaveta']}) agendada para <b>{alerta['hora']}</b> — <i>{tempo_txt}</i> -> <b style='color:#ff4444;'>GAVETA VAZIA!</b></p>"
         html_alertas += "</div>"
         st.markdown(html_alertas, unsafe_allow_html=True)
 
 def dar_baixa_armario(ordem_alvo, operador_nome="SISTEMA"):
     if not ordem_alvo or not str(ordem_alvo).strip() or not os.path.exists(ARQUIVO_ARMARIOS): return
     try:
-        ordem_formatada = str(ordem_alvo).strip().upper().replace(".0", "")
+        ordem_formatada = str(ordem_alvo).strip().upper().replace(".0", "").lstrip("0")
         df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Item': str, 'Status': str, 'Data_Hora': str, 'Posicao': str, 'Armario': str, 'Observacao': str})
         if 'Item' not in df_arm.columns: df_arm['Item'] = ""
         if 'Observacao' not in df_arm.columns: df_arm['Observacao'] = ""
         
-        df_arm['Ordem_busca'] = df_arm['Ordem'].astype(str).str.strip().str.upper().str.replace(".0", "", regex=False)
+        df_arm['Ordem_busca'] = df_arm['Ordem'].astype(str).str.strip().str.upper().str.replace(".0", "", regex=False).str.lstrip("0")
         idx_ordem = df_arm[df_arm['Ordem_busca'] == ordem_formatada].index
         if not idx_ordem.empty:
-            
             item_removido = str(df_arm.loc[idx_ordem[0], 'Item'])
             maq_removida = str(df_arm.loc[idx_ordem[0], 'Posicao'])
             armario_removido = str(df_arm.loc[idx_ordem[0], 'Armario'])
             
             hora_br_str = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M")
             novo_alerta = {
-                "Data_Hora": hora_br_str, 
-                "Armario": armario_removido, 
-                "Maquina": maq_removida, 
-                "Ordem_Retirada": ordem_formatada, 
-                "Item": item_removido,
-                "Preparador": operador_nome
+                "Data_Hora": hora_br_str, "Armario": armario_removido, "Maquina": maq_removida, 
+                "Ordem_Retirada": ordem_formatada, "Item": item_removido, "Preparador": operador_nome
             }
             
             if os.path.exists(ARQUIVO_ALERTAS):
@@ -744,12 +692,12 @@ def dar_baixa_armario(ordem_alvo, operador_nome="SISTEMA"):
 def buscar_item_por_ordem(ordem_alvo):
     if not ordem_alvo or not os.path.exists(ARQUIVO_ARMARIOS): return "SEM CADASTRO"
     try:
-        ordem_formatada = str(ordem_alvo).strip().upper().replace(".0", "")
+        ordem_formatada = str(ordem_alvo).strip().upper().replace(".0", "").lstrip("0")
         df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype=str)
-        df_arm['Ordem_busca'] = df_arm['Ordem'].astype(str).str.strip().str.upper().str.replace(".0", "", regex=False)
+        df_arm['Ordem_busca'] = df_arm['Ordem'].astype(str).str.strip().str.upper().str.replace(".0", "", regex=False).str.lstrip("0")
         match = df_arm[df_arm['Ordem_busca'] == ordem_formatada]
         if not match.empty:
-            return str(match.iloc[0]['Item']).strip().replace(".0", "")
+            return str(match.iloc[0]['Item']).strip().replace(".0", "").lstrip("0")
     except: pass
     return "SEM CADASTRO"
 
@@ -783,7 +731,6 @@ if 'logout_realizado' not in st.session_state: st.session_state['logout_realizad
 if 'fila_prev_sel' not in st.session_state: st.session_state['fila_prev_sel'] = None
 if 'setor_prev_sel' not in st.session_state: st.session_state['setor_prev_sel'] = None
 
-# --- RESTAURAÇÃO DE LOGIN POR COOKIE ---
 if not st.session_state['operador'] and not st.session_state['logout_realizado']:
     if cookies_salvos and "user_logado" in cookies_salvos:
         st.session_state['operador'] = cookies_salvos["user_logado"]
@@ -811,12 +758,10 @@ def ler_status_atual():
         status_calculado = {}
         agora_br = datetime.now(FUSO_BR)
         agora_str = agora_br.strftime("%H:%M")
-        
         df_ultimo = df.drop_duplicates(subset=['Maquina'], keep='last')
         for _, row in df_ultimo.iterrows():
             maq = row['Maquina']
             st_raw = str(row['Status']).replace(" [Energia Restaurada]", "") 
-            
             if "AGENDADA PARA" in st_raw:
                 try:
                     hora_alvo = st_raw.split("AGENDADA PARA")[1].strip()
@@ -824,7 +769,6 @@ def ler_status_atual():
                     h_agora = datetime.strptime(agora_str, "%H:%M")
                     h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M")
                     if h_alvo_dt < h_agora and (h_agora - h_alvo_dt).total_seconds() > 12 * 3600: h_alvo_dt += timedelta(days=1)
-                        
                     if h_agora < h_alvo_dt: status_calculado[maq] = f"{tipo_agendado} AGENDADA PARA {hora_alvo}"
                     else: 
                         sug = f" [Prep. Sugerido: {st_raw.split('[Prep. Sugerido:')[1].split(']')[0].strip()}]" if "[Prep. Sugerido:" in st_raw else ""
@@ -838,7 +782,6 @@ def ler_status_atual():
                     h_agora = datetime.strptime(agora_str, "%H:%M")
                     h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M")
                     if h_alvo_dt < h_agora and (h_agora - h_alvo_dt).total_seconds() > 12 * 3600: h_alvo_dt += timedelta(days=1)
-                        
                     if h_agora < h_alvo_dt: status_calculado[maq] = f"{tipo_agendado} AGENDADA PARA {hora_alvo}"
                     else: 
                         sug = f" [Prep. Sugerido: {st_raw.split('[Prep. Sugerido:')[1].split(']')[0].strip()}]" if "[Prep. Sugerido:" in st_raw else ""
@@ -873,10 +816,8 @@ def ordenar_maquinas(lista_maquinas):
 
 def painel_controle_maquina(maq_id, setor):
     st.markdown("<script>window.scrollTo({ top: 0, behavior: 'smooth' });</script>", unsafe_allow_html=True)
-    
     with st.container():
         col_t, col_f = st.columns([8, 1])
-        
         if setor == 'RTF':
             tipo_atual = get_tipo_cnc(maq_id)
             col_t.markdown(f"<h4 style='color: #2DD4BF !important; margin:0;'>⚙️ MÁQUINA: {maq_id} <span style='font-size:13px; color:#A1A1AA; font-weight:normal;'>({tipo_atual})</span></h4>", unsafe_allow_html=True)
@@ -891,13 +832,11 @@ def painel_controle_maquina(maq_id, setor):
             with st.expander("🔄 Alterar Tipo CNC desta Máquina"):
                 c_tipo1, c_tipo2 = st.columns([3, 2])
                 novo_tipo = c_tipo1.selectbox("Definir como:", ["RTF_CNC3 (Normal)", "RTF_CNC2 (Facetadora)", "RTF_CNC1 (Centerless)"], index=0)
-                
                 if c_tipo2.button("💾 Salvar Tipo", use_container_width=True):
                     tipo_limpo = novo_tipo.split(" ")[0]
                     set_tipo_cnc(maq_id, tipo_limpo)
                     st.success(f"✅ Máquina alterada para {tipo_limpo}!")
-                    time.sleep(0.5)
-                    st.rerun()
+                    time.sleep(0.5); st.rerun()
             
         status_dict = ler_status_atual()
         status_atual = status_dict.get(f"{setor} {maq_id}", "PRODUZINDO")
@@ -948,11 +887,9 @@ def painel_controle_maquina(maq_id, setor):
                     hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                     info_atual = obter_info_maquina(maq_id, setor)
                     st_atual = str(info_atual['Status']) if info_atual else ""
-                    
                     tags_prod = extrair_tags_producao(st_atual)
                     tags_prod = tags_prod.replace("[Novo Item:", "[Item:")
                     tags_prod = tags_prod.replace("[Item Atual:", "[Item:")
-                    
                     st_final = f"PRODUZINDO {tags_prod}".strip()
                     if obs_fast.strip(): st_final += f" [Obs: {obs_fast.strip()}]"
                     
@@ -977,14 +914,12 @@ def painel_controle_maquina(maq_id, setor):
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                         info_atual = obter_info_maquina(maq_id, setor)
                         tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
-                        
                         st_andamento = f"PREPARANDO [Prep: {novo_nome.strip().upper()}] [Assumido] {tags_prod}".strip()
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
                         st.success("✅ Setup assumido com sucesso!")
-                        time.sleep(0.5)
-                        st.rerun()
+                        time.sleep(0.5); st.rerun()
 
         elif st.session_state[flow_key] == "pergunta" and not is_setup_ativo:
             st.markdown(f"<p style='text-align: center; font-weight: 600;'>Esta máquina ainda está com o status atual?</p>", unsafe_allow_html=True)
@@ -1002,17 +937,13 @@ def painel_controle_maquina(maq_id, setor):
             if st.button("🟢 PRODUZINDO", key=f"st_prod_{maq_id}", use_container_width=True):
                 info_atual = obter_info_maquina(maq_id, setor)
                 st_atual = str(info_atual['Status']) if info_atual else ""
-                
-                # Permite voltar de Manutenção ou Parada mantendo a OP sem dar baixa nova
                 if "[Ordem:" in st_atual:
                     hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                     tags_prod = extrair_tags_producao(st_atual)
                     tags_prod = tags_prod.replace("[Novo Item:", "[Item:")
                     tags_prod = tags_prod.replace("[Item Atual:", "[Item:")
                     tags_prod = re.sub(r' \[Fim Previsto:.*?\]', '', tags_prod)
-                    
                     st_final = f"PRODUZINDO {tags_prod}".strip()
-                    
                     salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
                     st.session_state['maq_ativa'] = None
                     del st.session_state[flow_key]
@@ -1031,7 +962,6 @@ def painel_controle_maquina(maq_id, setor):
                 info_atual = obter_info_maquina(maq_id, setor)
                 st_atual = str(info_atual['Status']) if info_atual else ""
                 op_pre, item_pre = "", ""
-                
                 if "[Ordem:" in st_atual: op_pre = st_atual.split("[Ordem:")[1].split("]")[0].strip()
                 if "[Novo Item:" in st_atual: item_pre = st_atual.split("[Novo Item:")[1].split("]")[0].strip()
                 elif "[Item:" in st_atual: item_pre = st_atual.split("[Item:")[1].split("]")[0].strip()
@@ -1047,10 +977,8 @@ def painel_controle_maquina(maq_id, setor):
                         st.error("⚠️ A Ordem e o Item são obrigatórios!")
                     else:
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                        
                         item_limpo = item.strip().upper().replace(".0", "")
                         ordem_limpa = ordem.strip().upper().replace(".0", "")
-                        
                         st_final = f"PRODUZINDO [Ordem: {ordem_limpa}] [Item: {item_limpo}]"
                         if pcs_hora.strip(): st_final += f" [Pçs/Hora: {pcs_hora.strip()}]"
                         if obs.strip(): st_final += f" [Obs: {obs.strip()}]"
@@ -1060,8 +988,7 @@ def painel_controle_maquina(maq_id, setor):
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
                         st.success("✅ Apontamento registrado! Máquina em Produção.")
-                        time.sleep(0.5)
-                        st.rerun()
+                        time.sleep(0.5); st.rerun()
 
         elif st.session_state[flow_key] == "detalhe_parada":
             with st.form(f"form_par_{maq_id}"):
@@ -1075,23 +1002,19 @@ def painel_controle_maquina(maq_id, setor):
                     mot_final = motivo
                     if detalhe.strip(): mot_final += f" - {detalhe.strip()}"
                     if op_faltante.strip() and motivo == "Falta de Operador": mot_final += f" [Op. Faltante: {op_faltante.strip().upper()}]"
-                        
                     info_atual = obter_info_maquina(maq_id, setor)
                     st_atual = str(info_atual['Status']) if info_atual else ""
                     tags_prod = extrair_tags_producao(st_atual)
-                        
                     st_final = f"PARADA - Motivo: {mot_final} {tags_prod}".strip()
                     salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
                     st.session_state['maq_ativa'] = None
                     del st.session_state[flow_key]
                     st.success("✅ Máquina registrada como PARADA!")
-                    time.sleep(0.5)
-                    st.rerun()
+                    time.sleep(0.5); st.rerun()
 
         elif st.session_state[flow_key] == "detalhe_prep":
             with st.form(f"form_prep_{maq_id}"):
                 st.markdown("⚙️ **Configuração de Preparação / Agendamento**")
-                
                 info_atual = obter_info_maquina(maq_id, setor)
                 st_atual = str(info_atual['Status']) if info_atual else ""
                 
@@ -1119,7 +1042,6 @@ def painel_controle_maquina(maq_id, setor):
                 st.markdown("📦 **Dados do Item**")
                 ordem_atual = st.text_input("Ordem Atual (OP):", value=op_pre, placeholder="Ex: 987654")
                 item_atual = st.text_input("Item Atual (Na Máquina):", value=item_pre, placeholder="Ex: 313324")
-                
                 st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
                 
                 if setor == "AFC":
@@ -1144,43 +1066,36 @@ def painel_controle_maquina(maq_id, setor):
                             if troca_rebolo: st_final += " (C/ Rebolo)"
                             
                         if prep_sugerido.strip(): st_final += f" [Prep. Sugerido: {prep_sugerido.strip().upper()}]"
-
                         if is_agendado and hora_relatorio.strip(): st_final += f" [AGENDADO:{hora_relatorio.strip()}]"
                         else: st_final = f"AGUARDANDO PREPARADOR - {st_final}"
                         
                         ordem_limpa = ordem_atual.strip().upper().replace(".0", "")
                         item_limpo = item_atual.strip().upper().replace(".0", "")
-
                         if ordem_limpa: st_final += f" [Ordem: {ordem_limpa}]"
                         if item_limpo: st_final += f" [Item Atual: {item_limpo}]"
-                        
                         if ordem_limpa: dar_baixa_armario(ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
                             
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
                         st.success("✅ Registro salvo com sucesso!")
-                        time.sleep(0.5)
-                        st.rerun()
+                        time.sleep(0.5); st.rerun()
 
         elif st.session_state[flow_key] == "acoes_espera":
             with st.form(f"form_espera_{maq_id}"):
                 st.markdown("🧑‍🔧 **Assumir ou Sugerir Preparador**")
-                
                 sug_nome = ""
                 if "[Prep. Sugerido:" in status_atual:
                     try: sug_nome = status_atual.split("[Prep. Sugerido:")[1].split("]")[0].strip()
                     except: pass
                     
                 nome_input = st.text_input("Nome do Preparador:", value=sug_nome if sug_nome else "")
-                
                 is_guia = "GUIA" in status_atual
                 is_seq = "SEQUÊNCIA" in status_atual
                 is_comum = not is_guia and not is_seq
                 
                 st.markdown("📦 **Dados da Preparação**")
                 nova_ordem_input = ""
-                
                 if is_comum:
                     nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", placeholder="Ex: 987654")
                     st.info("ℹ️ O Item da peça será puxado automaticamente do armário baseado nesta OP.")
@@ -1194,52 +1109,41 @@ def painel_controle_maquina(maq_id, setor):
                 col_adiar1, col_adiar2 = st.columns([3, 2])
                 novo_horario_adiar = col_adiar1.text_input("Novo Horário:", placeholder="Ex: 14:30")
                 btn_adiar = col_adiar2.form_submit_button("⏳ Adiar Agendamento")
-                
                 st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
                 
                 bloquear_inicio = False
                 msg_bloqueio = ""
                 if "[AGENDADO:" in status_atual or "AGENDADA PARA" in status_atual:
                     try:
-                        if "AGENDADA PARA" in status_atual:
-                            hora_agend = status_atual.split("AGENDADA PARA")[1].strip()
-                        else:
-                            hora_agend = status_atual.split("[AGENDADO:")[1].split("]")[0].strip()
+                        hora_agend = status_atual.split("AGENDADA PARA")[1].strip() if "AGENDADA PARA" in status_atual else status_atual.split("[AGENDADO:")[1].split("]")[0].strip()
                         turno_agend = obter_turno_por_horario(hora_agend)
                         if turno_agend != st.session_state.get('turno') and st.session_state.get('perfil') != 'adm':
                             bloquear_inicio = True
                             msg_bloqueio = f"⚠️ Setup programado para o {turno_agend}. Apenas operadores daquele turno podem iniciar."
                     except: pass
 
-                if bloquear_inicio:
-                    st.warning(msg_bloqueio)
+                if bloquear_inicio: st.warning(msg_bloqueio)
                 
                 c1, c2, c3 = st.columns(3)
                 btn_sugerir = c1.form_submit_button("💡 Apenas Sugerir")
                 btn_iniciar = c2.form_submit_button("🚀 INICIAR", type="primary", disabled=bloquear_inicio)
                 btn_alterar = c3.form_submit_button("⚠️ Alterar Status")
                 
-                if btn_alterar:
-                    st.session_state[flow_key] = "mudanca_status"
-                    st.rerun()
-                
+                if btn_alterar: st.session_state[flow_key] = "mudanca_status"; st.rerun()
                 if btn_adiar:
                     if novo_horario_adiar.strip():
                         info_atual = obter_info_maquina(maq_id, setor)
                         if info_atual:
                             raw_st = str(info_atual['Status'])
-                            if "AGENDADA PARA" in raw_st:
-                                raw_st = re.sub(r'AGENDADA PARA \d{2}:\d{2}', f"AGENDADA PARA {novo_horario_adiar.strip()}", raw_st)
-                            elif "[AGENDADO:" in raw_st: 
-                                raw_st = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{novo_horario_adiar.strip()}]", raw_st)
+                            if "AGENDADA PARA" in raw_st: raw_st = re.sub(r'AGENDADA PARA \d{2}:\d{2}', f"AGENDADA PARA {novo_horario_adiar.strip()}", raw_st)
+                            elif "[AGENDADO:" in raw_st: raw_st = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{novo_horario_adiar.strip()}]", raw_st)
                             else: raw_st += f" [AGENDADO:{novo_horario_adiar.strip()}]"
                             
                             salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": raw_st, "Hora": novo_horario_adiar.strip()}, ARQUIVO_DADOS)
                             st.session_state['maq_ativa'] = None
                             del st.session_state[flow_key]
                             st.success(f"✅ Agendamento adiado para {novo_horario_adiar.strip()}!")
-                            time.sleep(0.5)
-                            st.rerun()
+                            time.sleep(0.5); st.rerun()
                     else: st.error("⚠️ Informe o novo horário para adiar!")
                     
                 if btn_sugerir:
@@ -1261,19 +1165,15 @@ def painel_controle_maquina(maq_id, setor):
                             st.session_state['maq_ativa'] = None
                             del st.session_state[flow_key]
                             st.success("✅ Sugestão de preparador atualizada!")
-                            time.sleep(0.5)
-                            st.rerun()
+                            time.sleep(0.5); st.rerun()
                     else: st.error("⚠️ Informe um nome para sugerir!")
                         
                 if btn_iniciar:
-                    if is_comum and not nova_ordem_input.strip():
-                        st.error("⚠️ Para INICIAR a preparação, informe a Nova Ordem (OP)!")
-                    elif is_seq and not nova_ordem_input.strip():
-                        st.error("⚠️ Para INICIAR a Sequência, informe a Nova Ordem (OP)!")
+                    if is_comum and not nova_ordem_input.strip(): st.error("⚠️ Para INICIAR a preparação, informe a Nova Ordem (OP)!")
+                    elif is_seq and not nova_ordem_input.strip(): st.error("⚠️ Para INICIAR a Sequência, informe a Nova Ordem (OP)!")
                     else:
                         nome_final = nome_input if nome_input.strip() else st.session_state['operador']
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                        
                         info_atual = obter_info_maquina(maq_id, setor)
                         tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
                         
@@ -1286,7 +1186,6 @@ def painel_controle_maquina(maq_id, setor):
                             tags_prod = re.sub(r' \[Ordem:.*?\]', '', tags_prod)
                         
                         st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}] {tags_prod}".strip()
-                        
                         nova_ordem_limpa = nova_ordem_input.strip().upper().replace(".0", "")
 
                         if is_comum:
@@ -1301,12 +1200,8 @@ def painel_controle_maquina(maq_id, setor):
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
-                        
-                        if is_guia: st.success("✅ Preparação iniciada! Setup mantido sem alterar OP ou Item.")
-                        elif is_seq: st.success("✅ Sequência iniciada! OP atualizada e Item mantido.")
-                        else: st.success("✅ Preparação iniciada! OP e Item liberados do armário.")
-                        time.sleep(0.5)
-                        st.rerun()
+                        st.success("✅ Preparação iniciada!")
+                        time.sleep(0.5); st.rerun()
 
         elif st.session_state[flow_key] == "detalhe_man":
             with st.form(f"form_man_{maq_id}"):
@@ -1319,14 +1214,12 @@ def painel_controle_maquina(maq_id, setor):
                         info_atual = obter_info_maquina(maq_id, setor)
                         st_atual = str(info_atual['Status']) if info_atual else ""
                         tags_prod = extrair_tags_producao(st_atual)
-                        
                         st_final = f"MANUTENÇÃO - Motivo: {motivo} {tags_prod}".strip()
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
                         st.success("✅ Registrado!")
-                        time.sleep(0.5)
-                        st.rerun()
+                        time.sleep(0.5); st.rerun()
 
 def tela_login():
     st.markdown("<h2 style='text-align: center; color: #14B8A6 !important; margin-top: 30px;'>🏭 RELATORIO AFIAÇÃO</h2>", unsafe_allow_html=True)
@@ -1350,7 +1243,6 @@ def tela_login():
                     if not pode_logar(turno_val):
                         st.error(f"🚫 Acesso Negado: Fora do horário permitido para o {turno_val}.")
                         return
-                
                 nome_formatado = nome.upper()
                 st.session_state['logout_realizado'] = False
                 st.session_state['turno'] = turno_val
@@ -1368,7 +1260,6 @@ def tela_login():
 
 def tela_menu():
     exibir_alertas_preset()
-    
     perfil = st.session_state['perfil']
     if perfil == 'adm': setor_txt = "Gerência"
     elif st.session_state['setor_usuario'] == 'TECNICO': setor_txt = "Técnico (Geral)"
@@ -1384,8 +1275,9 @@ def tela_menu():
     """, unsafe_allow_html=True)
     
     if perfil == 'adm':
-        if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True, type="primary"): mudar_tela('afc')
-        if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True, type="primary"): mudar_tela('rtf')
+        if st.button("📊 VISÃO GERAL DE FÁBRICA", use_container_width=True, type="primary"): mudar_tela('visao_geral')
+        if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True): mudar_tela('afc')
+        if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True): mudar_tela('rtf')
         if st.button("🗄️ GERENCIAR ARMÁRIOS", use_container_width=True): mudar_tela('armarios')
         if st.button("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", use_container_width=True): mudar_tela('checkup')
         if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
@@ -1393,20 +1285,23 @@ def tela_menu():
         if st.button("📊 HISTÓRICOS E EXPORTAÇÕES", use_container_width=True): mudar_tela('historico')
         if st.button("✏️ GERENCIAR BANCO DE DADOS", use_container_width=True): mudar_tela('editar')
     elif perfil == 'preset':
-        if st.button("🗄️ GERENCIAR ARMÁRIOS", use_container_width=True, type="primary"): mudar_tela('armarios')
+        if st.button("📊 VISÃO GERAL DE FÁBRICA", use_container_width=True, type="primary"): mudar_tela('visao_geral')
+        if st.button("🗄️ GERENCIAR ARMÁRIOS", use_container_width=True): mudar_tela('armarios')
         if st.button("🔍 PROGRAMAÇÃO DO SETOR", use_container_width=True): mudar_tela('checkup')
     elif perfil == 'preparador':
+        if st.button("📊 VISÃO GERAL DE FÁBRICA", use_container_width=True, type="primary"): mudar_tela('visao_geral')
         if st.session_state['setor_usuario'] in ['AFC', 'TECNICO']:
-            if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True, type="primary"): mudar_tela('afc')
+            if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True): mudar_tela('afc')
         if st.session_state['setor_usuario'] in ['RTF', 'TECNICO']:
-            if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True, type="primary"): mudar_tela('rtf')
+            if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True): mudar_tela('rtf')
         if st.button("🗄️ VISÃO DOS ARMÁRIOS", use_container_width=True): mudar_tela('armarios')
         if st.button("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", use_container_width=True): mudar_tela('checkup')
-        if st.button("⚡ MINHAS INCIDÊNCIAS", use_container_width=True, type="primary"): mudar_tela('minhas_incidencias')
+        if st.button("⚡ MINHAS INCIDÊNCIAS", use_container_width=True): mudar_tela('minhas_incidencias')
         if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
         if st.button("📋 RELATÓRIO DE TURNO", use_container_width=True): mudar_tela('relatorio')
         if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
     else:
+        if st.button("📊 VISÃO GERAL DE FÁBRICA", use_container_width=True, type="primary"): mudar_tela('visao_geral')
         if st.button("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", use_container_width=True): mudar_tela('checkup')
         if st.button("📋 FECHAMENTO DE TURNO", use_container_width=True): mudar_tela('relatorio')
         if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
@@ -1422,6 +1317,60 @@ def tela_menu():
             if cookie_manager.get("user_perfil"): cookie_manager.delete("user_perfil", key="del_perfil")
         except: pass 
         time.sleep(0.5); mudar_tela('login')
+
+# --- NOVA TELA: VISÃO GERAL DE FÁBRICA (Inteligente) ---
+def tela_visao_geral():
+    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    st.markdown("#### 📊 Visão Geral da Fábrica — Máquinas e OPs")
+    st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Acompanhe em tempo real o status, os itens rodando e as ordens de produção em todas as máquinas da Afiação e Retífica.</p>", unsafe_allow_html=True)
+    st.divider()
+
+    status_dict = ler_status_atual()
+    
+    setor_filtro = st.radio("Filtrar Setor:", ["Todos", "Afiação (AFC)", "Retífica (RTF)"], horizontal=True)
+    
+    listas_analise = []
+    if setor_filtro in ["Todos", "Afiação (AFC)"]:
+        listas_analise.append(("Afiação (AFC)", TODAS_AFC))
+    if setor_filtro in ["Todos", "Retífica (RTF)"]:
+        listas_analise.append(("Retífica (RTF)", TODAS_RTF))
+
+    for nome_setor, lista_maq in listas_analise:
+        st.markdown(f"##### 🏭 {nome_setor}")
+        
+        for m in ordenar_maquinas(lista_maq):
+            prefixo = "AFC" if "Afiação" in nome_setor else "RTF"
+            st_val = status_dict.get(f"{prefixo} {m}", "PRODUZINDO")
+            icone = get_status_icon(st_val)
+            
+            # Extraindo OP e Item
+            op_rodando = "-"
+            item_rodando = "-"
+            if "[Ordem:" in st_val:
+                try: op_rodando = st_val.split("[Ordem:")[1].split("]")[0].strip()
+                except: pass
+            if "[Item:" in st_val:
+                try: item_rodando = st_val.split("[Item:")[1].split("]")[0].strip()
+                except: pass
+            elif "[Novo Item:" in st_val:
+                try: item_rodando = st_val.split("[Novo Item:")[1].split("]")[0].strip()
+                except: pass
+            elif "[Item Atual:" in st_val:
+                try: item_rodando = st_val.split("[Item Atual:")[1].split("]")[0].strip()
+                except: pass
+
+            st.markdown(f"""
+            <div style='background-color: #18181B; padding: 10px; border-radius: 8px; margin-bottom: 8px; border: 1px solid #27272A;'>
+                <div style='display: flex; justify-content: space-between; align-items: center;'>
+                    <span style='font-size: 14px; font-weight: bold; color: #2DD4BF;'>{icone} Máquina {m}</span>
+                    <span style='font-size: 12px; color: #A1A1AA; background: #27272A; padding: 2px 8px; border-radius: 4px;'>{st_val.split('[')[0].strip()}</span>
+                </div>
+                <div style='margin-top: 6px; font-size: 13px; color: #F4F4F5;'>
+                    📦 Item: <b>{item_rodando}</b> | 📋 OP: <b>{op_rodando}</b>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+        st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
 
 def render_grid_vertical(lista_maquinas, setor, status_dict):
     for maq in ordenar_maquinas(lista_maquinas):
@@ -1443,7 +1392,6 @@ def tela_checkup():
     status_dict = ler_status_atual()
     perfil = st.session_state['perfil']
     setor_atual = st.session_state['setor_usuario']
-    
     turno_vigente_real = turno_atual_horario()
     
     if setor_atual in ['TECNICO', 'GERAL', 'GERÊNCIA', 'PRESET'] or perfil == 'adm': 
@@ -1457,13 +1405,9 @@ def tela_checkup():
     for s_nome, lista in setores_alvo:
         for m in lista:
             st_val = status_dict.get(f"{s_nome} {m}", "PRODUZINDO")
-            
-            # Entra na lista se tiver problema, agendamento ou PREVISÃO de parada
             if "PRODUZINDO" not in st_val or "AGENDADO" in st_val or "AGENDADA" in st_val or "AGUARDANDO" in st_val or "[Fim Previsto:" in st_val:
-                
                 turno_pendencia = turno_vigente_real 
                 h_alvo = ""
-                
                 if "AGENDADA PARA" in st_val:
                     try: h_alvo = st_val.split("AGENDADA PARA")[1].strip()
                     except: pass
@@ -1474,11 +1418,8 @@ def tela_checkup():
                     try: h_alvo = st_val.split("[Fim Previsto:")[1].split("]")[0].strip()
                     except: pass
                     
-                if h_alvo:
-                    turno_pendencia = obter_turno_por_horario(h_alvo)
-                
+                if h_alvo: turno_pendencia = obter_turno_por_horario(h_alvo)
                 item_lista = (s_nome, m, st_val)
-                
                 is_agendamento_ou_prev = "AGENDADA PARA" in st_val or "[AGENDADO:" in st_val or "[Fim Previsto:" in st_val
                 
                 is_futuro_real = False
@@ -1486,26 +1427,16 @@ def tela_checkup():
                     try:
                         agora_dt = datetime.now(FUSO_BR)
                         h_alvo_dt = datetime.strptime(h_alvo, "%H:%M").replace(year=agora_dt.year, month=agora_dt.month, day=agora_dt.day, tzinfo=FUSO_BR)
-                        
-                        # Tratamento para virada de meia noite
-                        if h_alvo_dt < agora_dt and (agora_dt - h_alvo_dt).total_seconds() > 12 * 3600:
-                            h_alvo_dt += timedelta(days=1)
-                        elif h_alvo_dt > agora_dt and (h_alvo_dt - agora_dt).total_seconds() > 12 * 3600:
-                            h_alvo_dt -= timedelta(days=1)
-                            
+                        if h_alvo_dt < agora_dt and (agora_dt - h_alvo_dt).total_seconds() > 12 * 3600: h_alvo_dt += timedelta(days=1)
+                        elif h_alvo_dt > agora_dt and (h_alvo_dt - agora_dt).total_seconds() > 12 * 3600: h_alvo_dt -= timedelta(days=1)
                         delta_mins = (h_alvo_dt - agora_dt).total_seconds() / 60
-                        
-                        # Se a hora alvo já passou (delta negativo considerável, digamos -10 min), a máquina vira pendência IMEDIATA para o Turno Vigente
-                        if delta_mins > -10 and turno_pendencia != turno_vigente_real:
-                            is_futuro_real = True
+                        if delta_mins > -10 and turno_pendencia != turno_vigente_real: is_futuro_real = True
                     except: pass
                 
                 if is_futuro_real:
-                    if turno_pendencia in preparacoes_futuras:
-                        preparacoes_futuras[turno_pendencia].append(item_lista)
+                    if turno_pendencia in preparacoes_futuras: preparacoes_futuras[turno_pendencia].append(item_lista)
                 else:
-                    if "PRODUZINDO" not in st_val or "[Fim Previsto:" in st_val:
-                        incidencias_turno_atual.append(item_lista)
+                    if "PRODUZINDO" not in st_val or "[Fim Previsto:" in st_val: incidencias_turno_atual.append(item_lista)
                     
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo']:
         painel_controle_maquina(st.session_state['maq_ativa'], st.session_state['setor_ativo'])
@@ -1515,8 +1446,7 @@ def tela_checkup():
 
     with aba_atual:
         st.markdown(f"**Exibindo incidências e paradas previstas para o {turno_vigente_real}**")
-        if not incidencias_turno_atual: 
-            st.success("✨ Ótimo! Nenhuma incidência ou parada prevista para o momento.")
+        if not incidencias_turno_atual: st.success("✨ Ótimo! Nenhuma incidência ou parada prevista para o momento.")
         else:
             for setor_m, maq_m, st_m in incidencias_turno_atual:
                 icone = get_status_icon(st_m)
@@ -1528,10 +1458,8 @@ def tela_checkup():
     with aba_futuro:
         st.markdown("**Programação de Setups e Paradas por Turno**")
         filtro_turno = st.radio("Selecione o Turno para visualizar:", ["1° TURNO", "2° TURNO", "3° TURNO"], horizontal=True)
-        
         lista_futura = preparacoes_futuras[filtro_turno]
-        if not lista_futura:
-            st.info(f"Nenhum setup ou parada programada futuramente para o {filtro_turno}.")
+        if not lista_futura: st.info(f"Nenhum setup ou parada programada futuramente para o {filtro_turno}.")
         else:
             for setor_m, maq_m, st_m in lista_futura:
                 icone = get_status_icon(st_m)
@@ -1560,14 +1488,12 @@ def tela_checkup():
             if st.button("📍 Fila 2", use_container_width=True): st.session_state['fila_prev_sel'] = 'fila_2'; st.rerun()
             if st.button("📍 Fila 3", use_container_width=True): st.session_state['fila_prev_sel'] = 'fila_3'; st.rerun()
             if st.button("📍 Fila 4", use_container_width=True): st.session_state['fila_prev_sel'] = 'fila_4'; st.rerun()
-            
             if setor_foco == 'RTF':
                 st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
                 if st.button("⚫ Centerless (CNC1)", use_container_width=True): st.session_state['fila_prev_sel'] = 'centerless'; st.rerun()
                 if st.button("🟤 Facetadoras (CNC2)", use_container_width=True): st.session_state['fila_prev_sel'] = 'facetadoras'; st.rerun()
         else:
             if st.button("⬅️ Voltar para seleção de Fila", key="voltar_fila_prev"): st.session_state['fila_prev_sel'] = None; st.rerun()
-            
             maquinas_foco = []
             if setor_foco == 'AFC':
                 if st.session_state['fila_prev_sel'] == 'fila_1': maquinas_foco = ["6-868", "9-088", "7-743", "11-365", "13-964", "15-973", "17-140", "19-760", "21-206", "23-165", "25-209", "27-431"]
@@ -1602,29 +1528,19 @@ def tela_checkup():
                     if "[Fim Previsto:" in st_val:
                         try: hora_prevista = st_val.split("[Fim Previsto:")[1].split("]")[0].strip()
                         except: pass
-                    
                     op_atual = ""
                     if "[Ordem:" in st_val:
                         try: op_atual = st_val.split("[Ordem:")[1].split("]")[0].strip()
                         except: pass
-                        
-                    maquinas_produzindo.append({
-                        "Setor": setor_foco,
-                        "Maquina": m,
-                        "OP": op_atual,
-                        "HoraAntiga": hora_prevista,
-                        "StatusRaw": st_val
-                    })
+                    maquinas_produzindo.append({"Setor": setor_foco, "Maquina": m, "OP": op_atual, "HoraAntiga": hora_prevista, "StatusRaw": st_val})
 
-            if not maquinas_produzindo:
-                st.info(f"Nenhuma máquina em produção nesta fila no momento.")
+            if not maquinas_produzindo: st.info(f"Nenhuma máquina em produção nesta fila no momento.")
             else:
                 with st.form(f"form_previsoes_linhas_{setor_foco}_{st.session_state['fila_prev_sel']}"):
                     col1, col2, col3 = st.columns([2, 3, 2])
                     col1.markdown("**Máquina**")
                     col2.markdown("**Ordem (OP)**")
                     col3.markdown("**Hora Parada**")
-                    
                     st.markdown("<hr style='margin: 5px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
                     
                     inputs_previsao = {}
@@ -1633,14 +1549,7 @@ def tela_checkup():
                         c1.markdown(f"<p style='margin-top: 10px;'>{obj['Setor']} <b>{obj['Maquina']}</b></p>", unsafe_allow_html=True)
                         c2.markdown(f"<p style='margin-top: 10px;'>{obj['OP'] if obj['OP'] else '-'}</p>", unsafe_allow_html=True)
                         nova_hora = c3.text_input("Hora", value=obj['HoraAntiga'], key=f"prev_{obj['Setor']}_{obj['Maquina']}", label_visibility="collapsed", placeholder="HH:MM")
-                        
-                        inputs_previsao[f"{obj['Setor']} {obj['Maquina']}"] = {
-                            "nova": nova_hora,
-                            "antiga": obj['HoraAntiga'],
-                            "setor": obj['Setor'],
-                            "maq": obj['Maquina'],
-                            "st_raw": obj['StatusRaw']
-                        }
+                        inputs_previsao[f"{obj['Setor']} {obj['Maquina']}"] = {"nova": nova_hora, "antiga": obj['HoraAntiga'], "setor": obj['Setor'], "maq": obj['Maquina'], "st_raw": obj['StatusRaw']}
                         
                     st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
                     submit_prev = st.form_submit_button("💾 Salvar Previsões", type="primary", use_container_width=True)
@@ -1648,21 +1557,13 @@ def tela_checkup():
                     if submit_prev:
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                         novas_linhas = []
-                        
                         for key_maq, dados in inputs_previsao.items():
                             hora_nova = str(dados['nova']).strip()
                             hora_antiga = str(dados['antiga']).strip()
-                            
                             if hora_nova != hora_antiga:
                                 st_val = dados['st_raw']
-                                if "[Fim Previsto:" in st_val:
-                                    st_val = re.sub(r' \[Fim Previsto:.*?\]', '', st_val)
-                                    
-                                if hora_nova:
-                                    st_final = f"{st_val} [Fim Previsto: {hora_nova}]".strip()
-                                else:
-                                    st_final = st_val.strip()
-                                    
+                                if "[Fim Previsto:" in st_val: st_val = re.sub(r' \[Fim Previsto:.*?\]', '', st_val)
+                                st_final = f"{st_val} [Fim Previsto: {hora_nova}]".strip() if hora_nova else st_val.strip()
                                 novas_linhas.append({"Setor": dados['setor'], "Maquina": key_maq, "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str})
                                 
                         if novas_linhas:
@@ -1670,10 +1571,8 @@ def tela_checkup():
                             df_dados = pd.concat([df_dados, pd.DataFrame(novas_linhas)], ignore_index=True)
                             df_dados.to_csv(ARQUIVO_DADOS, index=False)
                             st.success("✅ Previsões atualizadas com sucesso!")
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.info("Nenhuma alteração de horário detectada.")
+                            time.sleep(1); st.rerun()
+                        else: st.info("Nenhuma alteração de horário detectada.")
 
 def tela_minhas_incidencias():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
@@ -1708,7 +1607,6 @@ def tela_minhas_incidencias():
 def tela_afc():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### ⚙️ Setor Afiação — Filas")
-    
     st.markdown("""
     <div style='background-color: #3f0000; padding: 12px; border-radius: 8px; border-left: 5px solid #ff4444; margin-bottom: 15px;'>
         <h5 style='margin:0; color: #ff9999 !important;'>⚡ EMERGÊNCIA: QUEDA DE ENERGIA</h5>
@@ -1745,7 +1643,6 @@ def tela_afc():
 def tela_rtf():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### ⚙️ Setor Retífica — Filas")
-    
     st.markdown("""
     <div style='background-color: #3f0000; padding: 12px; border-radius: 8px; border-left: 5px solid #ff4444; margin-bottom: 15px;'>
         <h5 style='margin:0; color: #ff9999 !important;'>⚡ EMERGÊNCIA: QUEDA DE ENERGIA</h5>
@@ -1766,9 +1663,7 @@ def tela_rtf():
     status_dict = ler_status_atual()
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] == 'RTF': painel_controle_maquina(st.session_state['maq_ativa'], 'RTF')
     
-    # --- DISTRIBUIÇÃO DINÂMICA DE FILAS ---
     tipos_dict = ler_tipos_cnc()
-    
     base_fila_1 = ["5-903", "8-086", "10-817", "12-962", "14-971", "16-183", "19-926", "21-270", "23-753", "25-258", "27-917"]
     base_fila_2 = ["7-267", "9-815", "11-363", "13-969", "15-977", "18-925", "20-927", "22-916", "24-259", "26-260", "28-954"]
     base_fila_3 = ["29-785", "31-806", "33-807", "35-885", "37-857", "39-856"]
@@ -1791,14 +1686,12 @@ def tela_rtf():
         if st.button("📍 Fila 2", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_2'; st.rerun()
         if st.button("📍 Fila 3", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_3'; st.rerun()
         if st.button("📍 Fila 4", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_4'; st.rerun()
-        
         st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
         if st.button("⚫ Centerless (CNC1)", use_container_width=True): st.session_state['celula_selecionada'] = 'centerless'; st.rerun()
         if st.button("🟤 Facetadoras (CNC2)", use_container_width=True): st.session_state['celula_selecionada'] = 'facetadoras'; st.rerun()
     else:
         if st.button("⬅️ Trocar de Fila / Setor"): st.session_state['celula_selecionada'] = None; st.session_state['maq_ativa'] = None; st.rerun()
         st.divider()
-        
         if st.session_state['celula_selecionada'] == 'fila_1': render_grid_vertical(f1_atual, "RTF", status_dict)
         elif st.session_state['celula_selecionada'] == 'fila_2': render_grid_vertical(f2_atual, "RTF", status_dict)
         elif st.session_state['celula_selecionada'] == 'fila_3': render_grid_vertical(f3_atual, "RTF", status_dict)
@@ -1826,7 +1719,6 @@ def tela_equipe():
 def tela_editar():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### ✏️ Correção de Apontamentos")
-    
     perfil = st.session_state['perfil']
     setor_usuario = st.session_state['setor_usuario']
     
@@ -1843,12 +1735,10 @@ def tela_editar():
         df_maq = pd.read_csv(ARQUIVO_DADOS)
         idx_ultimos = df_maq.drop_duplicates(subset=['Maquina'], keep='last').index
         df_editar = df_maq.loc[idx_ultimos].copy()
-        
         if setor_usuario == 'AFC': df_editar = df_editar[df_editar['Setor'] == 'AFC']
         elif setor_usuario == 'RTF': df_editar = df_editar[df_editar['Setor'] == 'RTF']
             
         st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Altere o Horário ou o Status se houver algum erro de digitação. Somente o <b>último apontamento</b> de cada máquina está sendo exibido.</p>", unsafe_allow_html=True)
-        
         busca_maq = st.text_input("🔍 Pesquisar Máquina:", placeholder="Digite o número (ex: 6-868, 30-161...)")
         if busca_maq.strip(): df_editar = df_editar[df_editar['Maquina'].str.contains(busca_maq.strip(), case=False, na=False)]
         
@@ -1858,7 +1748,6 @@ def tela_editar():
             indices_originais = df_editar.index.tolist()
             indices_mantidos = df_editado.index.tolist()
             indices_apagados = [i for i in indices_originais if i not in indices_mantidos]
-            
             if indices_apagados: df_maq = df_maq.drop(index=indices_apagados)
             
             for idx, row in df_editado.iterrows():
@@ -1868,7 +1757,6 @@ def tela_editar():
                 else:
                     nova_linha = pd.DataFrame([{"Setor": row.get('Setor', ''), "Maquina": row.get('Maquina', ''), "Operador": row.get('Operador', ''), "Status": str(row.get('Status', '')), "Hora": str(row.get('Hora', '')).strip()}])
                     df_maq = pd.concat([df_maq, nova_linha], ignore_index=True)
-                    
             df_maq.to_csv(ARQUIVO_DADOS, index=False)
             st.success("✨ Banco de dados atualizado com sucesso!")
             time.sleep(0.5); st.rerun()
@@ -1910,7 +1798,6 @@ def tela_relatorio():
     if gerar or encerrar:
         curr_d, curr_t = get_turno_logico()
         df_completo = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
-        
         texto_padrao, texto_tempos = gerar_textos_fechamento(curr_d, df_completo)
 
         st.markdown("##### 📄 Relatório 1 (Padrão e Limpo)")
@@ -1925,7 +1812,6 @@ def tela_relatorio():
 
 def tela_armarios():
     exibir_alertas_preset()
-    
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### 🗄️ Gestão de Armários (Pré-Set)")
     
@@ -1935,7 +1821,6 @@ def tela_armarios():
     if 'Observacao' not in df_arm.columns: df_arm['Observacao'] = ""
 
     gaveta = st.session_state.get('gaveta_selecionada', None)
-
     if gaveta:
         arm_sel = gaveta['armario']
         pos_sel = gaveta['posicao']
@@ -1960,21 +1845,18 @@ def tela_armarios():
                 
                 c1, c2 = st.columns(2)
                 if c1.form_submit_button("📥 GUARDAR SETUP", type="primary", use_container_width=True):
-                    if not ordem_in.strip() and not obs_in.strip():
-                        st.error("⚠️ Se não houver Ordem (OP), a Observação/Justificativa é obrigatória!")
+                    if not ordem_in.strip() and not obs_in.strip(): st.error("⚠️ Se não houver Ordem (OP), a Observação/Justificativa é obrigatória!")
                     else:
                         ordem_limpa = ordem_in.strip().upper().replace(".0", "")
                         item_limpo = item_in.strip().upper().replace(".0", "")
                         obs_limpa = obs_in.strip()
-                        
                         idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                         if not idx.empty:
                             df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [ordem_limpa, item_limpo, "AGUARDANDO MÁQUINA", datetime.now(FUSO_BR).strftime("%H:%M"), obs_limpa]
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                             st.session_state['gaveta_selecionada'] = None
                             st.success(f"✅ Setup guardado na gaveta da MÁQUINA {pos_sel}!")
-                            time.sleep(1)
-                            st.rerun()
+                            time.sleep(1); st.rerun()
                 if c2.form_submit_button("❌ Cancelar", use_container_width=True):
                     st.session_state['gaveta_selecionada'] = None
                     st.rerun()
@@ -1988,8 +1870,7 @@ def tela_armarios():
                 
                 c1, c2, c3 = st.columns(3)
                 if c1.form_submit_button("💾 Atualizar", type="primary", use_container_width=True):
-                    if not nova_op.strip() and not nova_obs.strip():
-                        st.error("⚠️ É obrigatório possuir uma Ordem (OP) ou uma Observação justificando!")
+                    if not nova_op.strip() and not nova_obs.strip(): st.error("⚠️ É obrigatório possuir uma Ordem (OP) ou uma Observação!")
                     else:
                         idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                         if not idx.empty:
@@ -1997,9 +1878,7 @@ def tela_armarios():
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                             st.session_state['gaveta_selecionada'] = None
                             st.success("✅ Gaveta atualizada com sucesso!")
-                            time.sleep(1)
-                            st.rerun()
-                            
+                            time.sleep(1); st.rerun()
                 if c2.form_submit_button("🗑️ Excluir", use_container_width=True):
                     idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                     if not idx.empty:
@@ -2007,32 +1886,25 @@ def tela_armarios():
                         df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                         st.session_state['gaveta_selecionada'] = None
                         st.success("✅ Gaveta liberada com sucesso!")
-                        time.sleep(1)
-                        st.rerun()
-                        
+                        time.sleep(1); st.rerun()
                 if c3.form_submit_button("❌ Cancelar", use_container_width=True):
                     st.session_state['gaveta_selecionada'] = None
                     st.rerun()
-        
         st.divider()
 
     aba1, aba2, aba3, aba4 = st.tabs(["👁️ Visão Física (Gavetas)", "➕ Alimentar (Lista Clássica)", "🔔 Alertas e Histórico", "🔄 Troca de Rebolo"])
 
-    # --- ABA 1: VISUALIZAÇÃO FÍSICA DOS ARMÁRIOS ---
     with aba1:
         st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Visão estrutural. <b>Clique diretamente na gaveta</b> para alimentar (guardar) ou corrigir a OP.</p>", unsafe_allow_html=True)
-        
         armarios_lista = ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"]
         
         for row_idx in range(0, len(armarios_lista), 2):
             c1, c2 = st.columns(2)
             colunas_ui = [c1, c2]
-            
             for col_i in range(2):
                 if row_idx + col_i < len(armarios_lista):
                     arm = armarios_lista[row_idx + col_i]
                     col_ui = colunas_ui[col_i]
-                    
                     df_filtrado = df_arm[df_arm['Armario'] == arm].copy()
                     df_filtrado['Posicao_Int'] = pd.to_numeric(df_filtrado['Posicao'], errors='coerce')
                     df_filtrado = df_filtrado.sort_values(by='Posicao_Int')
@@ -2042,7 +1914,6 @@ def tela_armarios():
                     
                     with col_ui.container(border=True):
                         st.markdown(f"<h5 style='text-align: center; color: #2DD4BF; margin-bottom: 15px;'>📦 {arm} <br><span style='font-size: 12px; color: #A1A1AA;'>({ocupados}/{total_gavetas} ocupados)</span></h5>", unsafe_allow_html=True)
-                        
                         gavetas = df_filtrado.to_dict('records')
                         
                         for linha in range(0, total_gavetas, 4):
@@ -2052,37 +1923,26 @@ def tela_armarios():
                                     gav = gavetas[linha + c]
                                     num = gav['Posicao']
                                     status = gav['Status']
-                                    
-                                    if status == 'VAZIO':
-                                        btn_label = f"🟥 MAQ {num}\nVAZIO"
+                                    if status == 'VAZIO': btn_label = f"🟥 MAQ {num}\nVAZIO"
                                     else:
                                         op_f = str(gav.get('Ordem', '')).replace('.0', '').replace('nan', '')
                                         obs_f = str(gav.get('Observacao', '')).replace('nan', '').strip()
-                                        
-                                        if op_f:
-                                            btn_label = f"🟩 MAQ {num}\nOP: {op_f}"
-                                        elif obs_f:
-                                            btn_label = f"🟩 MAQ {num}\nOBS: {obs_f[:8]}..."
-                                        else:
-                                            btn_label = f"🟩 MAQ {num}\nOCUPADO"
+                                        if op_f: btn_label = f"🟩 MAQ {num}\nOP: {op_f}"
+                                        elif obs_f: btn_label = f"🟩 MAQ {num}\nOBS: {obs_f[:8]}..."
+                                        else: btn_label = f"🟩 MAQ {num}\nOCUPADO"
                                     
                                     if cols_gaveta[c].button(btn_label, key=f"btn_gav_{arm}_{num}", use_container_width=True):
                                         if st.session_state['perfil'] in ['preset', 'adm']:
-                                            st.session_state['gaveta_selecionada'] = {
-                                                'armario': arm, 'posicao': num, 'status': status, 'ordem': gav.get('Ordem', ''), 'item': gav.get('Item', ''), 'observacao': gav.get('Observacao', '')
-                                            }
+                                            st.session_state['gaveta_selecionada'] = {'armario': arm, 'posicao': num, 'status': status, 'ordem': gav.get('Ordem', ''), 'item': gav.get('Item', ''), 'observacao': gav.get('Observacao', '')}
                                             st.rerun()
-                                        else:
-                                            st.error("⚠️ Apenas Pré-Set e ADM podem gerenciar gavetas!")
+                                        else: st.error("⚠️ Apenas Pré-Set e ADM podem gerenciar gavetas!")
 
-    # --- ABA 2: ALIMENTAR E EXCLUIR ORDEM (MODO CLÁSSICO LISTA) ---
     with aba2:
         if st.session_state['perfil'] in ['preset', 'adm']:
             with st.form("form_alimentar_lista", clear_on_submit=True):
                 st.markdown("📥 **Guardar Ferramental / Setup**")
                 c1, c2 = st.columns(2)
                 armario_sel = c1.selectbox("Selecione o Armário:", ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"])
-                
                 pos_vazias = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Status'] == 'VAZIO')]
                 pos_vazias_lista = pos_vazias['Posicao'].tolist()
                 
@@ -2099,32 +1959,20 @@ def tela_armarios():
                 obs_in = st.text_input("Observação / Justificativa (Obrigatório se não houver OP):", placeholder="Justificativa...")
 
                 if st.form_submit_button("📥 GUARDAR NO ARMÁRIO", type="primary"):
-                    if not ordem_in.strip() and not obs_in.strip():
-                        st.error("⚠️ A Ordem (OP) ou uma Observação justificando são obrigatórias!")
-                    elif pos_sel is None:
-                        st.error("⚠️ Não há posições disponíveis selecionadas!")
+                    if not ordem_in.strip() and not obs_in.strip(): st.error("⚠️ A Ordem (OP) ou uma Observação justificando são obrigatórias!")
+                    elif pos_sel is None: st.error("⚠️ Não há posições disponíveis selecionadas!")
                     else:
                         ordem_limpa = ordem_in.strip().upper().replace(".0", "")
                         item_limpo = item_in.strip().upper().replace(".0", "")
                         obs_limpa = obs_in.strip()
-                        
                         idx = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                         if not idx.empty:
-                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [
-                                ordem_limpa, 
-                                item_limpo, 
-                                "AGUARDANDO MÁQUINA", 
-                                datetime.now(FUSO_BR).strftime("%H:%M"),
-                                obs_limpa
-                            ]
+                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [ordem_limpa, item_limpo, "AGUARDANDO MÁQUINA", datetime.now(FUSO_BR).strftime("%H:%M"), obs_limpa]
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                             st.success(f"✅ Ferramental guardado para a MAQ {pos_sel} do {armario_sel}!")
-                            time.sleep(1.5)
-                            st.rerun()
-        else:
-            st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode inserir ou remover itens nos armários. Seu acesso permite apenas visualização.")
+                            time.sleep(1.5); st.rerun()
+        else: st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode inserir ou remover itens nos armários.")
 
-    # --- ABA 3: ALERTAS DE RETIRADA ---
     with aba3:
         st.markdown("#### 🔔 Histórico de Setups Retirados para a Produção")
         st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Acompanhe em tempo real as OPs que os preparadores retiraram das gavetas e assumiram na máquina.</p>", unsafe_allow_html=True)
@@ -2136,27 +1984,19 @@ def tela_armarios():
                     if st.button("🗑️ Limpar Histórico de Alertas", type="secondary"):
                         os.remove(ARQUIVO_ALERTAS)
                         st.rerun()
-            else:
-                st.info("Nenhum alerta registrado ainda.")
-        else:
-            st.info("Nenhum alerta registrado ainda.")
+            else: st.info("Nenhum alerta registrado ainda.")
+        else: st.info("Nenhum alerta registrado ainda.")
             
-    # --- ABA 4: AVISOS DE TROCA DE REBOLO COM DETALHES ---
     with aba4:
         st.markdown("#### 🔄 Alertas e Detalhamento de Rebolos")
         if st.session_state.get('perfil') in ['preset', 'adm']:
             st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Máquinas agendadas ou em andamento que necessitam de troca de rebolo. O sistema busca o Item automaticamente no Armário correspondente à máquina.</p>", unsafe_allow_html=True)
-            
             df_rebolos = pd.DataFrame()
             erro_leitura = ""
             
             if os.path.exists(ARQUIVO_REBOLOS):
                 try:
-                    import unicodedata
-                    # Lendo a aba específica 'Banco De Rebolos'
                     df_rebolos = pd.read_excel(ARQUIVO_REBOLOS, sheet_name='Banco De Rebolos', engine='openpyxl')
-                    
-                    # 1. SUPER BLINDAGEM DE COLUNAS
                     novas_colunas = []
                     for col in df_rebolos.columns:
                         col_str = str(col).upper()
@@ -2164,17 +2004,11 @@ def tela_armarios():
                         col_str = col_str.replace(" ", "").replace("\n", "").strip()
                         novas_colunas.append(col_str)
                     df_rebolos.columns = novas_colunas
-                    
                     if 'ITEM' in df_rebolos.columns:
-                        # 2. SUPER BLINDAGEM DO ITEM
                         df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM'].astype(str).str.upper()
                         df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM_BUSCA'].apply(lambda x: re.sub(r'\.0$', '', x.strip()))
-                except Exception as e:
-                    erro_leitura = f"Erro do Python: {e}"
-            else:
-                # O ERRO ESTAVA AQUI! Removido o import os que travava o código.
-                arquivos_encontrados = os.listdir('.')
-                erro_leitura = f"O arquivo '{ARQUIVO_REBOLOS}' não foi encontrado. Veja os arquivos que o servidor encontrou: {arquivos_encontrados}"
+                except Exception as e: erro_leitura = f"Erro do Python: {e}"
+            else: erro_leitura = f"Arquivo '{ARQUIVO_REBOLOS}' não encontrado na pasta."
 
             status_dict = ler_status_atual()
             alertas_rebolo = []
@@ -2191,12 +2025,10 @@ def tela_armarios():
                     
                     st_limpo = st_val.split("[")[0].strip()
                     item_alvo = ""
-                    
                     try:
                         setor_maq, maq_num = maq.split(" ", 1)
                         gaveta_num = maq_num.split("-")[0]
                         filtro_armario = "Afiadoras" if setor_maq == "AFC" else "Retíficas"
-                        
                         gaveta_row = df_arm[(df_arm['Posicao'] == gaveta_num) & (df_arm['Armario'].str.contains(filtro_armario))]
                         if not gaveta_row.empty:
                             item_alvo = str(gaveta_row.iloc[0]['Item']).strip().replace('.0', '').replace('nan', '')
@@ -2213,57 +2045,45 @@ def tela_armarios():
                     if item_alvo:
                         item_busca = str(item_alvo).strip().upper()
                         item_busca = re.sub(r'\.0$', '', item_busca)
-                        
-                        # Injeta a mensagem de erro direto na tela se algo falhou antes
-                        if erro_leitura:
-                            debug_msg = f"⚠️ FALHA AO LER EXCEL: {erro_leitura}"
-                        elif df_rebolos.empty:
-                            debug_msg = "⚠️ A planilha foi lida, mas o Python achou que a aba 'Banco De Rebolos' estava em branco."
-                        elif 'ITEM_BUSCA' not in df_rebolos.columns:
-                            debug_msg = f"⚠️ Coluna de 'Item' não detectada. Colunas lidas: {df_rebolos.columns.tolist()}"
+                        if erro_leitura: debug_msg = f"⚠️ FALHA AO LER EXCEL: {erro_leitura}"
+                        elif df_rebolos.empty: debug_msg = "⚠️ A planilha foi lida, mas a aba 'Banco De Rebolos' estava em branco."
+                        elif 'ITEM_BUSCA' not in df_rebolos.columns: debug_msg = f"⚠️ Coluna de 'Item' não detectada."
                         else:
                             match = df_rebolos[df_rebolos['ITEM_BUSCA'] == item_busca]
-                            if match.empty:
-                                match = df_rebolos[df_rebolos['ITEM_BUSCA'].str.contains(item_busca, regex=False, na=False)]
-                                
+                            if match.empty: match = df_rebolos[df_rebolos['ITEM_BUSCA'].str.contains(item_busca, regex=False, na=False)]
                             if not match.empty:
                                 row_reb = match.iloc[0]
                                 desc = str(row_reb.get('DESCRICAO', '')).strip()
                                 rebolo1 = str(row_reb.get('REBOLO', row_reb.get('REBOLO1', ''))).strip()
                                 rebolo2 = str(row_reb.get('REBOLO2', '')).strip()
                                 tipo_reb = str(row_reb.get('TIPO', '')).strip()
-                                
                                 if rebolo1.lower() in ['nan', 'none', '']: rebolo1 = "Não cadastrado"
                                 if rebolo2.lower() in ['nan', 'none', '']: rebolo2 = "-"
                                 if tipo_reb.lower() in ['nan', 'none', '']: tipo_reb = "-"
                                 if desc.lower() in ['nan', 'none', '']: desc = ""
-                            else:
-                                debug_msg = f"🔍 DEBUG: Item '{item_busca}' não encontrado dentro da aba 'Banco De Rebolos'."
+                            else: debug_msg = f"🔍 Item '{item_busca}' não encontrado."
 
                     alertas_rebolo.append((maq, hora_alvo, st_limpo, item_alvo, desc, rebolo1, rebolo2, tipo_reb, debug_msg))
                     
             if alertas_rebolo:
                 for maq, hora, st_limpo, item_alvo, desc, reb1, reb2, tipo_reb, dbg in alertas_rebolo:
                     h_txt = f"⏰ Agendado para as {hora}" if hora else "🔴 Em Andamento / Imediato"
-                    
                     if item_alvo:
                         desc_str = f"({desc})" if desc else ""
                         reb2_html = f"<p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🔄 Rebolo 2: <b style='color: #2DD4BF;'>{reb2}</b></p>" if reb2 and reb2 != '-' else ""
                         dbg_html = f"<p style='margin: 10px 0 0 0; font-size: 11px; color: #ef4444; font-weight: bold;'>{dbg}</p>" if dbg else ""
-                        
                         info_reb = f"""<div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'><p style='margin: 0; font-size: 13px; color: #A1A1AA;'>📦 Item no Armário: <b style='color: #F4F4F5;'>{item_alvo}</b> <span style='color:#71717A;'>{desc_str}</span></p><p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🔄 Rebolo 1: <b style='color: #2DD4BF;'>{reb1}</b></p>{reb2_html}<p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🏷️ Tipo: <b style='color: #F4F4F5;'>{tipo_reb}</b></p>{dbg_html}</div>"""
                     else:
-                        info_reb = f"""<div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'><p style='margin: 0; font-size: 13px; color: #ef4444;'>⚠️ Gaveta vazia e item não informado no apontamento. Impossível buscar rebolo.</p></div>"""
+                        info_reb = f"""<div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'><p style='margin: 0; font-size: 13px; color: #ef4444;'>⚠️ Gaveta vazia e item não informado.</p></div>"""
 
                     st.markdown(f"""<div style='background-color: #422006; padding: 15px; border-radius: 8px; border-left: 5px solid #f59e0b; margin-bottom: 10px;'><h5 style='margin-top:0; margin-bottom:5px; color: #fbbf24;'>⚙️ Máquina {maq} irá trocar o rebolo</h5><p style='color: #fef3c7; margin-bottom:0; font-size:14px;'>{h_txt} <br><span style='font-size:13px; color:#d97706;'>Status Atual: {st_limpo}</span></p>{info_reb}</div>""", unsafe_allow_html=True)
-            else:
-                st.success("✅ Nenhuma máquina com troca de rebolo prevista no momento.")
-        else:
-            st.info("ℹ️ Aba restrita para os perfis de Pré-Set e Administração.")
+            else: st.success("✅ Nenhuma máquina com troca de rebolo prevista no momento.")
+        else: st.info("ℹ️ Aba restrita para os perfis de Pré-Set e Administração.")
 
 # --- ROTEADOR ---
 if st.session_state['tela_atual'] == 'login': tela_login()
 elif st.session_state['tela_atual'] == 'menu': tela_menu()
+elif st.session_state['tela_atual'] == 'visao_geral': tela_visao_geral()
 elif st.session_state['tela_atual'] == 'checkup': tela_checkup()
 elif st.session_state['tela_atual'] == 'historico': tela_historico()
 elif st.session_state['tela_atual'] == 'minhas_incidencias': tela_minhas_incidencias()
