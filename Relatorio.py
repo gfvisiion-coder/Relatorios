@@ -1860,8 +1860,10 @@ def tela_armarios():
                     if not ordem_in.strip() and not obs_final.strip(): 
                         st.error("⚠️ Preencha a Ordem (OP) ou selecione um Motivo Rápido!")
                     else:
-                        ordem_limpa = ordem_in.strip().upper().replace(".0", "").lstrip("0")
+                        # VARIÁVEIS DECLARADAS CORRETAMENTE AQUI:
+                        ordem_limpo = ordem_in.strip().upper().replace(".0", "").lstrip("0")
                         item_limpo = item_in.strip().upper().replace(".0", "").lstrip("0")
+                        
                         idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                         if not idx.empty:
                             df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [ordem_limpo, item_limpo, "AGUARDANDO MÁQUINA", datetime.now(FUSO_BR).strftime("%H:%M"), obs_final]
