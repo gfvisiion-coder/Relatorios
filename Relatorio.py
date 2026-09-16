@@ -2149,23 +2149,25 @@ def tela_armarios():
             df_rebolos = pd.DataFrame()
             if os.path.exists(ARQUIVO_REBOLOS):
                 try:
-                    df_rebolos = pd.read_excel(ARQUIVO_REBOLOS, dtype=str)
+                    import unicodedata
+                    # Deixamos o Pandas adivinhar o tipo automaticamente para evitar o bug do ".0"
+                    df_rebolos = pd.read_excel(ARQUIVO_REBOLOS)
                     
-                    # 1. BLINDAGEM DE COLUNAS: Remove espaços, acentos e deixa tudo maiúsculo
-                    df_rebolos.columns = (df_rebolos.columns
-                                          .str.strip()
-                                          .str.upper()
-                                          .str.replace(" ", "")
-                                          .str.replace("Ç", "C")
-                                          .str.replace("Ã", "A"))
+                    # 1. SUPER BLINDAGEM DE COLUNAS: Tira acentos, espaços e padroniza para maiúsculo
+                    novas_colunas = []
+                    for col in df_rebolos.columns:
+                        col_str = str(col).upper()
+                        col_str = unicodedata.normalize('NFKD', col_str).encode('ASCII', 'ignore').decode('ASCII')
+                        col_str = col_str.replace(" ", "").replace("\n", "").strip()
+                        novas_colunas.append(col_str)
+                    df_rebolos.columns = novas_colunas
                     
                     if 'ITEM' in df_rebolos.columns:
-                        # 2. BLINDAGEM DO ITEM: Garante que é string e remove ".0"
-                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM'].astype(str).str.strip().str.upper()
-                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM_BUSCA'].apply(lambda x: x.split('.')[0])
+                        # 2. SUPER BLINDAGEM DO ITEM: Converte pra string e arranca o ".0" e espaços
+                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM'].astype(str).str.upper()
+                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM_BUSCA'].apply(lambda x: re.sub(r'\.0$', '', x.strip()))
                 except Exception as e:
                     st.error(f"⚠️ Erro ao ler a planilha '{ARQUIVO_REBOLOS}': {e}")
-                    pass
 
             status_dict = ler_status_atual()
             alertas_rebolo = []
@@ -2181,7 +2183,6 @@ def tela_armarios():
                         except: pass
                     
                     st_limpo = st_val.split("[")[0].strip()
-                    
                     item_alvo = ""
                     
                     try:
@@ -2190,7 +2191,6 @@ def tela_armarios():
                         filtro_armario = "Afiadoras" if setor_maq == "AFC" else "Retíficas"
                         
                         gaveta_row = df_arm[(df_arm['Posicao'] == gaveta_num) & (df_arm['Armario'].str.contains(filtro_armario))]
-                        
                         if not gaveta_row.empty:
                             item_alvo = str(gaveta_row.iloc[0]['Item']).strip().replace('.0', '').replace('nan', '')
                     except: pass
@@ -2203,23 +2203,29 @@ def tela_armarios():
                     rebolo1, rebolo2, tipo_reb, desc = "Não cadastrado", "-", "Não cadastrado", ""
                     
                     if item_alvo and not df_rebolos.empty and 'ITEM_BUSCA' in df_rebolos.columns:
-                        # Limpa o item alvo também para garantir o 'match'
-                        item_busca = str(item_alvo).strip().upper().split('.')[0]
+                        # Limpa o item alvo exatamente da mesma forma que a coluna
+                        item_busca = str(item_alvo).strip().upper()
+                        item_busca = re.sub(r'\.0$', '', item_busca)
+                        
+                        # Tenta match exato primeiro
                         match = df_rebolos[df_rebolos['ITEM_BUSCA'] == item_busca]
                         
+                        # Se não achar exato (espaços invisíveis extras, etc), tenta achar se "contém" o número
+                        if match.empty:
+                            match = df_rebolos[df_rebolos['ITEM_BUSCA'].str.contains(item_busca, regex=False, na=False)]
+                            
                         if not match.empty:
                             row_reb = match.iloc[0]
-                            # Como normalizamos as colunas lá em cima, agora a busca é exata
                             desc = str(row_reb.get('DESCRICAO', '')).strip()
                             rebolo1 = str(row_reb.get('REBOLO', row_reb.get('REBOLO1', ''))).strip()
                             rebolo2 = str(row_reb.get('REBOLO2', '')).strip()
                             tipo_reb = str(row_reb.get('TIPO', '')).strip()
                             
-                            # Tratamento se o Excel devolver 'nan' ou vazio
-                            if rebolo1.lower() == 'nan' or not rebolo1: rebolo1 = "Não cadastrado"
-                            if rebolo2.lower() == 'nan' or not rebolo2: rebolo2 = "-"
-                            if tipo_reb.lower() == 'nan' or not tipo_reb: tipo_reb = "-"
-                            if desc.lower() == 'nan' or not desc: desc = ""
+                            # Tratamento de dados nulos/vazios
+                            if rebolo1.lower() in ['nan', 'none', '']: rebolo1 = "Não cadastrado"
+                            if rebolo2.lower() in ['nan', 'none', '']: rebolo2 = "-"
+                            if tipo_reb.lower() in ['nan', 'none', '']: tipo_reb = "-"
+                            if desc.lower() in ['nan', 'none', '']: desc = ""
 
                     alertas_rebolo.append((maq, hora_alvo, st_limpo, item_alvo, desc, rebolo1, rebolo2, tipo_reb))
                     
