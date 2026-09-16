@@ -117,7 +117,11 @@ ARQUIVO_ARMARIOS = "banco_armarios.csv"
 ARQUIVO_ALERTAS = "alertas_preset.csv"
 ARQUIVO_CNC = "banco_cnc.csv"
 ARQUIVO_FECHAMENTO = "ultimo_fechamento.csv"
-ARQUIVO_REBOLOS = "rebolos.xlsx" # NOVO NOME AQUI
+
+# --- SUPER BLINDAGEM DE CAMINHO PARA O EXCEL ---
+import os
+DIRETORIO_ATUAL = os.path.dirname(os.path.abspath(__file__))
+ARQUIVO_REBOLOS = os.path.join(DIRETORIO_ATUAL, "rebolos.xlsx")
 
 # --- FUNÇÕES UTILITÁRIAS ---
 def turno_atual_horario():
