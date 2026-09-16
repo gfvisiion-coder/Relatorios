@@ -2172,8 +2172,7 @@ def tela_armarios():
                 except Exception as e:
                     erro_leitura = f"Erro do Python: {e}"
             else:
-                import os
-                # Se não achar, o sistema vai pegar a lista de todos os arquivos que estão na pasta pra gente ver!
+                # O ERRO ESTAVA AQUI! Removido o import os que travava o código.
                 arquivos_encontrados = os.listdir('.')
                 erro_leitura = f"O arquivo '{ARQUIVO_REBOLOS}' não foi encontrado. Veja os arquivos que o servidor encontrou: {arquivos_encontrados}"
 
