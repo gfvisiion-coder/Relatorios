@@ -977,8 +977,8 @@ def painel_controle_maquina(maq_id, setor):
                         st.error("⚠️ A Ordem e o Item são obrigatórios!")
                     else:
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                        item_limpo = item.strip().upper().replace(".0", "")
-                        ordem_limpa = ordem.strip().upper().replace(".0", "")
+                        item_limpo = item.strip().upper().replace(".0", "").lstrip("0")
+                        ordem_limpa = ordem.strip().upper().replace(".0", "").lstrip("0")
                         st_final = f"PRODUZINDO [Ordem: {ordem_limpa}] [Item: {item_limpo}]"
                         if pcs_hora.strip(): st_final += f" [Pçs/Hora: {pcs_hora.strip()}]"
                         if obs.strip(): st_final += f" [Obs: {obs.strip()}]"
@@ -1069,8 +1069,8 @@ def painel_controle_maquina(maq_id, setor):
                         if is_agendado and hora_relatorio.strip(): st_final += f" [AGENDADO:{hora_relatorio.strip()}]"
                         else: st_final = f"AGUARDANDO PREPARADOR - {st_final}"
                         
-                        ordem_limpa = ordem_atual.strip().upper().replace(".0", "")
-                        item_limpo = item_atual.strip().upper().replace(".0", "")
+                        ordem_limpa = ordem_atual.strip().upper().replace(".0", "").lstrip("0")
+                        item_limpo = item_atual.strip().upper().replace(".0", "").lstrip("0")
                         if ordem_limpa: st_final += f" [Ordem: {ordem_limpa}]"
                         if item_limpo: st_final += f" [Item Atual: {item_limpo}]"
                         if ordem_limpa: dar_baixa_armario(ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
@@ -1186,7 +1186,7 @@ def painel_controle_maquina(maq_id, setor):
                             tags_prod = re.sub(r' \[Ordem:.*?\]', '', tags_prod)
                         
                         st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}] {tags_prod}".strip()
-                        nova_ordem_limpa = nova_ordem_input.strip().upper().replace(".0", "")
+                        nova_ordem_limpa = nova_ordem_input.strip().upper().replace(".0", "").lstrip("0")
 
                         if is_comum:
                             item_buscado = buscar_item_por_ordem(nova_ordem_limpa)
@@ -1326,7 +1326,6 @@ def tela_visao_geral():
     st.divider()
 
     status_dict = ler_status_atual()
-    
     setor_filtro = st.radio("Filtrar Setor:", ["Todos", "Afiação (AFC)", "Retífica (RTF)"], horizontal=True)
     
     listas_analise = []
@@ -1343,7 +1342,6 @@ def tela_visao_geral():
             st_val = status_dict.get(f"{prefixo} {m}", "PRODUZINDO")
             icone = get_status_icon(st_val)
             
-            # Extraindo OP e Item
             op_rodando = "-"
             item_rodando = "-"
             if "[Ordem:" in st_val:
@@ -1514,7 +1512,7 @@ def tela_checkup():
                 elif st.session_state['fila_prev_sel'] == 'fila_2': maquinas_foco = [m for m in base_f2 if m in todas_cnc3]
                 elif st.session_state['fila_prev_sel'] == 'fila_3': maquinas_foco = [m for m in base_f3 if m in todas_cnc3]
                 elif st.session_state['fila_prev_sel'] == 'fila_4': 
-                    nativos = set(base_f1 + base_f2 + base_f3 + base_f4)
+                    nativos = set(base_fila_1 + base_fila_2 + base_fila_3 + base_fila_4) if 'base_fila_1' in locals() else set()
                     extraviados = [m for m in todas_cnc3 if m not in nativos]
                     maquinas_foco = [m for m in base_f4 if m in todas_cnc3] + extraviados
                 elif st.session_state['fila_prev_sel'] == 'centerless': maquinas_foco = todas_cnc1
@@ -1837,22 +1835,39 @@ def tela_armarios():
         
         if status_sel == 'VAZIO':
             with st.form("form_alimentar"):
-                st.info("🟥 Esta gaveta está VAZIA. Insira os dados para guardar o setup.")
+                st.info("🟥 Esta gaveta está VAZIA. Insira os dados para guardar o setup ou selecione o motivo rápido.")
+                
+                # LISTA SUSPENSA DE MOTIVOS RÁPIDOS
+                motivos_rapidos = [
+                    "-- Selecione um Motivo Rápido (Opcional) --",
+                    "Aguardando Cor",
+                    "Aguardando Almoxarifado",
+                    "Aguardando PCP",
+                    "Em Preparação",
+                    "Em Sequência"
+                ]
+                motivo_select = st.selectbox("Motivo / Caminho Rápido:", motivos_rapidos)
+                
                 c_op, c_it = st.columns(2)
                 ordem_in = c_op.text_input("Ordem de Produção (OP):", placeholder="Ex: 987654")
                 item_in = c_it.text_input("Item / Peça:", placeholder="Ex: 313324")
-                obs_in = st.text_input("Observação / Justificativa (Obrigatório se não houver OP):", placeholder="Se não possuir OP, digite o motivo...")
+                obs_in = st.text_input("Observação Adicional / Detalhes:", placeholder="Detalhes opcionais...")
                 
                 c1, c2 = st.columns(2)
                 if c1.form_submit_button("📥 GUARDAR SETUP", type="primary", use_container_width=True):
-                    if not ordem_in.strip() and not obs_in.strip(): st.error("⚠️ Se não houver Ordem (OP), a Observação/Justificativa é obrigatória!")
+                    # Monta a observação final unindo o selectbox e o texto livre
+                    obs_final = motivo_select if motivo_select != motivos_rapidos[0] else ""
+                    if obs_in.strip():
+                        obs_final = f"{obs_final} - {obs_in.strip()}" if obs_final else obs_in.strip()
+
+                    if not ordem_in.strip() and not obs_final.strip(): 
+                        st.error("⚠️ Preencha a Ordem (OP) ou selecione um Motivo Rápido!")
                     else:
-                        ordem_limpa = ordem_in.strip().upper().replace(".0", "")
-                        item_limpo = item_in.strip().upper().replace(".0", "")
-                        obs_limpa = obs_in.strip()
+                        ordem_limpa = ordem_in.strip().upper().replace(".0", "").lstrip("0")
+                        item_limpo = item_in.strip().upper().replace(".0", "").lstrip("0")
                         idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                         if not idx.empty:
-                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [ordem_limpa, item_limpo, "AGUARDANDO MÁQUINA", datetime.now(FUSO_BR).strftime("%H:%M"), obs_limpa]
+                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [ordem_limpa, item_limpo, "AGUARDANDO MÁQUINA", datetime.now(FUSO_BR).strftime("%H:%M"), obs_final]
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                             st.session_state['gaveta_selecionada'] = None
                             st.success(f"✅ Setup guardado na gaveta da MÁQUINA {pos_sel}!")
@@ -1863,6 +1878,17 @@ def tela_armarios():
         else:
             with st.form("form_editar_excluir"):
                 st.warning("🟩 Gaveta OCUPADA - Altere os dados abaixo para corrigir ou exclua o registro.")
+                
+                motivos_rapidos = [
+                    "-- Selecione um Motivo Rápido (Opcional) --",
+                    "Aguardando Cor",
+                    "Aguardando Almoxarifado",
+                    "Aguardando PCP",
+                    "Em Preparação",
+                    "Em Sequência"
+                ]
+                motivo_select = st.selectbox("Motivo / Caminho Rápido:", motivos_rapidos)
+
                 c_op, c_it = st.columns(2)
                 nova_op = c_op.text_input("Ordem de Produção (OP):", value=op_sel)
                 novo_item = c_it.text_input("Item / Peça:", value=item_sel)
@@ -1870,11 +1896,18 @@ def tela_armarios():
                 
                 c1, c2, c3 = st.columns(3)
                 if c1.form_submit_button("💾 Atualizar", type="primary", use_container_width=True):
-                    if not nova_op.strip() and not nova_obs.strip(): st.error("⚠️ É obrigatório possuir uma Ordem (OP) ou uma Observação!")
+                    obs_final = motivo_select if motivo_select != motivos_rapidos[0] else ""
+                    if nova_obs.strip():
+                        obs_final = f"{obs_final} - {nova_obs.strip()}" if obs_final else nova_obs.strip()
+                    else:
+                        obs_final = nova_obs.strip() if nova_obs.strip() else str(obs_sel)
+
+                    if not nova_op.strip() and not obs_final.strip(): 
+                        st.error("⚠️ É obrigatório possuir uma Ordem (OP) ou uma Observação!")
                     else:
                         idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                         if not idx.empty:
-                            df_arm.loc[idx, ['Ordem', 'Item', 'Observacao']] = [nova_op.strip().upper().replace(".0", ""), novo_item.strip().upper().replace(".0", ""), nova_obs.strip()]
+                            df_arm.loc[idx, ['Ordem', 'Item', 'Observacao']] = [nova_op.strip().upper().replace(".0", "").lstrip("0"), novo_item.strip().upper().replace(".0", "").lstrip("0"), obs_final]
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                             st.session_state['gaveta_selecionada'] = None
                             st.success("✅ Gaveta atualizada com sucesso!")
@@ -1923,7 +1956,12 @@ def tela_armarios():
                                     gav = gavetas[linha + c]
                                     num = gav['Posicao']
                                     status = gav['Status']
-                                    if status == 'VAZIO': btn_label = f"🟥 MAQ {num}\nVAZIO"
+                                    if status == 'VAZIO': 
+                                        obs_vazio = str(gav.get('Observacao', '')).replace('nan', '').strip()
+                                        if obs_vazio:
+                                            btn_label = f"🟥 MAQ {num}\n{obs_vazio[:10]}..."
+                                        else:
+                                            btn_label = f"🟥 MAQ {num}\nVAZIO"
                                     else:
                                         op_f = str(gav.get('Ordem', '')).replace('.0', '').replace('nan', '')
                                         obs_f = str(gav.get('Observacao', '')).replace('nan', '').strip()
@@ -1953,21 +1991,36 @@ def tela_armarios():
                     pos_vazias_sorted = sorted([int(x) for x in pos_vazias_lista])
                     pos_sel = c2.selectbox("Máquina Alvo:", [str(x) for x in pos_vazias_sorted])
 
+                motivos_rapidos = [
+                    "-- Selecione um Motivo Rápido (Opcional) --",
+                    "Aguardando Cor",
+                    "Aguardando Almoxarifado",
+                    "Aguardando PCP",
+                    "Em Preparação",
+                    "Em Sequência"
+                ]
+                motivo_select = st.selectbox("Motivo / Caminho Rápido:", motivos_rapidos)
+
                 c_op, c_it = st.columns(2)
                 ordem_in = c_op.text_input("Ordem de Produção (OP):", placeholder="Ex: 987654")
                 item_in = c_it.text_input("Item / Peça:", placeholder="Ex: 313324")
-                obs_in = st.text_input("Observação / Justificativa (Obrigatório se não houver OP):", placeholder="Justificativa...")
+                obs_in = st.text_input("Observação Adicional:", placeholder="Detalhes...")
 
                 if st.form_submit_button("📥 GUARDAR NO ARMÁRIO", type="primary"):
-                    if not ordem_in.strip() and not obs_in.strip(): st.error("⚠️ A Ordem (OP) ou uma Observação justificando são obrigatórias!")
+                    obs_final = motivo_select if motivo_select != motivos_rapidos[0] else ""
+                    if obs_in.strip():
+                        obs_final = f"{obs_final} - {obs_in.strip()}" if obs_final else obs_in.strip()
+
+                    if not ordem_in.strip() and not obs_final.strip(): st.error("⚠️ A Ordem (OP) ou um Motivo Rápido são obrigatórios!")
                     elif pos_sel is None: st.error("⚠️ Não há posições disponíveis selecionadas!")
                     else:
-                        ordem_limpa = ordem_in.strip().upper().replace(".0", "")
-                        item_limpo = item_in.strip().upper().replace(".0", "")
-                        obs_limpa = obs_in.strip()
+                        ordem_limpa = ordem_in.strip().upper().replace(".0", "").lstrip("0")
+                        item_limpo = item_in.strip().upper().replace(".0", "").lstrip("0")
                         idx = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                         if not idx.empty:
-                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [ordem_limpa, item_limpo, "AGUARDANDO MÁQUINA", datetime.now(FUSO_BR).strftime("%H:%M"), obs_limpa]
+                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [
+                                ordem_limpa, item_limpo, "AGUARDANDO MÁQUINA", datetime.now(FUSO_BR).strftime("%H:%M"), obs_final
+                            ]
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                             st.success(f"✅ Ferramental guardado para a MAQ {pos_sel} do {armario_sel}!")
                             time.sleep(1.5); st.rerun()
@@ -2006,7 +2059,7 @@ def tela_armarios():
                     df_rebolos.columns = novas_colunas
                     if 'ITEM' in df_rebolos.columns:
                         df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM'].astype(str).str.upper()
-                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM_BUSCA'].apply(lambda x: re.sub(r'\.0$', '', x.strip()))
+                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM_BUSCA'].apply(lambda x: re.sub(r'\.0$', '', x.strip()).lstrip("0"))
                 except Exception as e: erro_leitura = f"Erro do Python: {e}"
             else: erro_leitura = f"Arquivo '{ARQUIVO_REBOLOS}' não encontrado na pasta."
 
@@ -2031,7 +2084,7 @@ def tela_armarios():
                         filtro_armario = "Afiadoras" if setor_maq == "AFC" else "Retíficas"
                         gaveta_row = df_arm[(df_arm['Posicao'] == gaveta_num) & (df_arm['Armario'].str.contains(filtro_armario))]
                         if not gaveta_row.empty:
-                            item_alvo = str(gaveta_row.iloc[0]['Item']).strip().replace('.0', '').replace('nan', '')
+                            item_alvo = str(gaveta_row.iloc[0]['Item']).strip().replace('.0', '').replace('nan', '').lstrip("0")
                     except: pass
                         
                     if not item_alvo:
@@ -2044,7 +2097,7 @@ def tela_armarios():
                     
                     if item_alvo:
                         item_busca = str(item_alvo).strip().upper()
-                        item_busca = re.sub(r'\.0$', '', item_busca)
+                        item_busca = re.sub(r'\.0$', '', item_busca).lstrip("0")
                         if erro_leitura: debug_msg = f"⚠️ FALHA AO LER EXCEL: {erro_leitura}"
                         elif df_rebolos.empty: debug_msg = "⚠️ A planilha foi lida, mas a aba 'Banco De Rebolos' estava em branco."
                         elif 'ITEM_BUSCA' not in df_rebolos.columns: debug_msg = f"⚠️ Coluna de 'Item' não detectada."
