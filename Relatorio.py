@@ -117,11 +117,7 @@ ARQUIVO_ARMARIOS = "banco_armarios.csv"
 ARQUIVO_ALERTAS = "alertas_preset.csv"
 ARQUIVO_CNC = "banco_cnc.csv"
 ARQUIVO_FECHAMENTO = "ultimo_fechamento.csv"
-
-# --- SUPER BLINDAGEM DE CAMINHO PARA O EXCEL ---
-import os
-DIRETORIO_ATUAL = os.path.dirname(os.path.abspath(__file__))
-ARQUIVO_REBOLOS = os.path.join(DIRETORIO_ATUAL, "rebolos.xlsx")
+ARQUIVO_REBOLOS = "rebolos.xlsx" # Deixe apenas assim!
 
 # --- FUNÇÕES UTILITÁRIAS ---
 def turno_atual_horario():
@@ -2156,7 +2152,8 @@ def tela_armarios():
             
             if os.path.exists(ARQUIVO_REBOLOS):
                 try:
-                    # AGORA SIM: Lendo a aba específica 'Banco De Rebolos'
+                    import unicodedata
+                    # Lendo a aba específica 'Banco De Rebolos'
                     df_rebolos = pd.read_excel(ARQUIVO_REBOLOS, sheet_name='Banco De Rebolos', engine='openpyxl')
                     
                     # 1. SUPER BLINDAGEM DE COLUNAS
@@ -2175,7 +2172,10 @@ def tela_armarios():
                 except Exception as e:
                     erro_leitura = f"Erro do Python: {e}"
             else:
-                erro_leitura = f"Arquivo '{ARQUIVO_REBOLOS}' não encontrado na pasta."
+                import os
+                # Se não achar, o sistema vai pegar a lista de todos os arquivos que estão na pasta pra gente ver!
+                arquivos_encontrados = os.listdir('.')
+                erro_leitura = f"O arquivo '{ARQUIVO_REBOLOS}' não foi encontrado. Veja os arquivos que o servidor encontrou: {arquivos_encontrados}"
 
             status_dict = ler_status_atual()
             alertas_rebolo = []
