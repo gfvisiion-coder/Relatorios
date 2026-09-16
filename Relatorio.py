@@ -1864,7 +1864,7 @@ def tela_armarios():
                         item_limpo = item_in.strip().upper().replace(".0", "").lstrip("0")
                         idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                         if not idx.empty:
-                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [ordem_limpa, item_limpo, "AGUARDANDO MÁQUINA", datetime.now(FUSO_BR).strftime("%H:%M"), obs_final]
+                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [ordem_limpo, item_limpo, "AGUARDANDO MÁQUINA", datetime.now(FUSO_BR).strftime("%H:%M"), obs_final]
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                             st.session_state['gaveta_selecionada'] = None
                             st.success(f"✅ Setup guardado na gaveta da MÁQUINA {pos_sel}!")
@@ -1878,7 +1878,7 @@ def tela_armarios():
                 
                 motivos_rapidos = [
                     "-- Selecione um Motivo Rápido (Opcional) --",
-                    "Aguardando Cor",
+                    "Aguardando Jagura",
                     "Aguardando Almoxarifado",
                     "Aguardando PCP",
                     "Em Preparação",
@@ -1956,14 +1956,15 @@ def tela_armarios():
                                     obs_val = str(gav.get('Observacao', '')).upper()
                                     op_f = str(gav.get('Ordem', '')).replace('.0', '').replace('nan', '')
                                     
+                                    # CORES E ÍCONES DISTINTOS PARA CADA STATUS
                                     if status == 'VAZIO':
-                                        if "AGUARDANDO COR" in obs_val:
-                                            btn_label = f"🎨 MAQ {num}\nAG. COR"
+                                        if "AGUARDANDO JAGURA" in obs_val or "JAGURA" in obs_val:
+                                            btn_label = f"🐆 MAQ {num}\nAG. JAG."
                                         elif "ALMOXARIFADO" in obs_val:
                                             btn_label = f"📦 MAQ {num}\nALMOX."
                                         elif "PCP" in obs_val:
                                             btn_label = f"📋 MAQ {num}\nPCP"
-                                        elif "PREPARAÇÃO" in obs_val:
+                                        elif "PREPARAÇÃO" in obs_val or "PREPARACAO" in obs_val:
                                             btn_label = f"⚙️ MAQ {num}\nPREP."
                                         elif "SEQUÊNCIA" in obs_val or "SEQUENCIA" in obs_val:
                                             btn_label = f"🔄 MAQ {num}\nSEQ."
@@ -1999,7 +2000,7 @@ def tela_armarios():
 
                 motivos_rapidos = [
                     "-- Selecione um Motivo Rápido (Opcional) --",
-                    "Aguardando Cor",
+                    "Aguardando Jagura",
                     "Aguardando Almoxarifado",
                     "Aguardando PCP",
                     "Em Preparação",
