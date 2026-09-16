@@ -2015,7 +2015,7 @@ def tela_armarios():
         
         st.divider()
 
-    aba1, aba2, aba3 = st.tabs(["👁️ Visão Física (Gavetas)", "➕ Alimentar (Lista Clássica)", "🔔 Alertas e Histórico"])
+    aba1, aba2, aba3, aba4 = st.tabs(["👁️ Visão Física (Gavetas)", "➕ Alimentar (Lista Clássica)", "🔔 Alertas e Histórico", "🔄 Troca de Rebolo"])
 
     # --- ABA 1: VISUALIZAÇÃO FÍSICA DOS ARMÁRIOS ---
     with aba1:
@@ -2064,7 +2064,7 @@ def tela_armarios():
                                             btn_label = f"🟩 MAQ {num}\nOBS: {obs_f[:8]}..."
                                         else:
                                             btn_label = f"🟩 MAQ {num}\nOCUPADO"
-                                        
+                                    
                                     if cols_gaveta[c].button(btn_label, key=f"btn_gav_{arm}_{num}", use_container_width=True):
                                         if st.session_state['perfil'] in ['preset', 'adm']:
                                             st.session_state['gaveta_selecionada'] = {
@@ -2139,6 +2139,41 @@ def tela_armarios():
                 st.info("Nenhum alerta registrado ainda.")
         else:
             st.info("Nenhum alerta registrado ainda.")
+            
+    # --- ABA 4: AVISOS DE TROCA DE REBOLO ---
+    with aba4:
+        st.markdown("#### 🔄 Alertas de Troca de Rebolo")
+        if st.session_state.get('perfil') in ['preset', 'adm']:
+            st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Máquinas agendadas ou em andamento que necessitam de troca de rebolo (Preparação ou Sequência).</p>", unsafe_allow_html=True)
+            status_dict = ler_status_atual()
+            alertas_rebolo = []
+            
+            for maq, st_val in status_dict.items():
+                if "(C/ REBOLO)" in st_val.upper() and "PRODUZINDO" not in st_val.upper():
+                    hora_alvo = ""
+                    if "AGENDADA PARA" in st_val.upper():
+                        try: hora_alvo = st_val.upper().split("AGENDADA PARA")[1].strip()
+                        except: pass
+                    elif "[AGENDADO:" in st_val.upper():
+                        try: hora_alvo = st_val.upper().split("[AGENDADO:")[1].split("]")[0].strip()
+                        except: pass
+                    
+                    st_limpo = st_val.split("[")[0].strip()
+                    alertas_rebolo.append((maq, hora_alvo, st_limpo))
+                    
+            if alertas_rebolo:
+                for maq, hora, st_limpo in alertas_rebolo:
+                    h_txt = f"⏰ Agendado para as {hora}" if hora else "🔴 Em Andamento / Imediato"
+                    st.markdown(f"""
+                    <div style='background-color: #422006; padding: 15px; border-radius: 8px; border-left: 5px solid #f59e0b; margin-bottom: 10px;'>
+                        <h5 style='margin-top:0; margin-bottom:5px; color: #fbbf24;'>⚙️ Máquina {maq} irá trocar o rebolo</h5>
+                        <p style='color: #fef3c7; margin-bottom:0; font-size:14px;'>{h_txt} <br><span style='font-size:13px; color:#d97706;'>Status Atual: {st_limpo}</span></p>
+                    </div>
+                    """, unsafe_allow_html=True)
+            else:
+                st.success("✅ Nenhuma máquina com troca de rebolo prevista no momento.")
+        else:
+            st.info("ℹ️ Aba restrita para os perfis de Pré-Set e Administração.")
 
 # --- ROTEADOR ---
 if st.session_state['tela_atual'] == 'login': tela_login()
