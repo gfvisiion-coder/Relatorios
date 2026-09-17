@@ -1959,22 +1959,33 @@ def tela_armarios():
                                     op_f = str(gav.get('Ordem', '')).replace('.0', '').replace('nan', '')
                                     
                                     # CORES E ÍCONES DISTINTOS PARA CADA STATUS
+                                    obs_upper = obs_val.upper()
                                     if status == 'VAZIO':
-                                        if "AGUARDANDO JAGURA" in obs_val or "JAGURA" in obs_val:
-                                            btn_label = f"🐆 MAQ {num}\nAG. JAG."
-                                        elif "ALMOXARIFADO" in obs_val:
-                                            btn_label = f"📦 MAQ {num}\nALMOX."
-                                        elif "PCP" in obs_val:
-                                            btn_label = f"📋 MAQ {num}\nPCP"
-                                        elif "PREPARAÇÃO" in obs_val or "PREPARACAO" in obs_val:
-                                            btn_label = f"⚙️ MAQ {num}\nPREP."
-                                        elif "SEQUÊNCIA" in obs_val or "SEQUENCIA" in obs_val:
-                                            btn_label = f"🔄 MAQ {num}\nSEQ."
+                                        if "JAGURA" in obs_upper:
+                                            btn_label = f"🟨 MAQ {num}\nAG. JAG."
+                                        elif "ALMOXARIFADO" in obs_upper:
+                                            btn_label = f"🟦 MAQ {num}\nALMOX."
+                                        elif "PCP" in obs_upper:
+                                            btn_label = f"🟪 MAQ {num}\nPCP"
+                                        elif "PREPARAÇÃO" in obs_upper or "PREPARACAO" in obs_upper:
+                                            btn_label = f"🟧 MAQ {num}\nPREP."
+                                        elif "SEQUÊNCIA" in obs_upper or "SEQUENCIA" in obs_upper:
+                                            btn_label = f"🟫 MAQ {num}\nSEQ."
                                         else:
                                             btn_label = f"🟥 MAQ {num}\nVAZIO"
                                     else:
                                         if op_f:
                                             btn_label = f"🟩 MAQ {num}\nOP: {op_f}"
+                                        elif "JAGURA" in obs_upper:
+                                            btn_label = f"🟨 MAQ {num}\nJAGURA"
+                                        elif "ALMOXARIFADO" in obs_upper:
+                                            btn_label = f"🟦 MAQ {num}\nALMOX."
+                                        elif "PCP" in obs_upper:
+                                            btn_label = f"🟪 MAQ {num}\nPCP"
+                                        elif "PREPARAÇÃO" in obs_upper or "PREPARACAO" in obs_upper:
+                                            btn_label = f"🟧 MAQ {num}\nPREP."
+                                        elif "SEQUÊNCIA" in obs_upper or "SEQUENCIA" in obs_upper:
+                                            btn_label = f"🟫 MAQ {num}\nSEQ."
                                         else:
                                             btn_label = f"🟩 MAQ {num}\nOCUPADO"
                                     
