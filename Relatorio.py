@@ -1860,13 +1860,15 @@ def tela_armarios():
                     if not ordem_in.strip() and not obs_final.strip(): 
                         st.error("⚠️ Preencha a Ordem (OP) ou selecione um Motivo Rápido!")
                     else:
-                        # VARIÁVEIS DECLARADAS CORRETAMENTE AQUI:
                         ordem_limpo = ordem_in.strip().upper().replace(".0", "").lstrip("0")
                         item_limpo = item_in.strip().upper().replace(".0", "").lstrip("0")
                         
+                        # --- SOLUÇÃO: Se não houver OP, o status permanece VAZIO ---
+                        novo_status = "AGUARDANDO MÁQUINA" if ordem_limpo else "VAZIO"
+                        
                         idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                         if not idx.empty:
-                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [ordem_limpo, item_limpo, "AGUARDANDO MÁQUINA", datetime.now(FUSO_BR).strftime("%H:%M"), obs_final]
+                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [ordem_limpo, item_limpo, novo_status, datetime.now(FUSO_BR).strftime("%H:%M"), obs_final]
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                             st.session_state['gaveta_selecionada'] = None
                             st.success(f"✅ Setup guardado na gaveta da MÁQUINA {pos_sel}!")
@@ -1904,9 +1906,15 @@ def tela_armarios():
                     if not nova_op.strip() and not obs_final.strip(): 
                         st.error("⚠️ É obrigatório possuir uma Ordem (OP) ou uma Observação!")
                     else:
+                        ordem_limpa_upd = nova_op.strip().upper().replace(".0", "").lstrip("0")
+                        item_limpo_upd = novo_item.strip().upper().replace(".0", "").lstrip("0")
+                        
+                        # --- SOLUÇÃO: Se a OP for apagada na edição, volta pra VAZIO ---
+                        novo_status_upd = "AGUARDANDO MÁQUINA" if ordem_limpa_upd else "VAZIO"
+
                         idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                         if not idx.empty:
-                            df_arm.loc[idx, ['Ordem', 'Item', 'Observacao']] = [nova_op.strip().upper().replace(".0", "").lstrip("0"), novo_item.strip().upper().replace(".0", "").lstrip("0"), obs_final]
+                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Observacao']] = [ordem_limpa_upd, item_limpo_upd, novo_status_upd, obs_final]
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                             st.session_state['gaveta_selecionada'] = None
                             st.success("✅ Gaveta atualizada com sucesso!")
@@ -1941,6 +1949,7 @@ def tela_armarios():
                     df_filtrado['Posicao_Int'] = pd.to_numeric(df_filtrado['Posicao'], errors='coerce')
                     df_filtrado = df_filtrado.sort_values(by='Posicao_Int')
                     
+                    # Contagem agora respeitará o status VAZIO que forçamos acima
                     ocupados = len(df_filtrado[df_filtrado['Status'] != 'VAZIO'])
                     total_gavetas = len(df_filtrado)
                     
@@ -2036,10 +2045,14 @@ def tela_armarios():
                     else:
                         ordem_limpa = ordem_in.strip().upper().replace(".0", "").lstrip("0")
                         item_limpo = item_in.strip().upper().replace(".0", "").lstrip("0")
+                        
+                        # --- SOLUÇÃO: Se não houver OP, o status permanece VAZIO ---
+                        novo_status = "AGUARDANDO MÁQUINA" if ordem_limpa else "VAZIO"
+                        
                         idx = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                         if not idx.empty:
                             df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [
-                                ordem_limpa, item_limpo, "AGUARDANDO MÁQUINA", datetime.now(FUSO_BR).strftime("%H:%M"), obs_final
+                                ordem_limpa, item_limpo, novo_status, datetime.now(FUSO_BR).strftime("%H:%M"), obs_final
                             ]
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                             st.success(f"✅ Ferramental guardado para a MAQ {pos_sel} do {armario_sel}!")
