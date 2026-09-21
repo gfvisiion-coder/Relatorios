@@ -1837,347 +1837,6 @@ def tela_relatorio():
             st.success("✨ Turno encerrado manualmente! O banco de dados foi limpo e está pronto para continuar.")
             time.sleep(2); st.rerun()
 
-def tela_armarios():
-    exibir_alertas_preset()
-    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
-    st.markdown("#### 🗄️ Gestão de Armários (Pré-Set)")
-    
-    inicializar_armarios()
-    df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Item': str, 'Status': str, 'Data_Hora': str, 'Posicao': str, 'Armario': str, 'Observacao': str})
-    if 'Item' not in df_arm.columns: df_arm['Item'] = ""
-    if 'Observacao' not in df_arm.columns: df_arm['Observacao'] = ""
-
-    gaveta = st.session_state.get('gaveta_selecionada', None)
-    if gaveta:
-        arm_sel = gaveta['armario']
-        pos_sel = gaveta['posicao']
-        status_sel = gaveta['status']
-        op_sel = gaveta['ordem']
-        item_sel = gaveta['item']
-        obs_sel = gaveta.get('observacao', '')
-        
-        st.markdown(f"""
-        <div style='background: #18181B; padding: 15px; border-radius: 10px; border-left: 4px solid #14B8A6; margin-bottom: 20px;'>
-            <h4 style='margin:0; color: #2DD4BF;'>⚙️ Gerenciar: {arm_sel} - MÁQUINA {pos_sel}</h4>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        if status_sel == 'VAZIO':
-            with st.form("form_alimentar"):
-                st.info("🟥 Esta gaveta está VAZIA. Insira os dados para guardar o setup ou selecione o motivo rápido.")
-                
-                motivos_rapidos = [
-                    "-- Selecione um Motivo Rápido (Opcional) --",
-                    "Aguardando Jagura",
-                    "Aguardando Almoxarifado",
-                    "Aguardando PCP",
-                    "Em Preparação",
-                    "Em Sequência"
-                ]
-                motivo_select = st.selectbox("Motivo / Caminho Rápido:", motivos_rapidos)
-                
-                c_op, c_it = st.columns(2)
-                ordem_in = c_op.text_input("Ordem de Produção (OP):", placeholder="Ex: 987654")
-                item_in = c_it.text_input("Item / Peça:", placeholder="Ex: 313324")
-                obs_in = st.text_input("Observação Adicional / Detalhes:", placeholder="Detalhes opcionais...")
-                
-                c1, c2 = st.columns(2)
-                if c1.form_submit_button("📥 GUARDAR SETUP", type="primary", use_container_width=True):
-                    obs_final = motivo_select if motivo_select != motivos_rapidos[0] else ""
-                    if obs_in.strip():
-                        obs_final = f"{obs_final} - {obs_in.strip()}" if obs_final else obs_in.strip()
-
-                    if not ordem_in.strip() and not obs_final.strip(): 
-                        st.error("⚠️ Preencha a Ordem (OP) ou selecione um Motivo Rápido!")
-                    else:
-                        ordem_limpo = ordem_in.strip().upper().replace(".0", "").lstrip("0")
-                        item_limpo = item_in.strip().upper().replace(".0", "").lstrip("0")
-                        
-                        novo_status = "AGUARDANDO MÁQUINA" if ordem_limpo else "VAZIO"
-                        
-                        idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
-                        if not idx.empty:
-                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [ordem_limpo, item_limpo, novo_status, datetime.now(FUSO_BR).strftime("%H:%M"), obs_final]
-                            df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
-                            st.session_state['gaveta_selecionada'] = None
-                            st.success(f"✅ Setup guardado na gaveta da MÁQUINA {pos_sel}!")
-                            time.sleep(1); st.rerun()
-                if c2.form_submit_button("❌ Cancelar", use_container_width=True):
-                    st.session_state['gaveta_selecionada'] = None
-                    st.rerun()
-        else:
-            with st.form("form_editar_excluir"):
-                st.warning("🟩 Gaveta OCUPADA - Altere os dados abaixo para corrigir ou exclua o registro.")
-                
-                motivos_rapidos = [
-                    "-- Selecione um Motivo Rápido (Opcional) --",
-                    "Aguardando Jagura",
-                    "Aguardando Almoxarifado",
-                    "Aguardando PCP",
-                    "Em Preparação",
-                    "Em Sequência"
-                ]
-                motivo_select = st.selectbox("Motivo / Caminho Rápido:", motivos_rapidos)
-
-                c_op, c_it = st.columns(2)
-                nova_op = c_op.text_input("Ordem de Produção (OP):", value=op_sel)
-                novo_item = c_it.text_input("Item / Peça:", value=item_sel)
-                nova_obs = st.text_input("Observação / Justificativa:", value=str(obs_sel).replace('nan', ''))
-                
-                c1, c2, c3 = st.columns(3)
-                if c1.form_submit_button("💾 Atualizar", type="primary", use_container_width=True):
-                    obs_final = motivo_select if motivo_select != motivos_rapidos[0] else ""
-                    if nova_obs.strip():
-                        obs_final = f"{obs_final} - {nova_obs.strip()}" if obs_final else nova_obs.strip()
-                    else:
-                        obs_final = nova_obs.strip() if nova_obs.strip() else str(obs_sel)
-
-                    if not nova_op.strip() and not obs_final.strip(): 
-                        st.error("⚠️ É obrigatório possuir uma Ordem (OP) ou uma Observação!")
-                    else:
-                        ordem_limpa_upd = nova_op.strip().upper().replace(".0", "").lstrip("0")
-                        item_limpo_upd = novo_item.strip().upper().replace(".0", "").lstrip("0")
-                        
-                        novo_status_upd = "AGUARDANDO MÁQUINA" if ordem_limpa_upd else "VAZIO"
-
-                        idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
-                        if not idx.empty:
-                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Observacao']] = [ordem_limpa_upd, item_limpo_upd, novo_status_upd, obs_final]
-                            df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
-                            st.session_state['gaveta_selecionada'] = None
-                            st.success("✅ Gaveta atualizada com sucesso!")
-                            time.sleep(1); st.rerun()
-                if c2.form_submit_button("🗑️ Excluir", use_container_width=True):
-                    idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
-                    if not idx.empty:
-                        df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = ["", "", "VAZIO", datetime.now(FUSO_BR).strftime("%H:%M"), ""]
-                        df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
-                        st.session_state['gaveta_selecionada'] = None
-                        st.success("✅ Gaveta liberada com sucesso!")
-                        time.sleep(1); st.rerun()
-                if c3.form_submit_button("❌ Cancelar", use_container_width=True):
-                    st.session_state['gaveta_selecionada'] = None
-                    st.rerun()
-        st.divider()
-
-    aba1, aba2, aba3, aba4 = st.tabs(["👁️ Visão Física (Gavetas)", "➕ Alimentar (Lista Clássica)", "🔔 Alertas e Histórico", "🔄 Troca de Rebolo"])
-
-    with aba1:
-        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Visão estrutural. <b>Clique diretamente na gaveta</b> para alimentar (guardar) ou corrigir a OP.</p>", unsafe_allow_html=True)
-        armarios_lista = ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"]
-        
-        for row_idx in range(0, len(armarios_lista), 2):
-            c1, c2 = st.columns(2)
-            colunas_ui = [c1, c2]
-            for col_i in range(2):
-                if row_idx + col_i < len(armarios_lista):
-                    arm = armarios_lista[row_idx + col_i]
-                    col_ui = colunas_ui[col_i]
-                    df_filtrado = df_arm[df_arm['Armario'] == arm].copy()
-                    df_filtrado['Posicao_Int'] = pd.to_numeric(df_filtrado['Posicao'], errors='coerce')
-                    df_filtrado = df_filtrado.sort_values(by='Posicao_Int')
-                    
-                    ocupados = len(df_filtrado[df_filtrado['Status'] != 'VAZIO'])
-                    total_gavetas = len(df_filtrado)
-                    
-                    with col_ui.container(border=True):
-                        st.markdown(f"<h5 style='text-align: center; color: #2DD4BF; margin-bottom: 15px;'>📦 {arm} <br><span style='font-size: 12px; color: #A1A1AA;'>({ocupados}/{total_gavetas} ocupados)</span></h5>", unsafe_allow_html=True)
-                        gavetas = df_filtrado.to_dict('records')
-                        
-                        for linha in range(0, total_gavetas, 4):
-                            cols_gaveta = st.columns(4)
-                            for c in range(4):
-                                if linha + c < total_gavetas:
-                                    gav = gavetas[linha + c]
-                                    num = gav['Posicao']
-                                    status = gav['Status']
-                                    obs_val = str(gav.get('Observacao', '')).upper()
-                                    op_f = str(gav.get('Ordem', '')).replace('.0', '').replace('nan', '')
-                                    
-                                    obs_upper = obs_val.upper()
-                                    if status == 'VAZIO':
-                                        if "JAGURA" in obs_upper: btn_label = f"🟨 MAQ {num}\nAG. JAG."
-                                        elif "ALMOXARIFADO" in obs_upper: btn_label = f"🟦 MAQ {num}\nALMOX."
-                                        elif "PCP" in obs_upper: btn_label = f"🟪 MAQ {num}\nPCP"
-                                        elif "PREPARAÇÃO" in obs_upper or "PREPARACAO" in obs_upper: btn_label = f"🟧 MAQ {num}\nPREP."
-                                        elif "SEQUÊNCIA" in obs_upper or "SEQUENCIA" in obs_upper: btn_label = f"🟫 MAQ {num}\nSEQ."
-                                        else: btn_label = f"🟥 MAQ {num}\nVAZIO"
-                                    else:
-                                        if op_f: btn_label = f"🟩 MAQ {num}\nOP: {op_f}"
-                                        elif "JAGURA" in obs_upper: btn_label = f"🟨 MAQ {num}\nJAGURA"
-                                        elif "ALMOXARIFADO" in obs_upper: btn_label = f"🟦 MAQ {num}\nALMOX."
-                                        elif "PCP" in obs_upper: btn_label = f"🟪 MAQ {num}\nPCP"
-                                        elif "PREPARAÇÃO" in obs_upper or "PREPARACAO" in obs_upper: btn_label = f"🟧 MAQ {num}\nPREP."
-                                        elif "SEQUÊNCIA" in obs_upper or "SEQUENCIA" in obs_upper: btn_label = f"🟫 MAQ {num}\nSEQ."
-                                        else: btn_label = f"🟩 MAQ {num}\nOCUPADO"
-                                    
-                                    if cols_gaveta[c].button(btn_label, key=f"btn_gav_{arm}_{num}", use_container_width=True):
-                                        if st.session_state['perfil'] in ['preset', 'adm']:
-                                            st.session_state['gaveta_selecionada'] = {'armario': arm, 'posicao': num, 'status': status, 'ordem': gav.get('Ordem', ''), 'item': gav.get('Item', ''), 'observacao': gav.get('Observacao', '')}
-                                            st.rerun()
-                                        else: st.error("⚠️ Apenas Pré-Set e ADM podem gerenciar gavetas!")
-
-    with aba2:
-        if st.session_state['perfil'] in ['preset', 'adm']:
-            with st.form("form_alimentar_lista", clear_on_submit=True):
-                st.markdown("📥 **Guardar Ferramental / Setup**")
-                c1, c2 = st.columns(2)
-                armario_sel = c1.selectbox("Selecione o Armário:", ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"])
-                pos_vazias = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Status'] == 'VAZIO')]
-                pos_vazias_lista = pos_vazias['Posicao'].tolist()
-                
-                if not pos_vazias_lista:
-                    st.warning(f"O {armario_sel} está cheio!")
-                    pos_sel = None
-                else:
-                    pos_vazias_sorted = sorted([int(x) for x in pos_vazias_lista])
-                    pos_sel = c2.selectbox("Máquina Alvo:", [str(x) for x in pos_vazias_sorted])
-
-                motivos_rapidos = [
-                    "-- Selecione um Motivo Rápido (Opcional) --",
-                    "Aguardando Jagura",
-                    "Aguardando Almoxarifado",
-                    "Aguardando PCP",
-                    "Em Preparação",
-                    "Em Sequência"
-                ]
-                motivo_select = st.selectbox("Motivo / Caminho Rápido:", motivos_rapidos)
-
-                c_op, c_it = st.columns(2)
-                ordem_in = c_op.text_input("Ordem de Produção (OP):", placeholder="Ex: 987654")
-                item_in = c_it.text_input("Item / Peça:", placeholder="Ex: 313324")
-                obs_in = st.text_input("Observação Adicional:", placeholder="Detalhes...")
-
-                if st.form_submit_button("📥 GUARDAR NO ARMÁRIO", type="primary"):
-                    obs_final = motivo_select if motivo_select != motivos_rapidos[0] else ""
-                    if obs_in.strip():
-                        obs_final = f"{obs_final} - {obs_in.strip()}" if obs_final else obs_in.strip()
-
-                    if not ordem_in.strip() and not obs_final.strip(): st.error("⚠️ A Ordem (OP) ou um Motivo Rápido são obrigatórios!")
-                    elif pos_sel is None: st.error("⚠️ Não há posições disponíveis selecionadas!")
-                    else:
-                        ordem_limpa = ordem_in.strip().upper().replace(".0", "").lstrip("0")
-                        item_limpo = item_in.strip().upper().replace(".0", "").lstrip("0")
-                        
-                        novo_status = "AGUARDANDO MÁQUINA" if ordem_limpa else "VAZIO"
-                        
-                        idx = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Posicao'] == str(pos_sel))].index
-                        if not idx.empty:
-                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [
-                                ordem_limpa, item_limpo, novo_status, datetime.now(FUSO_BR).strftime("%H:%M"), obs_final
-                            ]
-                            df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
-                            st.success(f"✅ Ferramental guardado para a MAQ {pos_sel} do {armario_sel}!")
-                            time.sleep(1.5); st.rerun()
-        else: st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode inserir ou remover itens nos armários.")
-
-    with aba3:
-        st.markdown("#### 🔔 Histórico de Setups Retirados para a Produção")
-        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Acompanhe em tempo real as OPs que os preparadores retiraram das gavetas e assumiram na máquina.</p>", unsafe_allow_html=True)
-        if os.path.exists(ARQUIVO_ALERTAS):
-            df_alertas = pd.read_csv(ARQUIVO_ALERTAS)
-            if not df_alertas.empty:
-                st.dataframe(df_alertas.sort_values(by="Data_Hora", ascending=False), use_container_width=True, hide_index=True)
-                if st.session_state['perfil'] in ['preset', 'adm']:
-                    if st.button("🗑️ Limpar Histórico de Alertas", type="secondary"):
-                        os.remove(ARQUIVO_ALERTAS)
-                        st.rerun()
-            else: st.info("Nenhum alerta registrado ainda.")
-        else: st.info("Nenhum alerta registrado ainda.")
-            
-    with aba4:
-        st.markdown("#### 🔄 Alertas e Detalhamento de Rebolos")
-        if st.session_state.get('perfil') in ['preset', 'adm']:
-            st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Máquinas agendadas ou em andamento que necessitam de troca de rebolo. O sistema busca o Item automaticamente no Armário correspondente à máquina.</p>", unsafe_allow_html=True)
-            df_rebolos = pd.DataFrame()
-            erro_leitura = ""
-            
-            if os.path.exists(ARQUIVO_REBOLOS):
-                try:
-                    df_rebolos = pd.read_excel(ARQUIVO_REBOLOS, sheet_name='Banco De Rebolos', engine='openpyxl')
-                    novas_colunas = []
-                    for col in df_rebolos.columns:
-                        col_str = str(col).upper()
-                        col_str = unicodedata.normalize('NFKD', col_str).encode('ASCII', 'ignore').decode('ASCII')
-                        col_str = col_str.replace(" ", "").replace("\n", "").strip()
-                        novas_colunas.append(col_str)
-                    df_rebolos.columns = novas_colunas
-                    if 'ITEM' in df_rebolos.columns:
-                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM'].astype(str).str.upper()
-                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM_BUSCA'].apply(lambda x: re.sub(r'\.0$', '', x.strip()).lstrip("0"))
-                except Exception as e: erro_leitura = f"Erro do Python: {e}"
-            else: erro_leitura = f"Arquivo '{ARQUIVO_REBOLOS}' não encontrado na pasta."
-
-            status_dict = ler_status_atual()
-            alertas_rebolo = []
-            
-            for maq, st_val in status_dict.items():
-                if "(C/ REBOLO)" in st_val.upper() and "PRODUZINDO" not in st_val.upper():
-                    hora_alvo = ""
-                    if "AGENDADA PARA" in st_val.upper():
-                        try: hora_alvo = st_val.upper().split("AGENDADA PARA")[1].strip()
-                        except: pass
-                    elif "[AGENDADO:" in st_val.upper():
-                        try: hora_alvo = st_val.upper().split("[AGENDADO:")[1].split("]")[0].strip()
-                        except: pass
-                    
-                    st_limpo = st_val.split("[")[0].strip()
-                    item_alvo = ""
-                    try:
-                        setor_maq, maq_num = maq.split(" ", 1)
-                        gaveta_num = maq_num.split("-")[0]
-                        filtro_armario = "Afiadoras" if setor_maq == "AFC" else "Retíficas"
-                        gaveta_row = df_arm[(df_arm['Posicao'] == gaveta_num) & (df_arm['Armario'].str.contains(filtro_armario))]
-                        if not gaveta_row.empty:
-                            item_alvo = str(gaveta_row.iloc[0]['Item']).strip().replace('.0', '').replace('nan', '').lstrip("0")
-                    except: pass
-                        
-                    if not item_alvo:
-                        if "[Novo Item:" in st_val: item_alvo = st_val.split("[Novo Item:")[1].split("]")[0].strip()
-                        elif "[Item Atual:" in st_val: item_alvo = st_val.split("[Item Atual:")[1].split("]")[0].strip()
-                        elif "[Item:" in st_val: item_alvo = st_val.split("[Item:")[1].split("]")[0].strip()
-                    
-                    rebolo1, rebolo2, tipo_reb, desc = "Não cadastrado", "-", "Não cadastrado", ""
-                    debug_msg = ""
-                    
-                    if item_alvo:
-                        item_busca = str(item_alvo).strip().upper()
-                        item_busca = re.sub(r'\.0$', '', item_busca).lstrip("0")
-                        if erro_leitura: debug_msg = f"⚠️ FALHA AO LER EXCEL: {erro_leitura}"
-                        elif df_rebolos.empty: debug_msg = "⚠️ A planilha foi lida, mas a aba 'Banco De Rebolos' estava em branco."
-                        elif 'ITEM_BUSCA' not in df_rebolos.columns: debug_msg = f"⚠️ Coluna de 'Item' não detectada."
-                        else:
-                            match = df_rebolos[df_rebolos['ITEM_BUSCA'] == item_busca]
-                            if match.empty: match = df_rebolos[df_rebolos['ITEM_BUSCA'].str.contains(item_busca, regex=False, na=False)]
-                            if not match.empty:
-                                row_reb = match.iloc[0]
-                                desc = str(row_reb.get('DESCRICAO', '')).strip()
-                                rebolo1 = str(row_reb.get('REBOLO', row_reb.get('REBOLO1', ''))).strip()
-                                rebolo2 = str(row_reb.get('REBOLO2', '')).strip()
-                                tipo_reb = str(row_reb.get('TIPO', '')).strip()
-                                if rebolo1.lower() in ['nan', 'none', '']: rebolo1 = "Não cadastrado"
-                                if rebolo2.lower() in ['nan', 'none', '']: rebolo2 = "-"
-                                if tipo_reb.lower() in ['nan', 'none', '']: tipo_reb = "-"
-                                if desc.lower() in ['nan', 'none', '']: desc = ""
-                            else: debug_msg = f"🔍 Item '{item_busca}' não encontrado."
-
-                    alertas_rebolo.append((maq, hora_alvo, st_limpo, item_alvo, desc, rebolo1, rebolo2, tipo_reb, debug_msg))
-                    
-            if alertas_rebolo:
-                for maq, hora, st_limpo, item_alvo, desc, reb1, reb2, tipo_reb, dbg in alertas_rebolo:
-                    h_txt = f"⏰ Agendado para as {hora}" if hora else "🔴 Em Andamento / Imediato"
-                    if item_alvo:
-                        desc_str = f"({desc})" if desc else ""
-                        reb2_html = f"<p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🔄 Rebolo 2: <b style='color: #2DD4BF;'>{reb2}</b></p>" if reb2 and reb2 != '-' else ""
-                        dbg_html = f"<p style='margin: 10px 0 0 0; font-size: 11px; color: #ef4444; font-weight: bold;'>{dbg}</p>" if dbg else ""
-                        info_reb = f"""<div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'><p style='margin: 0; font-size: 13px; color: #A1A1AA;'>📦 Item no Armário: <b style='color: #F4F4F5;'>{item_alvo}</b> <span style='color:#71717A;'>{desc_str}</span></p><p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🔄 Rebolo 1: <b style='color: #2DD4BF;'>{reb1}</b></p>{reb2_html}<p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🏷️ Tipo: <b style='color: #F4F4F5;'>{tipo_reb}</b></p>{dbg_html}</div>"""
-                    else:
-                        info_reb = f"""<div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'><p style='margin: 0; font-size: 13px; color: #ef4444;'>⚠️ Gaveta vazia e item não informado.</p></div>"""
-
-                    st.markdown(f"""<div style='background-color: #422006; padding: 15px; border-radius: 8px; border-left: 5px solid #f59e0b; margin-bottom: 10px;'><h5 style='margin-top:0; margin-bottom:5px; color: #fbbf24;'>⚙️ Máquina {maq} irá trocar o rebolo</h5><p style='color: #fef3c7; margin-bottom:0; font-size:14px;'>{h_txt} <br><span style='font-size:13px; color:#d97706;'>Status Atual: {st_limpo}</span></p>{info_reb}</div>""", unsafe_allow_html=True)
-            else: st.success("✅ Nenhuma máquina com troca de rebolo prevista no momento.")
-        else: st.info("ℹ️ Aba restrita para os perfis de Pré-Set e Administração.")
-
 def tela_lirs():
     if st.button("⬅️ Voltar à Central"): 
         st.session_state['lirs_maq_ativa'] = None
@@ -2190,112 +1849,164 @@ def tela_lirs():
     turno_atual = st.session_state.get('turno', 'DESCONHECIDO')
     status_dict = ler_status_atual()
     
-    # --- SELEÇÃO DE SETOR E FILA ---
-    c_s1, c_s2 = st.columns(2)
-    if c_s1.button("🏭 SETOR AFIAÇÃO", type="primary" if st.session_state['lirs_setor'] == 'AFC' else "secondary", use_container_width=True): 
-        st.session_state['lirs_setor'] = 'AFC'; st.session_state['celula_selecionada'] = None; st.session_state['lirs_maq_ativa'] = None; st.rerun()
-    if c_s2.button("🏭 SETOR RETÍFICA", type="primary" if st.session_state['lirs_setor'] == 'RTF' else "secondary", use_container_width=True): 
-        st.session_state['lirs_setor'] = 'RTF'; st.session_state['celula_selecionada'] = None; st.session_state['lirs_maq_ativa'] = None; st.rerun()
+    # --- DIVISÃO POR ABAS (TABS) ---
+    aba_execucao, aba_relatorio = st.tabs(["🧹 Executar LIRS", "📊 Relatório LIRS"])
+    
+    # ==========================================
+    # ABA 1: EXECUÇÃO DO LIRS
+    # ==========================================
+    with aba_execucao:
+        c_s1, c_s2 = st.columns(2)
+        if c_s1.button("🏭 SETOR AFIAÇÃO", type="primary" if st.session_state['lirs_setor'] == 'AFC' else "secondary", use_container_width=True): 
+            st.session_state['lirs_setor'] = 'AFC'; st.session_state['celula_selecionada'] = None; st.session_state['lirs_maq_ativa'] = None; st.rerun()
+        if c_s2.button("🏭 SETOR RETÍFICA", type="primary" if st.session_state['lirs_setor'] == 'RTF' else "secondary", use_container_width=True): 
+            st.session_state['lirs_setor'] = 'RTF'; st.session_state['celula_selecionada'] = None; st.session_state['lirs_maq_ativa'] = None; st.rerun()
 
-    setor = st.session_state['lirs_setor']
-    st.divider()
+        setor = st.session_state['lirs_setor']
+        st.divider()
 
-    # --- LÓGICA DE FILAS (Aproveitando as listas existentes) ---
-    if st.session_state['celula_selecionada'] is None:
-        if st.button("📍 Fila 1", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_1'; st.rerun()
-        if st.button("📍 Fila 2", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_2'; st.rerun()
-        if st.button("📍 Fila 3", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_3'; st.rerun()
-        if st.button("📍 Fila 4", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_4'; st.rerun()
-        if setor == 'RTF':
-            st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
-            if st.button("⚫ Centerless (CNC1)", use_container_width=True): st.session_state['celula_selecionada'] = 'centerless'; st.rerun()
-            if st.button("🟤 Facetadoras (CNC2)", use_container_width=True): st.session_state['celula_selecionada'] = 'facetadoras'; st.rerun()
-    else:
-        if st.button("⬅️ Trocar de Fila"): st.session_state['celula_selecionada'] = None; st.session_state['lirs_maq_ativa'] = None; st.rerun()
-        
-        # Define as máquinas da fila selecionada
-        maquinas_foco = []
-        if setor == 'AFC':
-            if st.session_state['celula_selecionada'] == 'fila_1': maquinas_foco = ["6-868", "9-088", "7-743", "11-365", "13-964", "15-973", "17-140", "19-760", "21-206", "23-165", "25-209", "27-431"]
-            elif st.session_state['celula_selecionada'] == 'fila_2': maquinas_foco = ["8-247", "4-427", "10-812", "12-367", "14-967", "16-975", "18-957", "20-774", "22-813", "24-761", "26-635", "28-432"]
-            elif st.session_state['celula_selecionada'] == 'fila_3': maquinas_foco = ["29-078", "31-969", "33-160", "35-131", "37-892", "39-905", "41-141"]
-            elif st.session_state['celula_selecionada'] == 'fila_4': maquinas_foco = ["30-161", "32-081", "34-132", "36-084", "38-596", "40-142"]
+        if st.session_state['celula_selecionada'] is None:
+            if st.button("📍 Fila 1", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_1'; st.rerun()
+            if st.button("📍 Fila 2", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_2'; st.rerun()
+            if st.button("📍 Fila 3", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_3'; st.rerun()
+            if st.button("📍 Fila 4", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_4'; st.rerun()
+            if setor == 'RTF':
+                st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
+                if st.button("⚫ Centerless (CNC1)", use_container_width=True): st.session_state['celula_selecionada'] = 'centerless'; st.rerun()
+                if st.button("🟤 Facetadoras (CNC2)", use_container_width=True): st.session_state['celula_selecionada'] = 'facetadoras'; st.rerun()
         else:
-            tipos_dict = ler_tipos_cnc()
-            base_f1 = ["5-903", "8-086", "10-817", "12-962", "14-971", "16-183", "19-926", "21-270", "23-753", "25-258", "27-917"]
-            base_f2 = ["7-267", "9-815", "11-363", "13-969", "15-977", "18-925", "20-927", "22-916", "24-259", "26-260", "28-954"]
-            base_f3 = ["29-785", "31-806", "33-807", "35-885", "37-857", "39-856"]
-            base_f4 = ["30-786", "32-918", "34-842", "36-854", "38-881", "40-912", "42-885"]
-            todas_cnc1 = [m for m in TODAS_RTF if tipos_dict.get(m) == "RTF_CNC1"]
-            todas_cnc2 = [m for m in TODAS_RTF if tipos_dict.get(m) == "RTF_CNC2"]
-            todas_cnc3 = [m for m in TODAS_RTF if tipos_dict.get(m) == "RTF_CNC3"]
+            if st.button("⬅️ Trocar de Fila"): st.session_state['celula_selecionada'] = None; st.session_state['lirs_maq_ativa'] = None; st.rerun()
             
-            if st.session_state['celula_selecionada'] == 'fila_1': maquinas_foco = [m for m in base_f1 if m in todas_cnc3]
-            elif st.session_state['celula_selecionada'] == 'fila_2': maquinas_foco = [m for m in base_f2 if m in todas_cnc3]
-            elif st.session_state['celula_selecionada'] == 'fila_3': maquinas_foco = [m for m in base_f3 if m in todas_cnc3]
-            elif st.session_state['celula_selecionada'] == 'fila_4': 
-                nativos = set(base_f1 + base_f2 + base_f3 + base_f4)
-                extraviados = [m for m in todas_cnc3 if m not in nativos]
-                maquinas_foco = [m for m in base_f4 if m in todas_cnc3] + extraviados
-            elif st.session_state['celula_selecionada'] == 'centerless': maquinas_foco = todas_cnc1
-            elif st.session_state['celula_selecionada'] == 'facetadoras': maquinas_foco = todas_cnc2
-
-        st.markdown(f"**Máquinas da {str(st.session_state['celula_selecionada']).upper().replace('_', ' ')}**")
-        
-        # --- PAINEL DE CHECKLIST QUANDO UMA MÁQUINA É CLICADA ---
-        maq_ativa = st.session_state.get('lirs_maq_ativa')
-        if maq_ativa:
-            st.markdown(f"""
-            <div style='background-color: #121214; padding: 15px; border: 2px solid #14B8A6; border-radius: 8px; margin-bottom: 15px;'>
-                <h4 style='color: #5EEAD4; margin-top:0;'>📋 LIRS - MÁQUINA {maq_ativa}</h4>
-                <p style='color: #A1A1AA; font-size: 14px;'>Turno Auditando: <b>{turno_atual}</b></p>
-            </div>
-            """, unsafe_allow_html=True)
-            
-            with st.form(f"form_checklist_{maq_ativa}"):
-                c1 = st.checkbox("📏 Instrumentos de medição no local correto?")
-                c2 = st.checkbox("🗑️ Pote de transporte e de refugo nos devidos lugares?")
-                c3 = st.checkbox("🗃️ Bandejas estão OK e com etiquetas?")
-                c4 = st.checkbox("🏷️ Ordem de Produção (OP) confere com as etiquetas?")
-                
-                if st.form_submit_button("✅ CONFIRMAR LIRS", type="primary", use_container_width=True):
-                    if not all([c1, c2, c3, c4]):
-                        st.error("⚠️ Você deve confirmar (marcar) todos os itens para liberar a linha!")
-                    else:
-                        info_atual = obter_info_maquina(maq_ativa, setor)
-                        if info_atual:
-                            st_atual = str(info_atual['Status'])
-                            # Remove LIRS de turnos anteriores se houver (limpa a string)
-                            st_atual = re.sub(r' \[LIRS:.*?\]', '', st_atual) 
-                            # Adiciona a nova tag
-                            st_final = f"{st_atual} [LIRS: OK {turno_atual}]"
-                            
-                            hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                            salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_ativa}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
-                            
-                            st.session_state['lirs_maq_ativa'] = None
-                            st.success(f"✅ Limpeza de linha da máquina {maq_ativa} realizada pelo {turno_atual}!")
-                            time.sleep(1); st.rerun()
-
-        # --- GRID DE MÁQUINAS ---
-        for maq in ordenar_maquinas(maquinas_foco):
-            st_val = status_dict.get(f"{setor} {maq}", "")
-            
-            # Checagem visual se o LIRS já foi feito NESTE turno
-            tag_lirs_atual = f"[LIRS: OK {turno_atual}]"
-            
-            if tag_lirs_atual in st_val:
-                cor_btn = "🟢 LIRS OK"
+            maquinas_foco = []
+            if setor == 'AFC':
+                if st.session_state['celula_selecionada'] == 'fila_1': maquinas_foco = ["6-868", "9-088", "7-743", "11-365", "13-964", "15-973", "17-140", "19-760", "21-206", "23-165", "25-209", "27-431"]
+                elif st.session_state['celula_selecionada'] == 'fila_2': maquinas_foco = ["8-247", "4-427", "10-812", "12-367", "14-967", "16-975", "18-957", "20-774", "22-813", "24-761", "26-635", "28-432"]
+                elif st.session_state['celula_selecionada'] == 'fila_3': maquinas_foco = ["29-078", "31-969", "33-160", "35-131", "37-892", "39-905", "41-141"]
+                elif st.session_state['celula_selecionada'] == 'fila_4': maquinas_foco = ["30-161", "32-081", "34-132", "36-084", "38-596", "40-142"]
             else:
-                cor_btn = "🔴 PENDENTE"
+                tipos_dict = ler_tipos_cnc()
+                base_f1 = ["5-903", "8-086", "10-817", "12-962", "14-971", "16-183", "19-926", "21-270", "23-753", "25-258", "27-917"]
+                base_f2 = ["7-267", "9-815", "11-363", "13-969", "15-977", "18-925", "20-927", "22-916", "24-259", "26-260", "28-954"]
+                base_f3 = ["29-785", "31-806", "33-807", "35-885", "37-857", "39-856"]
+                base_f4 = ["30-786", "32-918", "34-842", "36-854", "38-881", "40-912", "42-885"]
+                todas_cnc1 = [m for m in TODAS_RTF if tipos_dict.get(m) == "RTF_CNC1"]
+                todas_cnc2 = [m for m in TODAS_RTF if tipos_dict.get(m) == "RTF_CNC2"]
+                todas_cnc3 = [m for m in TODAS_RTF if tipos_dict.get(m) == "RTF_CNC3"]
                 
-            label_botao = f"{cor_btn} - MÁQ {maq}"
+                if st.session_state['celula_selecionada'] == 'fila_1': maquinas_foco = [m for m in base_f1 if m in todas_cnc3]
+                elif st.session_state['celula_selecionada'] == 'fila_2': maquinas_foco = [m for m in base_f2 if m in todas_cnc3]
+                elif st.session_state['celula_selecionada'] == 'fila_3': maquinas_foco = [m for m in base_f3 if m in todas_cnc3]
+                elif st.session_state['celula_selecionada'] == 'fila_4': 
+                    nativos = set(base_f1 + base_f2 + base_f3 + base_f4)
+                    extraviados = [m for m in todas_cnc3 if m not in nativos]
+                    maquinas_foco = [m for m in base_f4 if m in todas_cnc3] + extraviados
+                elif st.session_state['celula_selecionada'] == 'centerless': maquinas_foco = todas_cnc1
+                elif st.session_state['celula_selecionada'] == 'facetadoras': maquinas_foco = todas_cnc2
+
+            st.markdown(f"**Máquinas da {str(st.session_state['celula_selecionada']).upper().replace('_', ' ')}**")
             
-            if st.button(label_botao, key=f"lirs_btn_{maq}", use_container_width=True):
-                if tag_lirs_atual in st_val:
-                    st.toast(f"O LIRS da máquina {maq} já foi feito neste turno!", icon="✅")
-                st.session_state['lirs_maq_ativa'] = maq
-                st.rerun()
+            maq_ativa = st.session_state.get('lirs_maq_ativa')
+            if maq_ativa:
+                st.markdown(f"""
+                <div style='background-color: #121214; padding: 15px; border: 2px solid #14B8A6; border-radius: 8px; margin-bottom: 15px;'>
+                    <h4 style='color: #5EEAD4; margin-top:0;'>📋 LIRS - MÁQUINA {maq_ativa}</h4>
+                    <p style='color: #A1A1AA; font-size: 14px;'>Turno Auditando: <b>{turno_atual}</b></p>
+                </div>
+                """, unsafe_allow_html=True)
+                
+                with st.form(f"form_checklist_{maq_ativa}"):
+                    c1 = st.checkbox("📏 Instrumentos de medição no local correto?")
+                    c2 = st.checkbox("🗑️ Pote de transporte e de refugo nos devidos lugares?")
+                    c3 = st.checkbox("🗃️ Bandejas estão OK e com etiquetas?")
+                    c4 = st.checkbox("🏷️ Ordem de Produção (OP) confere com as etiquetas?")
+                    
+                    if st.form_submit_button("✅ CONFIRMAR LIRS", type="primary", use_container_width=True):
+                        if not all([c1, c2, c3, c4]):
+                            st.error("⚠️ Você deve confirmar (marcar) todos os itens para liberar a linha!")
+                        else:
+                            info_atual = obter_info_maquina(maq_ativa, setor)
+                            if info_atual:
+                                st_atual = str(info_atual['Status'])
+                                st_atual = re.sub(r' \[LIRS:.*?\]', '', st_atual) 
+                                st_final = f"{st_atual} [LIRS: OK {turno_atual}]"
+                                
+                                hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                                salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_ativa}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                                
+                                st.session_state['lirs_maq_ativa'] = None
+                                st.success(f"✅ Limpeza de linha da máquina {maq_ativa} realizada pelo {turno_atual}!")
+                                time.sleep(1); st.rerun()
+
+            for maq in ordenar_maquinas(maquinas_foco):
+                st_val = status_dict.get(f"{setor} {maq}", "")
+                tag_lirs_atual = f"[LIRS: OK {turno_atual}]"
+                
+                if tag_lirs_atual in st_val: cor_btn = "🟢 LIRS OK"
+                else: cor_btn = "🔴 PENDENTE"
+                    
+                label_botao = f"{cor_btn} - MÁQ {maq}"
+                if st.button(label_botao, key=f"lirs_btn_{maq}", use_container_width=True):
+                    if tag_lirs_atual in st_val:
+                        st.toast(f"O LIRS da máquina {maq} já foi feito neste turno!", icon="✅")
+                    st.session_state['lirs_maq_ativa'] = maq
+                    st.rerun()
+
+    # ==========================================
+    # ABA 2: RELATÓRIO DO LIRS
+    # ==========================================
+    with aba_relatorio:
+        st.markdown(f"#### 📊 Resumo de Liberação de Linha (LIRS) - {turno_atual}")
+        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Este relatório atualiza em tempo real conforme as máquinas são liberadas.</p>", unsafe_allow_html=True)
+        
+        tag_busca = f"[LIRS: OK {turno_atual}]"
+        
+        ok_afc = []
+        pend_afc = []
+        ok_rtf = []
+        pend_rtf = []
+        
+        # Filtra as máquinas de AFIAÇÃO
+        for m in TODAS_AFC:
+            st_val = status_dict.get(f"AFC {m}", "")
+            if tag_busca in st_val: ok_afc.append(m)
+            else: pend_afc.append(m)
+            
+        # Filtra as máquinas de RETÍFICA
+        for m in TODAS_RTF:
+            st_val = status_dict.get(f"RTF {m}", "")
+            if tag_busca in st_val: ok_rtf.append(m)
+            else: pend_rtf.append(m)
+            
+        ok_afc = ordenar_maquinas(ok_afc)
+        pend_afc = ordenar_maquinas(pend_afc)
+        ok_rtf = ordenar_maquinas(ok_rtf)
+        pend_rtf = ordenar_maquinas(pend_rtf)
+
+        c_rel1, c_rel2 = st.columns(2)
+        with c_rel1:
+            st.markdown(f"##### 🏭 AFIAÇÃO")
+            st.markdown(f"<span style='color: #2DD4BF; font-weight: bold;'>✅ CONCLUÍDAS: {len(ok_afc)}</span>", unsafe_allow_html=True)
+            st.markdown(f"<span style='color: #ef4444; font-weight: bold;'>🔴 PENDENTES: {len(pend_afc)}</span>", unsafe_allow_html=True)
+        
+        with c_rel2:
+            st.markdown(f"##### 🏭 RETÍFICA")
+            st.markdown(f"<span style='color: #2DD4BF; font-weight: bold;'>✅ CONCLUÍDAS: {len(ok_rtf)}</span>", unsafe_allow_html=True)
+            st.markdown(f"<span style='color: #ef4444; font-weight: bold;'>🔴 PENDENTES: {len(pend_rtf)}</span>", unsafe_allow_html=True)
+            
+        st.divider()
+        st.markdown("**Copie o texto abaixo para enviar via WhatsApp / E-mail:**")
+        
+        texto_relatorio = f"*RELATÓRIO LIRS - {turno_atual}*\n\n"
+        
+        texto_relatorio += f"*🏭 AFIAÇÃO (AFC)*\n"
+        texto_relatorio += f"✅ LIRS OK ({len(ok_afc)}): {', '.join(ok_afc) if ok_afc else 'Nenhuma'}\n"
+        texto_relatorio += f"🔴 PENDENTES ({len(pend_afc)}): {', '.join(pend_afc) if pend_afc else 'Nenhuma'}\n\n"
+        
+        texto_relatorio += f"*🏭 RETÍFICA (RTF)*\n"
+        texto_relatorio += f"✅ LIRS OK ({len(ok_rtf)}): {', '.join(ok_rtf) if ok_rtf else 'Nenhuma'}\n"
+        texto_relatorio += f"🔴 PENDENTES ({len(pend_rtf)}): {', '.join(pend_rtf) if pend_rtf else 'Nenhuma'}\n"
+        
+        st.text_area(label="Texto do Relatório LIRS", value=texto_relatorio, height=250, label_visibility="collapsed")
 
 # --- ROTEADOR ---
 if st.session_state['tela_atual'] == 'login': tela_login()
