@@ -730,6 +730,8 @@ if 'gaveta_selecionada' not in st.session_state: st.session_state['gaveta_seleci
 if 'logout_realizado' not in st.session_state: st.session_state['logout_realizado'] = False
 if 'fila_prev_sel' not in st.session_state: st.session_state['fila_prev_sel'] = None
 if 'setor_prev_sel' not in st.session_state: st.session_state['setor_prev_sel'] = None
+if 'lirs_setor' not in st.session_state: st.session_state['lirs_setor'] = 'AFC'
+if 'lirs_maq_ativa' not in st.session_state: st.session_state['lirs_maq_ativa'] = None
 
 if not st.session_state['operador'] and not st.session_state['logout_realizado']:
     if cookies_salvos and "user_logado" in cookies_salvos:
@@ -747,6 +749,7 @@ def mudar_tela(nome_tela):
     st.session_state['gaveta_selecionada'] = None
     st.session_state['fila_prev_sel'] = None
     st.session_state['setor_prev_sel'] = None
+    st.session_state['lirs_maq_ativa'] = None
     st.rerun()
 
 def ler_status_atual():
@@ -1281,7 +1284,11 @@ def tela_menu():
         if st.button("🗄️ GERENCIAR ARMÁRIOS", use_container_width=True): mudar_tela('armarios')
         if st.button("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", use_container_width=True): mudar_tela('checkup')
         if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
-        if st.button("📋 RELATÓRIO GERAL CONSOLIDADO", use_container_width=True): mudar_tela('relatorio')
+        
+        c1, c2 = st.columns(2)
+        if c1.button("📋 RELATÓRIO", use_container_width=True): mudar_tela('relatorio')
+        if c2.button("🧹 LIRS", use_container_width=True): mudar_tela('lirs')
+        
         if st.button("📊 HISTÓRICOS E EXPORTAÇÕES", use_container_width=True): mudar_tela('historico')
         if st.button("✏️ GERENCIAR BANCO DE DADOS", use_container_width=True): mudar_tela('editar')
     elif perfil == 'preset':
@@ -1298,12 +1305,20 @@ def tela_menu():
         if st.button("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", use_container_width=True): mudar_tela('checkup')
         if st.button("⚡ MINHAS INCIDÊNCIAS", use_container_width=True): mudar_tela('minhas_incidencias')
         if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
-        if st.button("📋 RELATÓRIO DE TURNO", use_container_width=True): mudar_tela('relatorio')
+        
+        c1, c2 = st.columns(2)
+        if c1.button("📋 RELATÓRIO", use_container_width=True): mudar_tela('relatorio')
+        if c2.button("🧹 LIRS", use_container_width=True): mudar_tela('lirs')
+        
         if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
     else:
         if st.button("📊 VISÃO GERAL DE FÁBRICA", use_container_width=True, type="primary"): mudar_tela('visao_geral')
         if st.button("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", use_container_width=True): mudar_tela('checkup')
-        if st.button("📋 FECHAMENTO DE TURNO", use_container_width=True): mudar_tela('relatorio')
+        
+        c1, c2 = st.columns(2)
+        if c1.button("📋 RELATÓRIO", use_container_width=True): mudar_tela('relatorio')
+        if c2.button("🧹 LIRS", use_container_width=True): mudar_tela('lirs')
+        
         if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
     
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
@@ -1863,7 +1878,6 @@ def tela_armarios():
                         ordem_limpo = ordem_in.strip().upper().replace(".0", "").lstrip("0")
                         item_limpo = item_in.strip().upper().replace(".0", "").lstrip("0")
                         
-                        # --- SOLUÇÃO: Se não houver OP, o status permanece VAZIO ---
                         novo_status = "AGUARDANDO MÁQUINA" if ordem_limpo else "VAZIO"
                         
                         idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
@@ -1909,7 +1923,6 @@ def tela_armarios():
                         ordem_limpa_upd = nova_op.strip().upper().replace(".0", "").lstrip("0")
                         item_limpo_upd = novo_item.strip().upper().replace(".0", "").lstrip("0")
                         
-                        # --- SOLUÇÃO: Se a OP for apagada na edição, volta pra VAZIO ---
                         novo_status_upd = "AGUARDANDO MÁQUINA" if ordem_limpa_upd else "VAZIO"
 
                         idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
@@ -1949,7 +1962,6 @@ def tela_armarios():
                     df_filtrado['Posicao_Int'] = pd.to_numeric(df_filtrado['Posicao'], errors='coerce')
                     df_filtrado = df_filtrado.sort_values(by='Posicao_Int')
                     
-                    # Contagem agora respeitará o status VAZIO que forçamos acima
                     ocupados = len(df_filtrado[df_filtrado['Status'] != 'VAZIO'])
                     total_gavetas = len(df_filtrado)
                     
@@ -1967,36 +1979,22 @@ def tela_armarios():
                                     obs_val = str(gav.get('Observacao', '')).upper()
                                     op_f = str(gav.get('Ordem', '')).replace('.0', '').replace('nan', '')
                                     
-                                    # CORES E ÍCONES DISTINTOS PARA CADA STATUS
                                     obs_upper = obs_val.upper()
                                     if status == 'VAZIO':
-                                        if "JAGURA" in obs_upper:
-                                            btn_label = f"🟨 MAQ {num}\nAG. JAG."
-                                        elif "ALMOXARIFADO" in obs_upper:
-                                            btn_label = f"🟦 MAQ {num}\nALMOX."
-                                        elif "PCP" in obs_upper:
-                                            btn_label = f"🟪 MAQ {num}\nPCP"
-                                        elif "PREPARAÇÃO" in obs_upper or "PREPARACAO" in obs_upper:
-                                            btn_label = f"🟧 MAQ {num}\nPREP."
-                                        elif "SEQUÊNCIA" in obs_upper or "SEQUENCIA" in obs_upper:
-                                            btn_label = f"🟫 MAQ {num}\nSEQ."
-                                        else:
-                                            btn_label = f"🟥 MAQ {num}\nVAZIO"
+                                        if "JAGURA" in obs_upper: btn_label = f"🟨 MAQ {num}\nAG. JAG."
+                                        elif "ALMOXARIFADO" in obs_upper: btn_label = f"🟦 MAQ {num}\nALMOX."
+                                        elif "PCP" in obs_upper: btn_label = f"🟪 MAQ {num}\nPCP"
+                                        elif "PREPARAÇÃO" in obs_upper or "PREPARACAO" in obs_upper: btn_label = f"🟧 MAQ {num}\nPREP."
+                                        elif "SEQUÊNCIA" in obs_upper or "SEQUENCIA" in obs_upper: btn_label = f"🟫 MAQ {num}\nSEQ."
+                                        else: btn_label = f"🟥 MAQ {num}\nVAZIO"
                                     else:
-                                        if op_f:
-                                            btn_label = f"🟩 MAQ {num}\nOP: {op_f}"
-                                        elif "JAGURA" in obs_upper:
-                                            btn_label = f"🟨 MAQ {num}\nJAGURA"
-                                        elif "ALMOXARIFADO" in obs_upper:
-                                            btn_label = f"🟦 MAQ {num}\nALMOX."
-                                        elif "PCP" in obs_upper:
-                                            btn_label = f"🟪 MAQ {num}\nPCP"
-                                        elif "PREPARAÇÃO" in obs_upper or "PREPARACAO" in obs_upper:
-                                            btn_label = f"🟧 MAQ {num}\nPREP."
-                                        elif "SEQUÊNCIA" in obs_upper or "SEQUENCIA" in obs_upper:
-                                            btn_label = f"🟫 MAQ {num}\nSEQ."
-                                        else:
-                                            btn_label = f"🟩 MAQ {num}\nOCUPADO"
+                                        if op_f: btn_label = f"🟩 MAQ {num}\nOP: {op_f}"
+                                        elif "JAGURA" in obs_upper: btn_label = f"🟨 MAQ {num}\nJAGURA"
+                                        elif "ALMOXARIFADO" in obs_upper: btn_label = f"🟦 MAQ {num}\nALMOX."
+                                        elif "PCP" in obs_upper: btn_label = f"🟪 MAQ {num}\nPCP"
+                                        elif "PREPARAÇÃO" in obs_upper or "PREPARACAO" in obs_upper: btn_label = f"🟧 MAQ {num}\nPREP."
+                                        elif "SEQUÊNCIA" in obs_upper or "SEQUENCIA" in obs_upper: btn_label = f"🟫 MAQ {num}\nSEQ."
+                                        else: btn_label = f"🟩 MAQ {num}\nOCUPADO"
                                     
                                     if cols_gaveta[c].button(btn_label, key=f"btn_gav_{arm}_{num}", use_container_width=True):
                                         if st.session_state['perfil'] in ['preset', 'adm']:
@@ -2046,7 +2044,6 @@ def tela_armarios():
                         ordem_limpa = ordem_in.strip().upper().replace(".0", "").lstrip("0")
                         item_limpo = item_in.strip().upper().replace(".0", "").lstrip("0")
                         
-                        # --- SOLUÇÃO: Se não houver OP, o status permanece VAZIO ---
                         novo_status = "AGUARDANDO MÁQUINA" if ordem_limpa else "VAZIO"
                         
                         idx = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Posicao'] == str(pos_sel))].index
@@ -2166,6 +2163,125 @@ def tela_armarios():
             else: st.success("✅ Nenhuma máquina com troca de rebolo prevista no momento.")
         else: st.info("ℹ️ Aba restrita para os perfis de Pré-Set e Administração.")
 
+def tela_lirs():
+    if st.button("⬅️ Voltar ao Menu"): 
+        st.session_state['lirs_maq_ativa'] = None
+        st.session_state['celula_selecionada'] = None
+        mudar_tela('menu')
+        
+    st.markdown("#### 🧹 LIRS - Limpeza e Liberação de Linha")
+    st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Auditoria de organização da máquina. Deve ser realizada a cada troca de turno.</p>", unsafe_allow_html=True)
+    
+    turno_atual = st.session_state.get('turno', 'DESCONHECIDO')
+    status_dict = ler_status_atual()
+    
+    # --- SELEÇÃO DE SETOR E FILA ---
+    c_s1, c_s2 = st.columns(2)
+    if c_s1.button("🏭 SETOR AFIAÇÃO", type="primary" if st.session_state['lirs_setor'] == 'AFC' else "secondary", use_container_width=True): 
+        st.session_state['lirs_setor'] = 'AFC'; st.session_state['celula_selecionada'] = None; st.session_state['lirs_maq_ativa'] = None; st.rerun()
+    if c_s2.button("🏭 SETOR RETÍFICA", type="primary" if st.session_state['lirs_setor'] == 'RTF' else "secondary", use_container_width=True): 
+        st.session_state['lirs_setor'] = 'RTF'; st.session_state['celula_selecionada'] = None; st.session_state['lirs_maq_ativa'] = None; st.rerun()
+
+    setor = st.session_state['lirs_setor']
+    st.divider()
+
+    # --- LÓGICA DE FILAS (Aproveitando as listas existentes) ---
+    if st.session_state['celula_selecionada'] is None:
+        if st.button("📍 Fila 1", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_1'; st.rerun()
+        if st.button("📍 Fila 2", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_2'; st.rerun()
+        if st.button("📍 Fila 3", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_3'; st.rerun()
+        if st.button("📍 Fila 4", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_4'; st.rerun()
+        if setor == 'RTF':
+            st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
+            if st.button("⚫ Centerless (CNC1)", use_container_width=True): st.session_state['celula_selecionada'] = 'centerless'; st.rerun()
+            if st.button("🟤 Facetadoras (CNC2)", use_container_width=True): st.session_state['celula_selecionada'] = 'facetadoras'; st.rerun()
+    else:
+        if st.button("⬅️ Trocar de Fila"): st.session_state['celula_selecionada'] = None; st.session_state['lirs_maq_ativa'] = None; st.rerun()
+        
+        # Define as máquinas da fila selecionada
+        maquinas_foco = []
+        if setor == 'AFC':
+            if st.session_state['celula_selecionada'] == 'fila_1': maquinas_foco = ["6-868", "9-088", "7-743", "11-365", "13-964", "15-973", "17-140", "19-760", "21-206", "23-165", "25-209", "27-431"]
+            elif st.session_state['celula_selecionada'] == 'fila_2': maquinas_foco = ["8-247", "4-427", "10-812", "12-367", "14-967", "16-975", "18-957", "20-774", "22-813", "24-761", "26-635", "28-432"]
+            elif st.session_state['celula_selecionada'] == 'fila_3': maquinas_foco = ["29-078", "31-969", "33-160", "35-131", "37-892", "39-905", "41-141"]
+            elif st.session_state['celula_selecionada'] == 'fila_4': maquinas_foco = ["30-161", "32-081", "34-132", "36-084", "38-596", "40-142"]
+        else:
+            tipos_dict = ler_tipos_cnc()
+            base_f1 = ["5-903", "8-086", "10-817", "12-962", "14-971", "16-183", "19-926", "21-270", "23-753", "25-258", "27-917"]
+            base_f2 = ["7-267", "9-815", "11-363", "13-969", "15-977", "18-925", "20-927", "22-916", "24-259", "26-260", "28-954"]
+            base_f3 = ["29-785", "31-806", "33-807", "35-885", "37-857", "39-856"]
+            base_f4 = ["30-786", "32-918", "34-842", "36-854", "38-881", "40-912", "42-885"]
+            todas_cnc1 = [m for m in TODAS_RTF if tipos_dict.get(m) == "RTF_CNC1"]
+            todas_cnc2 = [m for m in TODAS_RTF if tipos_dict.get(m) == "RTF_CNC2"]
+            todas_cnc3 = [m for m in TODAS_RTF if tipos_dict.get(m) == "RTF_CNC3"]
+            
+            if st.session_state['celula_selecionada'] == 'fila_1': maquinas_foco = [m for m in base_f1 if m in todas_cnc3]
+            elif st.session_state['celula_selecionada'] == 'fila_2': maquinas_foco = [m for m in base_f2 if m in todas_cnc3]
+            elif st.session_state['celula_selecionada'] == 'fila_3': maquinas_foco = [m for m in base_f3 if m in todas_cnc3]
+            elif st.session_state['celula_selecionada'] == 'fila_4': 
+                nativos = set(base_f1 + base_f2 + base_f3 + base_f4)
+                extraviados = [m for m in todas_cnc3 if m not in nativos]
+                maquinas_foco = [m for m in base_f4 if m in todas_cnc3] + extraviados
+            elif st.session_state['celula_selecionada'] == 'centerless': maquinas_foco = todas_cnc1
+            elif st.session_state['celula_selecionada'] == 'facetadoras': maquinas_foco = todas_cnc2
+
+        st.markdown(f"**Máquinas da {str(st.session_state['celula_selecionada']).upper().replace('_', ' ')}**")
+        
+        # --- PAINEL DE CHECKLIST QUANDO UMA MÁQUINA É CLICADA ---
+        maq_ativa = st.session_state.get('lirs_maq_ativa')
+        if maq_ativa:
+            st.markdown(f"""
+            <div style='background-color: #121214; padding: 15px; border: 2px solid #14B8A6; border-radius: 8px; margin-bottom: 15px;'>
+                <h4 style='color: #5EEAD4; margin-top:0;'>📋 LIRS - MÁQUINA {maq_ativa}</h4>
+                <p style='color: #A1A1AA; font-size: 14px;'>Turno Auditando: <b>{turno_atual}</b></p>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            with st.form(f"form_checklist_{maq_ativa}"):
+                c1 = st.checkbox("📏 Instrumentos de medição no local correto?")
+                c2 = st.checkbox("🗑️ Pote de transporte e de refugo nos devidos lugares?")
+                c3 = st.checkbox("🗃️ Bandejas estão OK e com etiquetas?")
+                c4 = st.checkbox("🏷️ Ordem de Produção (OP) confere com as etiquetas?")
+                
+                if st.form_submit_button("✅ CONFIRMAR LIRS", type="primary", use_container_width=True):
+                    if not all([c1, c2, c3, c4]):
+                        st.error("⚠️ Você deve confirmar (marcar) todos os itens para liberar a linha!")
+                    else:
+                        info_atual = obter_info_maquina(maq_ativa, setor)
+                        if info_atual:
+                            st_atual = str(info_atual['Status'])
+                            # Remove LIRS de turnos anteriores se houver (limpa a string)
+                            st_atual = re.sub(r' \[LIRS:.*?\]', '', st_atual) 
+                            # Adiciona a nova tag
+                            st_final = f"{st_atual} [LIRS: OK {turno_atual}]"
+                            
+                            hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                            salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_ativa}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                            
+                            st.session_state['lirs_maq_ativa'] = None
+                            st.success(f"✅ Limpeza de linha da máquina {maq_ativa} realizada pelo {turno_atual}!")
+                            time.sleep(1); st.rerun()
+
+        # --- GRID DE MÁQUINAS ---
+        for maq in ordenar_maquinas(maquinas_foco):
+            st_val = status_dict.get(f"{setor} {maq}", "")
+            
+            # Checagem visual se o LIRS já foi feito NESTE turno
+            tag_lirs_atual = f"[LIRS: OK {turno_atual}]"
+            
+            if tag_lirs_atual in st_val:
+                cor_btn = "🟢 LIRS OK"
+            else:
+                cor_btn = "🔴 PENDENTE"
+                
+            label_botao = f"{cor_btn} - MÁQ {maq}"
+            
+            if st.button(label_botao, key=f"lirs_btn_{maq}", use_container_width=True):
+                if tag_lirs_atual in st_val:
+                    st.toast(f"O LIRS da máquina {maq} já foi feito neste turno!", icon="✅")
+                st.session_state['lirs_maq_ativa'] = maq
+                st.rerun()
+
 # --- ROTEADOR ---
 if st.session_state['tela_atual'] == 'login': tela_login()
 elif st.session_state['tela_atual'] == 'menu': tela_menu()
@@ -2179,3 +2295,4 @@ elif st.session_state['tela_atual'] == 'equipe': tela_equipe()
 elif st.session_state['tela_atual'] == 'editar': tela_editar()
 elif st.session_state['tela_atual'] == 'relatorio': tela_relatorio()
 elif st.session_state['tela_atual'] == 'armarios': tela_armarios()
+elif st.session_state['tela_atual'] == 'lirs': tela_lirs()
