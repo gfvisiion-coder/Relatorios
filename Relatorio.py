@@ -1261,6 +1261,33 @@ def tela_login():
                 mudar_tela('menu')
             else: st.error("⚠️ Credenciais inválidas.")
 
+def tela_hub_relatorios():
+    if st.button("⬅️ Voltar ao Menu Principal"): mudar_tela('menu')
+    st.markdown("#### 📋 Central de Relatórios e Auditorias")
+    st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Selecione qual módulo você deseja acessar.</p>", unsafe_allow_html=True)
+    st.divider()
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.markdown("""
+        <div style='background-color: #121214; padding: 15px; border: 1px solid #27272A; border-radius: 8px; text-align: center; margin-bottom: 10px;'>
+            <h1 style='margin:0;'>📄</h1>
+            <h4 style='color: #2DD4BF; margin-top: 10px;'>Relatório de Turno</h4>
+            <p style='font-size: 12px; color: #A1A1AA;'>Gerar fechamentos e repasses.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("ACESSAR RELATÓRIOS", use_container_width=True, type="primary"): mudar_tela('relatorio')
+        
+    with col2:
+        st.markdown("""
+        <div style='background-color: #121214; padding: 15px; border: 1px solid #27272A; border-radius: 8px; text-align: center; margin-bottom: 10px;'>
+            <h1 style='margin:0;'>🧹</h1>
+            <h4 style='color: #2DD4BF; margin-top: 10px;'>Auditoria LIRS</h4>
+            <p style='font-size: 12px; color: #A1A1AA;'>Limpeza e liberação de linha.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        if st.button("ACESSAR LIRS", use_container_width=True, type="primary"): mudar_tela('lirs')
+
 def tela_menu():
     exibir_alertas_preset()
     perfil = st.session_state['perfil']
@@ -1284,11 +1311,7 @@ def tela_menu():
         if st.button("🗄️ GERENCIAR ARMÁRIOS", use_container_width=True): mudar_tela('armarios')
         if st.button("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", use_container_width=True): mudar_tela('checkup')
         if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
-        
-        c1, c2 = st.columns(2)
-        if c1.button("📋 RELATÓRIO", use_container_width=True): mudar_tela('relatorio')
-        if c2.button("🧹 LIRS", use_container_width=True): mudar_tela('lirs')
-        
+        if st.button("📋 RELATÓRIOS E LIRS", use_container_width=True): mudar_tela('hub_relatorios')
         if st.button("📊 HISTÓRICOS E EXPORTAÇÕES", use_container_width=True): mudar_tela('historico')
         if st.button("✏️ GERENCIAR BANCO DE DADOS", use_container_width=True): mudar_tela('editar')
     elif perfil == 'preset':
@@ -1305,20 +1328,12 @@ def tela_menu():
         if st.button("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", use_container_width=True): mudar_tela('checkup')
         if st.button("⚡ MINHAS INCIDÊNCIAS", use_container_width=True): mudar_tela('minhas_incidencias')
         if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
-        
-        c1, c2 = st.columns(2)
-        if c1.button("📋 RELATÓRIO", use_container_width=True): mudar_tela('relatorio')
-        if c2.button("🧹 LIRS", use_container_width=True): mudar_tela('lirs')
-        
+        if st.button("📋 RELATÓRIOS E LIRS", use_container_width=True): mudar_tela('hub_relatorios')
         if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
     else:
         if st.button("📊 VISÃO GERAL DE FÁBRICA", use_container_width=True, type="primary"): mudar_tela('visao_geral')
         if st.button("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", use_container_width=True): mudar_tela('checkup')
-        
-        c1, c2 = st.columns(2)
-        if c1.button("📋 RELATÓRIO", use_container_width=True): mudar_tela('relatorio')
-        if c2.button("🧹 LIRS", use_container_width=True): mudar_tela('lirs')
-        
+        if st.button("📋 RELATÓRIOS E LIRS", use_container_width=True): mudar_tela('hub_relatorios')
         if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
     
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
@@ -1801,7 +1816,7 @@ def tela_historico():
                     st.download_button("📥 Baixar Planilha", data=csv, file_name="eventos.csv", mime="text/csv", type="primary")
 
 def tela_relatorio():
-    if st.button("⬅️ Voltar"): mudar_tela('menu')
+    if st.button("⬅️ Voltar à Central"): mudar_tela('hub_relatorios')
     st.markdown("#### 📋 Fechamento e Relatório de Turno")
     col1, col2 = st.columns(2)
     gerar = col1.button("👁️ Visualizar", use_container_width=True)
@@ -2164,10 +2179,10 @@ def tela_armarios():
         else: st.info("ℹ️ Aba restrita para os perfis de Pré-Set e Administração.")
 
 def tela_lirs():
-    if st.button("⬅️ Voltar ao Menu"): 
+    if st.button("⬅️ Voltar à Central"): 
         st.session_state['lirs_maq_ativa'] = None
         st.session_state['celula_selecionada'] = None
-        mudar_tela('menu')
+        mudar_tela('hub_relatorios')
         
     st.markdown("#### 🧹 LIRS - Limpeza e Liberação de Linha")
     st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Auditoria de organização da máquina. Deve ser realizada a cada troca de turno.</p>", unsafe_allow_html=True)
@@ -2287,6 +2302,7 @@ if st.session_state['tela_atual'] == 'login': tela_login()
 elif st.session_state['tela_atual'] == 'menu': tela_menu()
 elif st.session_state['tela_atual'] == 'visao_geral': tela_visao_geral()
 elif st.session_state['tela_atual'] == 'checkup': tela_checkup()
+elif st.session_state['tela_atual'] == 'hub_relatorios': tela_hub_relatorios()
 elif st.session_state['tela_atual'] == 'historico': tela_historico()
 elif st.session_state['tela_atual'] == 'minhas_incidencias': tela_minhas_incidencias()
 elif st.session_state['tela_atual'] == 'afc': tela_afc()
