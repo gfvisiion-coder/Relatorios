@@ -936,6 +936,28 @@ def painel_controle_maquina(maq_id, setor):
                 st.rerun()
                 
         elif st.session_state[flow_key] == "mudanca_status":
+            st.markdown("<p style='font-size: 12px; font-weight: bold; color: #14B8A6;'>SELECIONE O NOVO STATUS:</p>", unsafe_allow_html=True)
+            if st.button("🟢 PRODUZINDO", key=f"st_prod_{maq_id}", use_container_width=True):
+                info_atual = obter_info_maquina(maq_id, setor)
+                st_atual = str(info_atual['Status']) if info_atual else ""
+                if "[Ordem:" in st_atual:
+                    hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                    tags_prod = extrair_tags_producao(st_atual)
+                    tags_prod = tags_prod.replace("[Novo Item:", "[Item:")
+                    tags_prod = tags_prod.replace("[Item Atual:", "[Item:")
+                    tags_prod = re.sub(r' \[Fim Previsto:.*?\]', '', tags_prod)
+                    st_final = f"PRODUZINDO {tags_prod}".strip()
+                    salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                    st.session_state['maq_ativa'] = None
+                    del st.session_state[flow_key]
+                    st.rerun()
+                else:
+                    st.session_state[flow_key] = "detalhe_prod"
+                    st.rerun()
+                    
+            if st.button("🟡 PREPARAÇÃO / SEQUÊNCIA", key=f"st_prep_{maq_id}", use_container_width=True): st.session_state[flow_key] = "detalhe_prep"; st.rerun()
+            if st.button("🛠️ MANUTENÇÃO", key=f"st_man_{maq_id}", use_container_width=True): st.session_state[flow_key] = "detalhe_man"; st.rerun()
+            if st.button("🔴 PARADA", key=f"st_par_{maq_id}", use_container_width=True): st.session_state[flow_key] = "detalhe_parada"; st.rerun()
 
         elif st.session_state[flow_key] == "detalhe_prod":
             with st.form(f"form_prod_{maq_id}"):
