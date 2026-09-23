@@ -2237,13 +2237,13 @@ def tela_lirs():
         st.session_state['celula_selecionada'] = None
         mudar_tela('hub_relatorios')
         
-    st.markdown("#### 🧹 LIRS - Limpeza e Liberação de Linha")
-    st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Auditoria rápida de troca de turno. Confirme os 4 pontos para liberar a máquina.</p>", unsafe_allow_html=True)
+    st.markdown("#### 🧹 LIRS - Auditoria e Liberação de Linha")
+    st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Processo padronizado de validação de setup e passagem de turno.</p>", unsafe_allow_html=True)
     
     turno_atual = st.session_state.get('turno', 'DESCONHECIDO')
     status_dict = ler_status_atual()
     
-    aba_execucao, aba_relatorio = st.tabs(["🧹 Executar LIRS", "📊 Relatório LIRS"])
+    aba_execucao, aba_relatorio = st.tabs(["📋 Painel de Auditoria", "📊 Relatório Consolidado"])
     
     with aba_execucao:
         c_s1, c_s2 = st.columns(2)
@@ -2265,7 +2265,7 @@ def tela_lirs():
                 if st.button("⚫ Centerless (CNC1)", use_container_width=True): st.session_state['celula_selecionada'] = 'centerless'; st.rerun()
                 if st.button("🟤 Facetadoras (CNC2)", use_container_width=True): st.session_state['celula_selecionada'] = 'facetadoras'; st.rerun()
         else:
-            if st.button("⬅️ Trocar de Fila"): st.session_state['celula_selecionada'] = None; st.session_state['lirs_maq_ativa'] = None; st.rerun()
+            if st.button("⬅️ Voltar à Seleção de Fila"): st.session_state['celula_selecionada'] = None; st.session_state['lirs_maq_ativa'] = None; st.rerun()
             
             maquinas_foco = []
             if setor == 'AFC':
@@ -2293,32 +2293,63 @@ def tela_lirs():
                 elif st.session_state['celula_selecionada'] == 'centerless': maquinas_foco = todas_cnc1
                 elif st.session_state['celula_selecionada'] == 'facetadoras': maquinas_foco = todas_cnc2
 
-            st.markdown(f"**Máquinas da {str(st.session_state['celula_selecionada']).upper().replace('_', ' ')}**")
+            st.markdown(f"**Máquinas em Exibição: {str(st.session_state['celula_selecionada']).upper().replace('_', ' ')}**")
             
             maq_ativa = st.session_state.get('lirs_maq_ativa')
             if maq_ativa:
                 st.markdown(f"""
-                <div style='background-color: #121214; padding: 15px; border: 2px solid #14B8A6; border-radius: 8px; margin-bottom: 15px;'>
-                    <h4 style='color: #5EEAD4; margin-top:0;'>📋 AUDITORIA LIRS RÁPIDA - MAQ {maq_ativa}</h4>
-                    <p style='color: #A1A1AA; font-size: 14px; margin-bottom: 0;'>Turno Assumindo: <b>{turno_atual}</b></p>
+                <div style='background-color: #121214; padding: 15px; border: 2px solid #14B8A6; border-radius: 8px; margin-bottom: 20px;'>
+                    <h4 style='color: #5EEAD4; margin-top:0;'>📋 AUDITORIA MÁQUINA {maq_ativa}</h4>
+                    <p style='color: #A1A1AA; font-size: 14px; margin-bottom: 0;'>Turno de Assunção: <b>{turno_atual}</b> | Auditor: <b>{st.session_state.get('operador', 'SISTEMA')}</b></p>
                 </div>
                 """, unsafe_allow_html=True)
                 
                 with st.form(f"form_checklist_{maq_ativa}"):
-                    st.markdown("<p style='margin-bottom: 15px; font-weight: bold;'>Confirme os 4 pontos abaixo para assumir a máquina:</p>", unsafe_allow_html=True)
+                    st.markdown("<p style='font-size: 14px; color: #E4E4E7; margin-bottom: 15px;'>Confirme os 4 pilares operacionais para efetivar a passagem de turno:</p>", unsafe_allow_html=True)
                     
-                    l_check = st.checkbox("🧹 **(L) Limpeza:** O posto de trabalho está limpo e organizado?")
-                    i_check = st.checkbox("🏷️ **(I) Identificação:** A Ordem de Produção (OP), item e gabaritos estão identificados?")
-                    r_check = st.checkbox("⚖️ **(R) Reconciliação:** Não há peças soltas de outro lote espalhadas na área?")
-                    s_check = st.checkbox("🚧 **(S) Segregação:** Peças boas, refugo e retrabalho estão devidamente separados?")
+                    col1, col2 = st.columns(2)
                     
-                    st.markdown("<hr style='border-color: #27272A; margin: 15px 0;'>", unsafe_allow_html=True)
-                    obs_lirs = st.text_input("📝 Observação (Opcional):", placeholder="Ex: Faltou recolher o refugo do turno anterior...")
+                    with col1:
+                        st.markdown("""
+                        <div style='background-color: #18181B; padding: 12px; border-radius: 8px; border: 1px solid #27272A; margin-bottom: 10px;'>
+                            <b style='color: #2DD4BF; font-size: 15px;'>🧹 L - Limpeza</b><br>
+                            <span style='font-size: 12px; color: #A1A1AA;'>Posto de trabalho e máquina limpos, sem ferramentas soltas ou sujeira excessiva.</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        l_check = st.toggle("Confirmar Limpeza", key="l_chk")
+                        
+                        st.markdown("""
+                        <div style='background-color: #18181B; padding: 12px; border-radius: 8px; border: 1px solid #27272A; margin-bottom: 10px; margin-top: 15px;'>
+                            <b style='color: #2DD4BF; font-size: 15px;'>⚖️ R - Reconciliação</b><br>
+                            <span style='font-size: 12px; color: #A1A1AA;'>Contagem física coerente com a OP e garantia total de ausência de peças de outros lotes.</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        r_check = st.toggle("Confirmar Reconciliação", key="r_chk")
+
+                    with col2:
+                        st.markdown("""
+                        <div style='background-color: #18181B; padding: 12px; border-radius: 8px; border: 1px solid #27272A; margin-bottom: 10px;'>
+                            <b style='color: #2DD4BF; font-size: 15px;'>🏷️ I - Identificação</b><br>
+                            <span style='font-size: 12px; color: #A1A1AA;'>Caixas, lotes, gabaritos e OP devidamente sinalizados com as etiquetas corretas.</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        i_check = st.toggle("Confirmar Identificação", key="i_chk")
+                        
+                        st.markdown("""
+                        <div style='background-color: #18181B; padding: 12px; border-radius: 8px; border: 1px solid #27272A; margin-bottom: 10px; margin-top: 15px;'>
+                            <b style='color: #2DD4BF; font-size: 15px;'>🚧 S - Segregação</b><br>
+                            <span style='font-size: 12px; color: #A1A1AA;'>Peças aprovadas, caixas de refugo (vermelhas) e retrabalho rigidamente separadas.</span>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        s_check = st.toggle("Confirmar Segregação", key="s_chk")
+
+                    st.markdown("<hr style='border-color: #27272A; margin: 20px 0;'>", unsafe_allow_html=True)
+                    obs_lirs = st.text_input("📝 Registro de Anomalias (Opcional):", placeholder="Relate qualquer desvio tratado durante a auditoria (ex: Faltou recolher sucata, caixa sem etiqueta...)")
 
                     st.markdown("<br>", unsafe_allow_html=True)
-                    if st.form_submit_button("✅ LIBERAR MÁQUINA (LIRS OK)", type="primary", use_container_width=True):
+                    if st.form_submit_button("✅ APROVAR AUDITORIA E LIBERAR EQUIPAMENTO", type="primary", use_container_width=True):
                         if not all([l_check, i_check, r_check, s_check]):
-                            st.error("⚠️ Você deve confirmar todos os 4 pontos do LIRS para liberar a máquina na troca de turno!")
+                            st.error("⚠️ Aprovação Bloqueada: É obrigatório acionar (validar) os 4 interruptores do LIRS para liberar a máquina.")
                         else:
                             info_atual = obter_info_maquina(maq_ativa, setor)
                             if info_atual:
@@ -2332,26 +2363,26 @@ def tela_lirs():
                                 salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_ativa}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
                                 
                                 st.session_state['lirs_maq_ativa'] = None
-                                st.success(f"✅ Máquina {maq_ativa} liberada para o {turno_atual}!")
-                                time.sleep(1); st.rerun()
+                                st.success(f"✅ Equipamento {maq_ativa} auditado e liberado para produção do {turno_atual}!")
+                                time.sleep(1.5); st.rerun()
 
             for maq in ordenar_maquinas(maquinas_foco):
                 st_val = status_dict.get(f"{setor} {maq}", "")
                 tag_lirs_atual = f"[LIRS: OK {turno_atual}"
                 
-                if tag_lirs_atual in st_val: cor_btn = "🟢 LIRS OK"
+                if tag_lirs_atual in st_val: cor_btn = "🟢 VALIDADO"
                 else: cor_btn = "🔴 PENDENTE"
                     
-                label_botao = f"{cor_btn} - MÁQ {maq}"
+                label_botao = f"{cor_btn} - EQUIPAMENTO {maq}"
                 if st.button(label_botao, key=f"lirs_btn_{maq}", use_container_width=True):
                     if tag_lirs_atual in st_val:
-                        st.toast(f"A auditoria LIRS da máquina {maq} já foi feita neste turno!", icon="✅")
+                        st.toast(f"A auditoria da máquina {maq} já foi efetivada neste turno!", icon="✅")
                     st.session_state['lirs_maq_ativa'] = maq
                     st.rerun()
 
     with aba_relatorio:
-        st.markdown(f"#### 📊 Resumo de Liberação de Linha (LIRS) - {turno_atual}")
-        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Este relatório atualiza em tempo real conforme as máquinas são liberadas.</p>", unsafe_allow_html=True)
+        st.markdown(f"#### 📊 Consolidado de Liberação de Linha - {turno_atual}")
+        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Painel atualizado em tempo real com o status de cumprimento da auditoria fabril.</p>", unsafe_allow_html=True)
         
         tag_busca = f"[LIRS: OK {turno_atual}"
         
@@ -2378,28 +2409,28 @@ def tela_lirs():
         c_rel1, c_rel2 = st.columns(2)
         with c_rel1:
             st.markdown(f"##### 🏭 AFIAÇÃO")
-            st.markdown(f"<span style='color: #2DD4BF; font-weight: bold;'>✅ CONCLUÍDAS: {len(ok_afc)}</span>", unsafe_allow_html=True)
+            st.markdown(f"<span style='color: #2DD4BF; font-weight: bold;'>✅ LIBERADAS: {len(ok_afc)}</span>", unsafe_allow_html=True)
             st.markdown(f"<span style='color: #ef4444; font-weight: bold;'>🔴 PENDENTES: {len(pend_afc)}</span>", unsafe_allow_html=True)
         
         with c_rel2:
             st.markdown(f"##### 🏭 RETÍFICA")
-            st.markdown(f"<span style='color: #2DD4BF; font-weight: bold;'>✅ CONCLUÍDAS: {len(ok_rtf)}</span>", unsafe_allow_html=True)
+            st.markdown(f"<span style='color: #2DD4BF; font-weight: bold;'>✅ LIBERADAS: {len(ok_rtf)}</span>", unsafe_allow_html=True)
             st.markdown(f"<span style='color: #ef4444; font-weight: bold;'>🔴 PENDENTES: {len(pend_rtf)}</span>", unsafe_allow_html=True)
             
         st.divider()
-        st.markdown("**Copie o texto abaixo para enviar via WhatsApp / E-mail:**")
+        st.markdown("**Copiar Relatório Executivo (WhatsApp/E-mail):**")
         
-        texto_relatorio = f"*RELATÓRIO LIRS - {turno_atual}*\n\n"
+        texto_relatorio = f"*FECHAMENTO DE AUDITORIA LIRS - {turno_atual}*\n\n"
         
-        texto_relatorio += f"*🏭 AFIAÇÃO (AFC)*\n"
-        texto_relatorio += f"✅ LIRS OK ({len(ok_afc)}): {', '.join(ok_afc) if ok_afc else 'Nenhuma'}\n"
+        texto_relatorio += f"*⚙️ SETOR DE AFIAÇÃO (AFC)*\n"
+        texto_relatorio += f"✅ VALIDADAS ({len(ok_afc)}): {', '.join(ok_afc) if ok_afc else 'Nenhuma'}\n"
         texto_relatorio += f"🔴 PENDENTES ({len(pend_afc)}): {', '.join(pend_afc) if pend_afc else 'Nenhuma'}\n\n"
         
-        texto_relatorio += f"*🏭 RETÍFICA (RTF)*\n"
-        texto_relatorio += f"✅ LIRS OK ({len(ok_rtf)}): {', '.join(ok_rtf) if ok_rtf else 'Nenhuma'}\n"
+        texto_relatorio += f"*⚙️ SETOR DE RETÍFICA (RTF)*\n"
+        texto_relatorio += f"✅ VALIDADAS ({len(ok_rtf)}): {', '.join(ok_rtf) if ok_rtf else 'Nenhuma'}\n"
         texto_relatorio += f"🔴 PENDENTES ({len(pend_rtf)}): {', '.join(pend_rtf) if pend_rtf else 'Nenhuma'}\n"
         
-        st.text_area(label="Texto do Relatório LIRS", value=texto_relatorio, height=250, label_visibility="collapsed")
+        st.text_area(label="Exportar Dados", value=texto_relatorio, height=250, label_visibility="collapsed")
 
 # --- ROTEADOR ---
 if st.session_state['tela_atual'] == 'login': tela_login()
