@@ -2300,19 +2300,68 @@ def tela_lirs():
                 st.markdown(f"""
                 <div style='background-color: #121214; padding: 15px; border: 2px solid #14B8A6; border-radius: 8px; margin-bottom: 15px;'>
                     <h4 style='color: #5EEAD4; margin-top:0;'>📋 LIRS - MÁQUINA {maq_ativa}</h4>
-                    <p style='color: #A1A1AA; font-size: 14px;'>Turno Auditando: <b>{turno_atual}</b></p>
+                    <p style='color: #A1A1AA; font-size: 14px; margin-bottom: 0;'>Turno Auditando: <b>{turno_atual}</b></p>
                 </div>
                 """, unsafe_allow_html=True)
                 
                 with st.form(f"form_checklist_{maq_ativa}"):
-                    c1 = st.checkbox("📏 Instrumentos de medição no local correto?")
-                    c2 = st.checkbox("🗑️ Pote de transporte e de refugo nos devidos lugares?")
-                    c3 = st.checkbox("🗃️ Bandejas estão OK e com etiquetas?")
-                    c4 = st.checkbox("🏷️ Ordem de Produção (OP) confere com as etiquetas?")
+                    opcoes_radio = ["-", "SIM", "NÃO"]
                     
-                    if st.form_submit_button("✅ CONFIRMAR LIRS", type="primary", use_container_width=True):
-                        if not all([c1, c2, c3, c4]):
-                            st.error("⚠️ Você deve confirmar (marcar) todos os itens para liberar a linha!")
+                    st.markdown("<h4 style='color: #2DD4BF; margin-bottom: 15px;'>🧹 L - Limpeza de linha</h4>", unsafe_allow_html=True)
+                    cl1, cl2 = st.columns([3, 1])
+                    cl1.markdown("1.1 A IT contempla limpeza de linha?")
+                    l1 = cl2.radio("1.1", opcoes_radio, horizontal=True, label_visibility="collapsed", key="l1")
+                    cl1.markdown("1.2 O posto de trabalho está organizado?")
+                    l2 = cl2.radio("1.2", opcoes_radio, horizontal=True, label_visibility="collapsed", key="l2")
+                    cl1.markdown("1.3 O colaborador sabe o que é limpeza de linha?")
+                    l3 = cl2.radio("1.3", opcoes_radio, horizontal=True, label_visibility="collapsed", key="l3")
+                    l4 = st.text_input("1.4 Apresenta alguma sugestão de melhoria para Limpeza de linha?", placeholder="Resposta (Opcional)")
+
+                    st.markdown("<hr style='border-color: #27272A; margin: 15px 0;'>", unsafe_allow_html=True)
+                    st.markdown("<h4 style='color: #2DD4BF; margin-bottom: 15px;'>🏷️ I - Identificação</h4>", unsafe_allow_html=True)
+                    ci1, ci2 = st.columns([3, 1])
+                    ci1.markdown("2.1 Apresenta etiquetas de identificação? (Lote e Item)")
+                    i1 = ci2.radio("2.1", opcoes_radio, horizontal=True, label_visibility="collapsed", key="i1")
+                    ci1.markdown("2.2 Gabaritos estão registrados na OP?")
+                    i2 = ci2.radio("2.2", opcoes_radio, horizontal=True, label_visibility="collapsed", key="i2")
+                    ci1.markdown("2.3 Apresenta identificação de entrada e saída de materiais?")
+                    i3 = ci2.radio("2.3", opcoes_radio, horizontal=True, label_visibility="collapsed", key="i3")
+                    ci1.markdown("2.4 Os insumos, gabaritos e meios auxiliares de forma geral estão devidamente identificados?")
+                    i4 = ci2.radio("2.4", opcoes_radio, horizontal=True, label_visibility="collapsed", key="i4")
+                    i5 = st.text_input("2.5 Apresenta alguma sugestão de melhoria para Identificação?", placeholder="Resposta (Opcional)")
+
+                    st.markdown("<hr style='border-color: #27272A; margin: 15px 0;'>", unsafe_allow_html=True)
+                    st.markdown("<h4 style='color: #2DD4BF; margin-bottom: 15px;'>⚖️ R - Reconciliação</h4>", unsafe_allow_html=True)
+                    cr1, cr2 = st.columns([3, 1])
+                    cr1.markdown("3.1 Peças que serão retrabalhadas e refugadas, estão distantes das peças OK?")
+                    r1 = cr2.radio("3.1", opcoes_radio, horizontal=True, label_visibility="collapsed", key="r1")
+                    cr1.markdown("3.2 Encontrado peças soltas pela área?")
+                    r2 = cr2.radio("3.2", opcoes_radio, horizontal=True, label_visibility="collapsed", key="r2")
+                    cr1.markdown("3.3 Apresenta o mesmo número de peças e/ou etiquetas na ordem?")
+                    r3 = cr2.radio("3.3", opcoes_radio, horizontal=True, label_visibility="collapsed", key="r3")
+                    r3_1 = st.text_input("3.3.1 Caso não apresente (na pergunta 3.3), o que foi feito?", placeholder="Resposta Obrigatória se 3.3 for NÃO")
+                    r4 = st.text_input("3.4 Apresenta alguma sugestão de melhoria para Reconciliação?", placeholder="Resposta (Opcional)")
+
+                    st.markdown("<hr style='border-color: #27272A; margin: 15px 0;'>", unsafe_allow_html=True)
+                    st.markdown("<h4 style='color: #2DD4BF; margin-bottom: 15px;'>🚧 S - Segregação</h4>", unsafe_allow_html=True)
+                    cs1, cs2 = st.columns([3, 1])
+                    cs1.markdown("4.1 Os materiais, insumos e etiquetas entre as ordens de produção estão separados?")
+                    s1 = cs2.radio("4.1", opcoes_radio, horizontal=True, label_visibility="collapsed", key="s1")
+                    cs1.markdown("4.2 Está sendo processado uma ordem por vez?")
+                    s2 = cs2.radio("4.2", opcoes_radio, horizontal=True, label_visibility="collapsed", key="s2")
+                    s3 = st.text_input("4.3 Caso a resposta seja NÃO nas perguntas acima, justifique:", placeholder="Resposta Obrigatória se 4.1 ou 4.2 for NÃO")
+                    s4 = st.text_input("4.4 Apresenta alguma sugestão de melhoria para Segregação?", placeholder="Resposta (Opcional)")
+
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.form_submit_button("✅ CONFIRMAR AUDITORIA LIRS", type="primary", use_container_width=True):
+                        respostas_obrigatorias = [l1, l2, l3, i1, i2, i3, i4, r1, r2, r3, s1, s2]
+                        
+                        if "-" in respostas_obrigatorias:
+                            st.error("⚠️ Você deve selecionar SIM ou NÃO em todas as perguntas da auditoria!")
+                        elif r3 == "NÃO" and not r3_1.strip():
+                            st.error("⚠️ Pergunta 3.3.1: Justifique o que foi feito por não apresentar o mesmo número de peças na ordem.")
+                        elif ("NÃO" in [s1, s2]) and not s3.strip():
+                            st.error("⚠️ Pergunta 4.3: Justifique o motivo da segregação estar incorreta ou processando mais de uma ordem.")
                         else:
                             info_atual = obter_info_maquina(maq_ativa, setor)
                             if info_atual:
@@ -2324,8 +2373,8 @@ def tela_lirs():
                                 salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_ativa}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
                                 
                                 st.session_state['lirs_maq_ativa'] = None
-                                st.success(f"✅ Limpeza de linha da máquina {maq_ativa} realizada pelo {turno_atual}!")
-                                time.sleep(1); st.rerun()
+                                st.success(f"✅ Auditoria LIRS da máquina {maq_ativa} realizada e salva com sucesso!")
+                                time.sleep(1.5); st.rerun()
 
             for maq in ordenar_maquinas(maquinas_foco):
                 st_val = status_dict.get(f"{setor} {maq}", "")
@@ -2337,7 +2386,7 @@ def tela_lirs():
                 label_botao = f"{cor_btn} - MÁQ {maq}"
                 if st.button(label_botao, key=f"lirs_btn_{maq}", use_container_width=True):
                     if tag_lirs_atual in st_val:
-                        st.toast(f"O LIRS da máquina {maq} já foi feito neste turno!", icon="✅")
+                        st.toast(f"A auditoria LIRS da máquina {maq} já foi feita neste turno!", icon="✅")
                     st.session_state['lirs_maq_ativa'] = maq
                     st.rerun()
 
