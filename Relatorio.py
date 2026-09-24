@@ -1524,9 +1524,6 @@ def tela_checkup():
                     df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM'].astype(str).str.upper().apply(lambda x: re.sub(r'\.0$', '', x.strip()).lstrip("0"))
             except: pass
 
-        colors = ["#FEF08A", "#BAE6FD", "#FBCFE8", "#D9F99D", "#FECACA"]
-        border_colors = ["#EAB308", "#38BDF8", "#F472B6", "#84CC16", "#F87171"]
-
         for i in range(0, len(lista_incidencias), 3):
             cols = st.columns(3)
             for j in range(3):
@@ -1578,13 +1575,13 @@ def tela_checkup():
                             if reb1.lower() in ['nan', 'none', '']: reb1 = "-"
                             if reb2.lower() in ['nan', 'none', '']: reb2 = "-"
 
-                    # Lógica de Cores exata
+                    # Lógica de Cores
                     if "PARADA" in st_m.upper():
                         bg_color, bd_color = "#FECACA", "#F87171" # Vermelho
                     elif "MANUTENÇÃO" in st_m.upper():
                         bg_color, bd_color = "#FED7AA", "#FB923C" # Laranja
                     elif turno_post_it == "1° TURNO":
-                        bg_color, bd_color = "#BAE6FD", "#38BDF8" # Azul Claro
+                        bg_color, bd_color = "#FCE7F3", "#F472B6" # Rosa bem clarinho
                     elif turno_post_it == "2° TURNO":
                         bg_color, bd_color = "#FEF08A", "#EAB308" # Amarelo Claro
                     elif turno_post_it == "3° TURNO":
@@ -1594,21 +1591,28 @@ def tela_checkup():
 
                     rotate = ( (i+j) % 3 ) * 2 - 2 
 
-                    # Trocado <p> por <div> e color para #000000 !important para driblar o CSS global
-                    html = f'''<div style="background-color: {bg_color}; padding: 15px; border-radius: 2px 20px 2px 15px; box-shadow: 3px 5px 10px rgba(0,0,0,0.4); color: #000000 !important; margin-bottom: 20px; min-height: 240px; transform: rotate({rotate}deg);">
+                    # Lógica de exibição dos rebolos (Oculta se não houver troca)
+                    html_rebolo = ""
+                    if tem_rebolo == "SIM":
+                        html_rebolo = f'''
+<div style="margin: 0 0 2px 0; font-size: 13px; color: #000000 !important;"><b>🛞 Reb 1:</b> {reb1}</div>
+<div style="margin: 0; font-size: 13px; color: #000000 !important;"><b>🛞 Reb 2:</b> {reb2}</div>
+                        '''
+
+                    # Construção do HTML do Post-it (Letras Pretas Absolutas)
+                    html = f'''<div style="background-color: {bg_color}; padding: 15px; border-radius: 2px 20px 2px 15px; box-shadow: 3px 5px 10px rgba(0,0,0,0.4); color: #000000 !important; margin-bottom: 20px; min-height: 200px; transform: rotate({rotate}deg);">
 <h4 style="margin: 0 0 10px 0; color: #000000 !important; border-bottom: 1px solid {bd_color}; font-size: 16px; font-weight: bold; padding-bottom: 5px;">⚙️ {setor_m} {maq_m}</h4>
 <div style="margin: 0 0 4px 0; font-size: 14px; color: #000000 !important;"><b>⏰ Agendado para:</b> {h_alvo}</div>
 <div style="margin: 0 0 4px 0; font-size: 14px; color: #000000 !important;"><b>📋 Setup:</b> {tipo_setup}</div>
 <div style="margin: 0 0 8px 0; font-size: 14px; color: #000000 !important;"><b>🔄 Troca Rebolo:</b> {tem_rebolo}</div>
-<div style="background: rgba(255,255,255,0.4); padding: 8px; border-radius: 6px; margin-bottom: 8px;">
+<div style="background: rgba(255,255,255,0.5); padding: 8px; border-radius: 6px; margin-bottom: 8px;">
 <div style="margin: 0 0 2px 0; font-size: 13px; color: #000000 !important;"><b>Ordem:</b> {op_arm}</div>
 <div style="margin: 0; font-size: 13px; color: #000000 !important;"><b>Item:</b> {item_arm}</div>
 </div>
-<div style="margin: 0 0 2px 0; font-size: 13px; color: #000000 !important;"><b>🛞 Reb 1:</b> {reb1}</div>
-<div style="margin: 0; font-size: 13px; color: #000000 !important;"><b>🛞 Reb 2:</b> {reb2}</div>
+{html_rebolo}
 </div>'''
                     cols[j].markdown(html, unsafe_allow_html=True)
-                    
+
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] and perfil != 'preset':
         painel_controle_maquina(st.session_state['maq_ativa'], st.session_state['setor_ativo'])
         st.divider()
