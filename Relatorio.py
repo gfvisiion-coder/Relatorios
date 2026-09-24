@@ -2002,7 +2002,7 @@ def tela_armarios():
     st.markdown("#### 🗄️ Gestão de Armários (Pré-Set)")
     
     inicializar_armarios()
-    df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Item': str, 'Status': str, 'Data_Hora': str, 'Posicao': str, 'Armario': str, 'Observacao': str})
+    df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Item': str, 'Status': str, 'Data_Hora': str, 'Posicao': str, 'Armario': str, 'Observacao': str, 'Rebolo': str})
     if 'Item' not in df_arm.columns: df_arm['Item'] = ""
     if 'Observacao' not in df_arm.columns: df_arm['Observacao'] = ""
     if 'Rebolo' not in df_arm.columns: df_arm['Rebolo'] = ""
@@ -2035,13 +2035,13 @@ def tela_armarios():
                     "Em Preparação",
                     "Em Sequência"
                 ]
-                motivo_select = st.selectbox("Motivo / Caminho Rápido:", motivos_rapidos)
+                motivo_select = st.selectbox("Motivo / Caminho Rápido:", motivos_rapidos, key="top_motivo_vazio")
                 
                 c_op, c_it = st.columns(2)
-                ordem_in = c_op.text_input("Ordem de Produção (OP):", placeholder="Ex: 987654")
-                item_in = c_it.text_input("Item / Peça:", placeholder="Ex: 313324")
-                rebolo_in = st.text_input("Rebolo(s) Alocado (Opcional):", placeholder="Ex: REB 1234")
-                obs_in = st.text_input("Observação Adicional / Detalhes:", placeholder="Detalhes opcionais...")
+                ordem_in = c_op.text_input("Ordem de Produção (OP):", placeholder="Ex: 987654", key="top_op_vazio")
+                item_in = c_it.text_input("Item / Peça:", placeholder="Ex: 313324", key="top_item_vazio")
+                rebolo_in = st.text_input("Rebolo(s) Alocado (Opcional):", placeholder="Ex: REB 1234", key="top_rebolo_vazio")
+                obs_in = st.text_input("Observação Adicional / Detalhes:", placeholder="Detalhes opcionais...", key="top_obs_vazio")
                 
                 c1, c2 = st.columns(2)
                 if c1.form_submit_button("📥 GUARDAR SETUP", type="primary", use_container_width=True):
@@ -2079,13 +2079,13 @@ def tela_armarios():
                     "Em Preparação",
                     "Em Sequência"
                 ]
-                motivo_select = st.selectbox("Motivo / Caminho Rápido:", motivos_rapidos)
+                motivo_select = st.selectbox("Motivo / Caminho Rápido:", motivos_rapidos, key="top_motivo_ocupado")
 
                 c_op, c_it = st.columns(2)
-                nova_op = c_op.text_input("Ordem de Produção (OP):", value=op_sel)
-                novo_item = c_it.text_input("Item / Peça:", value=item_sel)
-                novo_rebolo = st.text_input("Rebolo(s) Alocado:", value=str(rebolo_sel).replace('nan', ''))
-                nova_obs = st.text_input("Observação / Justificativa:", value=str(obs_sel).replace('nan', ''))
+                nova_op = c_op.text_input("Ordem de Produção (OP):", value=op_sel, key="top_op_ocupado")
+                novo_item = c_it.text_input("Item / Peça:", value=item_sel, key="top_item_ocupado")
+                novo_rebolo = st.text_input("Rebolo(s) Alocado:", value=str(rebolo_sel).replace('nan', ''), key="top_reb_ocupado")
+                nova_obs = st.text_input("Observação / Justificativa:", value=str(obs_sel).replace('nan', ''), key="top_obs_ocupado")
                 
                 c1, c2, c3 = st.columns(3)
                 if c1.form_submit_button("💾 Atualizar", type="primary", use_container_width=True):
@@ -2185,7 +2185,7 @@ def tela_armarios():
             with st.form("form_alimentar_lista", clear_on_submit=True):
                 st.markdown("📥 **Guardar Ferramental / Setup**")
                 c1, c2 = st.columns(2)
-                armario_sel = c1.selectbox("Selecione o Armário:", ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"])
+                armario_sel = c1.selectbox("Selecione o Armário:", ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"], key="aba2_arm_sel")
                 pos_vazias = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Status'] == 'VAZIO')]
                 pos_vazias_lista = pos_vazias['Posicao'].tolist()
                 
@@ -2194,7 +2194,7 @@ def tela_armarios():
                     pos_sel = None
                 else:
                     pos_vazias_sorted = sorted([int(x) for x in pos_vazias_lista])
-                    pos_sel = c2.selectbox("Máquina Alvo:", [str(x) for x in pos_vazias_sorted])
+                    pos_sel = c2.selectbox("Máquina Alvo:", [str(x) for x in pos_vazias_sorted], key="aba2_pos_sel")
 
                 motivos_rapidos = [
                     "-- Selecione um Motivo Rápido (Opcional) --",
@@ -2204,13 +2204,13 @@ def tela_armarios():
                     "Em Preparação",
                     "Em Sequência"
                 ]
-                motivo_select = st.selectbox("Motivo / Caminho Rápido:", motivos_rapidos)
+                motivo_select = st.selectbox("Motivo / Caminho Rápido:", motivos_rapidos, key="aba2_motivo")
 
                 c_op, c_it = st.columns(2)
-                ordem_in = c_op.text_input("Ordem de Produção (OP):", placeholder="Ex: 987654")
-                item_in = c_it.text_input("Item / Peça:", placeholder="Ex: 313324")
-                rebolo_in = st.text_input("Rebolo(s) Alocado (Opcional):", placeholder="Ex: REB 123")
-                obs_in = st.text_input("Observação Adicional:", placeholder="Detalhes...")
+                ordem_in = c_op.text_input("Ordem de Produção (OP):", placeholder="Ex: 987654", key="aba2_op")
+                item_in = c_it.text_input("Item / Peça:", placeholder="Ex: 313324", key="aba2_item")
+                rebolo_in = st.text_input("Rebolo(s) Alocado (Opcional):", placeholder="Ex: REB 123", key="aba2_reb")
+                obs_in = st.text_input("Observação Adicional:", placeholder="Detalhes...", key="aba2_obs")
 
                 if st.form_submit_button("📥 GUARDAR NO ARMÁRIO", type="primary"):
                     obs_final = motivo_select if motivo_select != motivos_rapidos[0] else ""
@@ -2308,9 +2308,9 @@ def tela_armarios():
         if st.session_state['perfil'] in ['preset', 'adm']:
             with st.form("form_devolucao", clear_on_submit=True):
                 col_d1, col_d2 = st.columns(2)
-                prep_dev = col_d1.text_input("Nome do Preparador:", placeholder="Ex: Lucas")
-                reb_dev = col_d2.text_input("Rebolo Devolvido:", placeholder="Ex: REB 123")
-                motivo_dev = st.text_input("Motivo da Devolução:", placeholder="Ex: Peça já estava no dimensional, não precisou trocar...")
+                prep_dev = col_d1.text_input("Nome do Preparador:", placeholder="Ex: Lucas", key="dev_prep")
+                reb_dev = col_d2.text_input("Rebolo Devolvido:", placeholder="Ex: REB 123", key="dev_reb")
+                motivo_dev = st.text_input("Motivo da Devolução:", placeholder="Ex: Peça já estava no dimensional, não precisou trocar...", key="dev_mot")
                 
                 if st.form_submit_button("💾 Registrar Devolução", type="primary"):
                     if not prep_dev.strip() or not reb_dev.strip() or not motivo_dev.strip():
@@ -2351,7 +2351,7 @@ def tela_armarios():
         if st.session_state['perfil'] in ['preset', 'adm']:
             df_arm_edit = df_arm.fillna("").copy()
             
-            filtro_arm_lote = st.selectbox("Filtrar Armário (Tabela):", ["Todos", "Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"])
+            filtro_arm_lote = st.selectbox("Filtrar Armário (Tabela):", ["Todos", "Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"], key="aba6_filtro")
             if filtro_arm_lote != "Todos":
                 df_exibir = df_arm_edit[df_arm_edit['Armario'] == filtro_arm_lote].copy()
             else:
@@ -2376,205 +2376,6 @@ def tela_armarios():
                     df_arm.loc[mask, 'Ordem'] = str(row['Ordem']).strip()
                     df_arm.loc[mask, 'Item'] = str(row['Item']).strip()
                     df_arm.loc[mask, 'Rebolo'] = str(row['Rebolo']).strip()
-                    df_arm.loc[mask, 'Status'] = str(row['Status']).strip()
-                    df_arm.loc[mask, 'Data_Hora'] = str(row['Data_Hora']).strip()
-                    df_arm.loc[mask, 'Observacao'] = str(row['Observacao']).strip()
-                df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
-                st.success("✅ Armários atualizados em lote com sucesso!")
-                time.sleep(0.5); st.rerun()
-        else:
-            st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode editar as gavetas em lote.")
-
-    with aba2:
-        if st.session_state['perfil'] in ['preset', 'adm']:
-            with st.form("form_alimentar_lista", clear_on_submit=True):
-                st.markdown("📥 **Guardar Ferramental / Setup**")
-                c1, c2 = st.columns(2)
-                armario_sel = c1.selectbox("Selecione o Armário:", ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"])
-                pos_vazias = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Status'] == 'VAZIO')]
-                pos_vazias_lista = pos_vazias['Posicao'].tolist()
-                
-                if not pos_vazias_lista:
-                    st.warning(f"O {armario_sel} está cheio!")
-                    pos_sel = None
-                else:
-                    pos_vazias_sorted = sorted([int(x) for x in pos_vazias_lista])
-                    pos_sel = c2.selectbox("Máquina Alvo:", [str(x) for x in pos_vazias_sorted])
-
-                motivos_rapidos = [
-                    "-- Selecione um Motivo Rápido (Opcional) --",
-                    "Aguardando Jagura",
-                    "Aguardando Almoxarifado",
-                    "Aguardando PCP",
-                    "Em Preparação",
-                    "Em Sequência"
-                ]
-                motivo_select = st.selectbox("Motivo / Caminho Rápido:", motivos_rapidos)
-
-                c_op, c_it = st.columns(2)
-                ordem_in = c_op.text_input("Ordem de Produção (OP):", placeholder="Ex: 987654")
-                item_in = c_it.text_input("Item / Peça:", placeholder="Ex: 313324")
-                obs_in = st.text_input("Observação Adicional:", placeholder="Detalhes...")
-
-                if st.form_submit_button("📥 GUARDAR NO ARMÁRIO", type="primary"):
-                    obs_final = motivo_select if motivo_select != motivos_rapidos[0] else ""
-                    if obs_in.strip():
-                        obs_final = f"{obs_final} - {obs_in.strip()}" if obs_final else obs_in.strip()
-
-                    if not ordem_in.strip() and not obs_final.strip(): st.error("⚠️ A Ordem (OP) ou um Motivo Rápido são obrigatórios!")
-                    elif pos_sel is None: st.error("⚠️ Não há posições disponíveis selecionadas!")
-                    else:
-                        ordem_limpa = ordem_in.strip().upper().replace(".0", "").lstrip("0")
-                        item_limpa = item_in.strip().upper().replace(".0", "").lstrip("0")
-                        
-                        novo_status = "AGUARDANDO MÁQUINA" if ordem_limpa else "VAZIO"
-                        
-                        idx = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Posicao'] == str(pos_sel))].index
-                        if not idx.empty:
-                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [
-                                ordem_limpa, item_limpa, novo_status, datetime.now(FUSO_BR).strftime("%H:%M"), obs_final
-                            ]
-                            df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
-                            st.success(f"✅ Ferramental guardado para a MAQ {pos_sel} do {armario_sel}!")
-                            time.sleep(1.5); st.rerun()
-        else: st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode inserir ou remover itens nos armários.")
-
-    with aba3:
-        st.markdown("#### 🔔 Histórico de Setups Retirados para a Produção")
-        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Acompanhe em tempo real as OPs que os preparadores retiraram das gavetas e assumiram na máquina.</p>", unsafe_allow_html=True)
-        if os.path.exists(ARQUIVO_ALERTAS):
-            df_alertas = pd.read_csv(ARQUIVO_ALERTAS)
-            if not df_alertas.empty:
-                st.dataframe(df_alertas.sort_values(by="Data_Hora", ascending=False), use_container_width=True, hide_index=True)
-                if st.session_state['perfil'] in ['preset', 'adm']:
-                    if st.button("🗑️ Limpar Histórico de Alertas", type="secondary"):
-                        os.remove(ARQUIVO_ALERTAS)
-                        st.rerun()
-            else: st.info("Nenhum alerta registrado ainda.")
-        else: st.info("Nenhum alerta registrado ainda.")
-            
-    with aba4:
-        st.markdown("#### 🔄 Alertas e Detalhamento de Rebolos")
-        if st.session_state.get('perfil') in ['preset', 'adm']:
-            st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Máquinas agendadas ou em andamento que necessitam de troca de rebolo. O sistema busca o Item automaticamente no Armário correspondente à máquina.</p>", unsafe_allow_html=True)
-            df_rebolos = pd.DataFrame()
-            erro_leitura = ""
-            
-            if os.path.exists(ARQUIVO_REBOLOS):
-                try:
-                    df_rebolos = pd.read_excel(ARQUIVO_REBOLOS, sheet_name='Banco De Rebolos', engine='openpyxl')
-                    novas_colunas = []
-                    for col in df_rebolos.columns:
-                        col_str = str(col).upper()
-                        col_str = unicodedata.normalize('NFKD', col_str).encode('ASCII', 'ignore').decode('ASCII')
-                        col_str = col_str.replace(" ", "").replace("\n", "").strip()
-                        novas_colunas.append(col_str)
-                    df_rebolos.columns = novas_colunas
-                    if 'ITEM' in df_rebolos.columns:
-                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM'].astype(str).str.upper()
-                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM_BUSCA'].apply(lambda x: re.sub(r'\.0$', '', x.strip()).lstrip("0"))
-                except Exception as e: erro_leitura = f"Erro do Python: {e}"
-            else: erro_leitura = f"Arquivo '{ARQUIVO_REBOLOS}' não encontrado na pasta."
-
-            status_dict = ler_status_atual()
-            alertas_rebolo = []
-            
-            for maq, st_val in status_dict.items():
-                if "(C/ REBOLO)" in st_val.upper() and "PRODUZINDO" not in st_val.upper():
-                    hora_alvo = ""
-                    if "AGENDADA PARA" in st_val.upper():
-                        try: hora_alvo = st_val.upper().split("AGENDADA PARA")[1].strip()
-                        except: pass
-                    elif "[AGENDADO:" in st_val.upper():
-                        try: hora_alvo = st_val.upper().split("[AGENDADO:")[1].split("]")[0].strip()
-                        except: pass
-                    
-                    st_limpo = st_val.split("[")[0].strip()
-                    item_alvo = ""
-                    try:
-                        setor_maq, maq_num = maq.split(" ", 1)
-                        gaveta_num = maq_num.split("-")[0]
-                        filtro_armario = "Afiadoras" if setor_maq == "AFC" else "Retíficas"
-                        gaveta_row = df_arm[(df_arm['Posicao'] == gaveta_num) & (df_arm['Armario'].str.contains(filtro_armario))]
-                        if not gaveta_row.empty:
-                            item_alvo = str(gaveta_row.iloc[0]['Item']).strip().replace('.0', '').replace('nan', '').lstrip("0")
-                    except: pass
-                        
-                    if not item_alvo:
-                        if "[Novo Item:" in st_val: item_alvo = st_val.split("[Novo Item:")[1].split("]")[0].strip()
-                        elif "[Item Atual:" in st_val: item_alvo = st_val.split("[Item Atual:")[1].split("]")[0].strip()
-                        elif "[Item:" in st_val: item_alvo = st_val.split("[Item:")[1].split("]")[0].strip()
-                    
-                    rebolo1, rebolo2, tipo_reb, desc = "Não cadastrado", "-", "Não cadastrado", ""
-                    debug_msg = ""
-                    
-                    if item_alvo:
-                        item_busca = str(item_alvo).strip().upper()
-                        item_busca = re.sub(r'\.0$', '', item_busca).lstrip("0")
-                        if erro_leitura: debug_msg = f"⚠️ FALHA AO LER EXCEL: {erro_leitura}"
-                        elif df_rebolos.empty: debug_msg = "⚠️ A planilha foi lida, mas a aba 'Banco De Rebolos' estava em branco."
-                        elif 'ITEM_BUSCA' not in df_rebolos.columns: debug_msg = f"⚠️ Coluna de 'Item' não detectada."
-                        else:
-                            match = df_rebolos[df_rebolos['ITEM_BUSCA'] == item_busca]
-                            if match.empty: match = df_rebolos[df_rebolos['ITEM_BUSCA'].str.contains(item_busca, regex=False, na=False)]
-                            if not match.empty:
-                                row_reb = match.iloc[0]
-                                desc = str(row_reb.get('DESCRICAO', '')).strip()
-                                rebolo1 = str(row_reb.get('REBOLO', row_reb.get('REBOLO1', ''))).strip()
-                                rebolo2 = str(row_reb.get('REBOLO2', '')).strip()
-                                tipo_reb = str(row_reb.get('TIPO', '')).strip()
-                                if rebolo1.lower() in ['nan', 'none', '']: rebolo1 = "Não cadastrado"
-                                if rebolo2.lower() in ['nan', 'none', '']: rebolo2 = "-"
-                                if tipo_reb.lower() in ['nan', 'none', '']: tipo_reb = "-"
-                                if desc.lower() in ['nan', 'none', '']: desc = ""
-                            else: debug_msg = f"🔍 Item '{item_busca}' não encontrado."
-
-                    alertas_rebolo.append((maq, hora_alvo, st_limpo, item_alvo, desc, rebolo1, rebolo2, tipo_reb, debug_msg))
-                    
-            if alertas_rebolo:
-                for maq, hora, st_limpo, item_alvo, desc, reb1, reb2, tipo_reb, dbg in alertas_rebolo:
-                    h_txt = f"⏰ Agendado para as {hora}" if hora else "🔴 Em Andamento / Imediato"
-                    if item_alvo:
-                        desc_str = f"({desc})" if desc else ""
-                        reb2_html = f"<p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🔄 Rebolo 2: <b style='color: #2DD4BF;'>{reb2}</b></p>" if reb2 and reb2 != '-' else ""
-                        dbg_html = f"<p style='margin: 10px 0 0 0; font-size: 11px; color: #ef4444; font-weight: bold;'>{dbg}</p>" if dbg else ""
-                        info_reb = f"""<div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'><p style='margin: 0; font-size: 13px; color: #A1A1AA;'>📦 Item no Armário: <b style='color: #F4F4F5;'>{item_alvo}</b> <span style='color:#71717A;'>{desc_str}</span></p><p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🔄 Rebolo 1: <b style='color: #2DD4BF;'>{reb1}</b></p>{reb2_html}<p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🏷️ Tipo: <b style='color: #F4F4F5;'>{tipo_reb}</b></p>{dbg_html}</div>"""
-                    else:
-                        info_reb = f"""<div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'><p style='margin: 0; font-size: 13px; color: #ef4444;'>⚠️ Gaveta vazia e item não informado.</p></div>"""
-
-                    st.markdown(f"""<div style='background-color: #422006; padding: 15px; border-radius: 8px; border-left: 5px solid #f59e0b; margin-bottom: 10px;'><h5 style='margin-top:0; margin-bottom:5px; color: #fbbf24;'>⚙️ Máquina {maq} irá trocar o rebolo</h5><p style='color: #fef3c7; margin-bottom:0; font-size:14px;'>{h_txt} <br><span style='font-size:13px; color:#d97706;'>Status Atual: {st_limpo}</span></p>{info_reb}</div>""", unsafe_allow_html=True)
-            else: st.success("✅ Nenhuma máquina com troca de rebolo prevista no momento.")
-        else: st.info("ℹ️ Aba restrita para os perfis de Pré-Set e Administração.")
-
-    with aba5:
-        st.markdown("#### ✏️ Edição de Armários em Lote")
-        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Edite as gavetas diretamente na tabela, simulando um Excel. Ótimo para correções rápidas.</p>", unsafe_allow_html=True)
-        if st.session_state['perfil'] in ['preset', 'adm']:
-            df_arm_edit = df_arm.fillna("").copy()
-            
-            filtro_arm_lote = st.selectbox("Filtrar Armário (Tabela):", ["Todos", "Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"])
-            if filtro_arm_lote != "Todos":
-                df_exibir = df_arm_edit[df_arm_edit['Armario'] == filtro_arm_lote].copy()
-            else:
-                df_exibir = df_arm_edit.copy()
-                
-            config_colunas = {
-                "Armario": st.column_config.TextColumn("Armário", disabled=True),
-                "Posicao": st.column_config.TextColumn("Gaveta", disabled=True),
-                "Ordem": st.column_config.TextColumn("OP"),
-                "Item": st.column_config.TextColumn("Item"),
-                "Status": st.column_config.SelectboxColumn("Status", options=["VAZIO", "OCUPADO", "SEPARADO", "AGUARDANDO MÁQUINA"]),
-                "Data_Hora": st.column_config.TextColumn("Hora"),
-                "Observacao": st.column_config.TextColumn("Observação")
-            }
-            
-            df_editado = st.data_editor(df_exibir, column_config=config_colunas, use_container_width=True, hide_index=True)
-            
-            if st.button("💾 Salvar Alterações em Lote", type="primary", use_container_width=True):
-                for idx, row in df_editado.iterrows():
-                    mask = (df_arm['Armario'] == row['Armario']) & (df_arm['Posicao'] == row['Posicao'])
-                    df_arm.loc[mask, 'Ordem'] = str(row['Ordem']).strip()
-                    df_arm.loc[mask, 'Item'] = str(row['Item']).strip()
                     df_arm.loc[mask, 'Status'] = str(row['Status']).strip()
                     df_arm.loc[mask, 'Data_Hora'] = str(row['Data_Hora']).strip()
                     df_arm.loc[mask, 'Observacao'] = str(row['Observacao']).strip()
