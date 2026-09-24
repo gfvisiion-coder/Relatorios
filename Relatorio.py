@@ -2003,6 +2003,7 @@ def tela_armarios():
     df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Item': str, 'Status': str, 'Data_Hora': str, 'Posicao': str, 'Armario': str, 'Observacao': str})
     if 'Item' not in df_arm.columns: df_arm['Item'] = ""
     if 'Observacao' not in df_arm.columns: df_arm['Observacao'] = ""
+    if 'Rebolo' not in df_arm.columns: df_arm['Rebolo'] = ""
 
     gaveta = st.session_state.get('gaveta_selecionada', None)
     if gaveta:
@@ -2012,6 +2013,7 @@ def tela_armarios():
         op_sel = gaveta['ordem']
         item_sel = gaveta['item']
         obs_sel = gaveta.get('observacao', '')
+        rebolo_sel = gaveta.get('rebolo', '')
         
         st.markdown(f"""
         <div style='background: #18181B; padding: 15px; border-radius: 10px; border-left: 4px solid #14B8A6; margin-bottom: 20px;'>
@@ -2036,6 +2038,7 @@ def tela_armarios():
                 c_op, c_it = st.columns(2)
                 ordem_in = c_op.text_input("Ordem de Produção (OP):", placeholder="Ex: 987654")
                 item_in = c_it.text_input("Item / Peça:", placeholder="Ex: 313324")
+                rebolo_in = st.text_input("Rebolo(s) Alocado (Opcional):", placeholder="Ex: REB 1234")
                 obs_in = st.text_input("Observação Adicional / Detalhes:", placeholder="Detalhes opcionais...")
                 
                 c1, c2 = st.columns(2)
@@ -2054,7 +2057,7 @@ def tela_armarios():
                         
                         idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                         if not idx.empty:
-                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = [ordem_limpo, item_limpo, novo_status, datetime.now(FUSO_BR).strftime("%H:%M"), obs_final]
+                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao', 'Rebolo']] = [ordem_limpo, item_limpo, novo_status, datetime.now(FUSO_BR).strftime("%H:%M"), obs_final, rebolo_in.strip()]
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                             st.session_state['gaveta_selecionada'] = None
                             st.success(f"✅ Setup guardado na gaveta da MÁQUINA {pos_sel}!")
@@ -2079,6 +2082,7 @@ def tela_armarios():
                 c_op, c_it = st.columns(2)
                 nova_op = c_op.text_input("Ordem de Produção (OP):", value=op_sel)
                 novo_item = c_it.text_input("Item / Peça:", value=item_sel)
+                novo_rebolo = st.text_input("Rebolo(s) Alocado:", value=str(rebolo_sel).replace('nan', ''))
                 nova_obs = st.text_input("Observação / Justificativa:", value=str(obs_sel).replace('nan', ''))
                 
                 c1, c2, c3 = st.columns(3)
@@ -2099,7 +2103,7 @@ def tela_armarios():
 
                         idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                         if not idx.empty:
-                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Observacao']] = [ordem_limpa_upd, item_limpo_upd, novo_status_upd, obs_final]
+                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Observacao', 'Rebolo']] = [ordem_limpa_upd, item_limpo_upd, novo_status_upd, obs_final, novo_rebolo.strip()]
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                             st.session_state['gaveta_selecionada'] = None
                             st.success("✅ Gaveta atualizada com sucesso!")
@@ -2107,7 +2111,7 @@ def tela_armarios():
                 if c2.form_submit_button("🗑️ Excluir", use_container_width=True):
                     idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                     if not idx.empty:
-                        df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = ["", "", "VAZIO", datetime.now(FUSO_BR).strftime("%H:%M"), ""]
+                        df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao', 'Rebolo']] = ["", "", "VAZIO", datetime.now(FUSO_BR).strftime("%H:%M"), "", ""]
                         df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                         st.session_state['gaveta_selecionada'] = None
                         st.success("✅ Gaveta liberada com sucesso!")
@@ -2117,7 +2121,7 @@ def tela_armarios():
                     st.rerun()
         st.divider()
 
-    aba1, aba2, aba3, aba4, aba5 = st.tabs(["👁️ Visão Física", "➕ Alimentar", "🔔 Histórico", "🔄 Troca de Rebolo", "✏️ Edição Lote"])
+    aba1, aba2, aba3, aba4, aba5, aba6 = st.tabs(["👁️ Visão Física", "➕ Alimentar", "🔔 Histórico", "🔄 Troca de Rebolo", "🔙 Devoluções", "✏️ Edição Lote"])
 
     with aba1:
         st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Visão estrutural. <b>Clique diretamente na gaveta</b> para alimentar (guardar) ou corrigir a OP.</p>", unsafe_allow_html=True)
@@ -2170,9 +2174,214 @@ def tela_armarios():
                                     
                                     if cols_gaveta[c].button(btn_label, key=f"btn_gav_{arm}_{num}", use_container_width=True):
                                         if st.session_state['perfil'] in ['preset', 'adm']:
-                                            st.session_state['gaveta_selecionada'] = {'armario': arm, 'posicao': num, 'status': status, 'ordem': gav.get('Ordem', ''), 'item': gav.get('Item', ''), 'observacao': gav.get('Observacao', '')}
+                                            st.session_state['gaveta_selecionada'] = {'armario': arm, 'posicao': num, 'status': status, 'ordem': gav.get('Ordem', ''), 'item': gav.get('Item', ''), 'observacao': gav.get('Observacao', ''), 'rebolo': gav.get('Rebolo', '')}
                                             st.rerun()
                                         else: st.error("⚠️ Apenas Pré-Set e ADM podem gerenciar gavetas!")
+
+    with aba2:
+        if st.session_state['perfil'] in ['preset', 'adm']:
+            with st.form("form_alimentar_lista", clear_on_submit=True):
+                st.markdown("📥 **Guardar Ferramental / Setup**")
+                c1, c2 = st.columns(2)
+                armario_sel = c1.selectbox("Selecione o Armário:", ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"])
+                pos_vazias = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Status'] == 'VAZIO')]
+                pos_vazias_lista = pos_vazias['Posicao'].tolist()
+                
+                if not pos_vazias_lista:
+                    st.warning(f"O {armario_sel} está cheio!")
+                    pos_sel = None
+                else:
+                    pos_vazias_sorted = sorted([int(x) for x in pos_vazias_lista])
+                    pos_sel = c2.selectbox("Máquina Alvo:", [str(x) for x in pos_vazias_sorted])
+
+                motivos_rapidos = [
+                    "-- Selecione um Motivo Rápido (Opcional) --",
+                    "Aguardando Jagura",
+                    "Aguardando Almoxarifado",
+                    "Aguardando PCP",
+                    "Em Preparação",
+                    "Em Sequência"
+                ]
+                motivo_select = st.selectbox("Motivo / Caminho Rápido:", motivos_rapidos)
+
+                c_op, c_it = st.columns(2)
+                ordem_in = c_op.text_input("Ordem de Produção (OP):", placeholder="Ex: 987654")
+                item_in = c_it.text_input("Item / Peça:", placeholder="Ex: 313324")
+                rebolo_in = st.text_input("Rebolo(s) Alocado (Opcional):", placeholder="Ex: REB 123")
+                obs_in = st.text_input("Observação Adicional:", placeholder="Detalhes...")
+
+                if st.form_submit_button("📥 GUARDAR NO ARMÁRIO", type="primary"):
+                    obs_final = motivo_select if motivo_select != motivos_rapidos[0] else ""
+                    if obs_in.strip():
+                        obs_final = f"{obs_final} - {obs_in.strip()}" if obs_final else obs_in.strip()
+
+                    if not ordem_in.strip() and not obs_final.strip(): st.error("⚠️ A Ordem (OP) ou um Motivo Rápido são obrigatórios!")
+                    elif pos_sel is None: st.error("⚠️ Não há posições disponíveis selecionadas!")
+                    else:
+                        ordem_limpa = ordem_in.strip().upper().replace(".0", "").lstrip("0")
+                        item_limpa = item_in.strip().upper().replace(".0", "").lstrip("0")
+                        
+                        novo_status = "AGUARDANDO MÁQUINA" if ordem_limpa else "VAZIO"
+                        
+                        idx = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Posicao'] == str(pos_sel))].index
+                        if not idx.empty:
+                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao', 'Rebolo']] = [
+                                ordem_limpa, item_limpa, novo_status, datetime.now(FUSO_BR).strftime("%H:%M"), obs_final, rebolo_in.strip()
+                            ]
+                            df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
+                            st.success(f"✅ Ferramental guardado para a MAQ {pos_sel} do {armario_sel}!")
+                            time.sleep(1.5); st.rerun()
+        else: st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode inserir ou remover itens nos armários.")
+
+    with aba3:
+        st.markdown("#### 🔔 Histórico de Setups Retirados para a Produção")
+        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Acompanhe em tempo real as OPs que os preparadores retiraram das gavetas e assumiram na máquina.</p>", unsafe_allow_html=True)
+        if os.path.exists(ARQUIVO_ALERTAS):
+            df_alertas = pd.read_csv(ARQUIVO_ALERTAS)
+            if not df_alertas.empty:
+                st.dataframe(df_alertas.sort_values(by="Data_Hora", ascending=False), use_container_width=True, hide_index=True)
+                if st.session_state['perfil'] in ['preset', 'adm']:
+                    if st.button("🗑️ Limpar Histórico de Alertas", type="secondary"):
+                        os.remove(ARQUIVO_ALERTAS)
+                        st.rerun()
+            else: st.info("Nenhum alerta registrado ainda.")
+        else: st.info("Nenhum alerta registrado ainda.")
+            
+    with aba4:
+        st.markdown("#### 🔄 Alertas e Detalhamento de Rebolos")
+        if st.session_state.get('perfil') in ['preset', 'adm']:
+            st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Máquinas agendadas ou em andamento que necessitam de troca de rebolo.</p>", unsafe_allow_html=True)
+
+            status_dict = ler_status_atual()
+            alertas_rebolo = []
+            
+            for maq, st_val in status_dict.items():
+                if "(C/ REBOLO)" in st_val.upper() and "PRODUZINDO" not in st_val.upper():
+                    hora_alvo = ""
+                    if "AGENDADA PARA" in st_val.upper():
+                        try: hora_alvo = st_val.upper().split("AGENDADA PARA")[1].strip()
+                        except: pass
+                    elif "[AGENDADO:" in st_val.upper():
+                        try: hora_alvo = st_val.upper().split("[AGENDADO:")[1].split("]")[0].strip()
+                        except: pass
+                    
+                    st_limpo = st_val.split("[")[0].strip()
+                    item_alvo, rebolo_gaveta = "", ""
+                    try:
+                        setor_maq, maq_num = maq.split(" ", 1)
+                        gaveta_num = maq_num.split("-")[0]
+                        filtro_armario = "Afiadoras" if setor_maq == "AFC" else "Retíficas"
+                        gaveta_row = df_arm[(df_arm['Posicao'] == gaveta_num) & (df_arm['Armario'].str.contains(filtro_armario))]
+                        if not gaveta_row.empty:
+                            item_alvo = str(gaveta_row.iloc[0]['Item']).strip().replace('.0', '').replace('nan', '').lstrip("0")
+                            rebolo_gaveta = str(gaveta_row.iloc[0].get('Rebolo', '')).replace('nan', '').strip()
+                    except: pass
+                        
+                    if not item_alvo:
+                        if "[Novo Item:" in st_val: item_alvo = st_val.split("[Novo Item:")[1].split("]")[0].strip()
+                        elif "[Item Atual:" in st_val: item_alvo = st_val.split("[Item Atual:")[1].split("]")[0].strip()
+                        elif "[Item:" in st_val: item_alvo = st_val.split("[Item:")[1].split("]")[0].strip()
+
+                    alertas_rebolo.append((maq, hora_alvo, st_limpo, item_alvo, rebolo_gaveta))
+                    
+            if alertas_rebolo:
+                for maq, hora, st_limpo, item_alvo, rebolo_gaveta in alertas_rebolo:
+                    h_txt = f"⏰ Agendado para as {hora}" if hora else "🔴 Em Andamento / Imediato"
+                    
+                    reb_txt = rebolo_gaveta if rebolo_gaveta else "Não preenchido no sistema."
+                    
+                    if item_alvo:
+                        info_reb = f"""<div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'><p style='margin: 0; font-size: 13px; color: #A1A1AA;'>📦 Item na Gaveta: <b style='color: #F4F4F5;'>{item_alvo}</b></p><p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🔄 Rebolo Cadastrado: <b style='color: #2DD4BF;'>{reb_txt}</b></p></div>"""
+                    else:
+                        info_reb = f"""<div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'><p style='margin: 0; font-size: 13px; color: #ef4444;'>⚠️ Gaveta vazia e item não informado.</p></div>"""
+
+                    st.markdown(f"""<div style='background-color: #422006; padding: 15px; border-radius: 8px; border-left: 5px solid #f59e0b; margin-bottom: 10px;'><h5 style='margin-top:0; margin-bottom:5px; color: #fbbf24;'>⚙️ Máquina {maq} irá trocar o rebolo</h5><p style='color: #fef3c7; margin-bottom:0; font-size:14px;'>{h_txt} <br><span style='font-size:13px; color:#d97706;'>Status Atual: {st_limpo}</span></p>{info_reb}</div>""", unsafe_allow_html=True)
+            else: st.success("✅ Nenhuma máquina com troca de rebolo prevista no momento.")
+        else: st.info("ℹ️ Aba restrita para os perfis de Pré-Set e Administração.")
+
+    with aba5:
+        st.markdown("#### 🔙 Registro de Devolução de Rebolo")
+        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Registre rebolos que foram solicitados mas acabaram sendo devolvidos sem uso pelo preparador.</p>", unsafe_allow_html=True)
+        
+        if st.session_state['perfil'] in ['preset', 'adm']:
+            with st.form("form_devolucao", clear_on_submit=True):
+                col_d1, col_d2 = st.columns(2)
+                prep_dev = col_d1.text_input("Nome do Preparador:", placeholder="Ex: Lucas")
+                reb_dev = col_d2.text_input("Rebolo Devolvido:", placeholder="Ex: REB 123")
+                motivo_dev = st.text_input("Motivo da Devolução:", placeholder="Ex: Peça já estava no dimensional, não precisou trocar...")
+                
+                if st.form_submit_button("💾 Registrar Devolução", type="primary"):
+                    if not prep_dev.strip() or not reb_dev.strip() or not motivo_dev.strip():
+                        st.error("⚠️ Preencha todos os campos (Preparador, Rebolo e Motivo)!")
+                    else:
+                        hora_br_str = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M")
+                        nova_dev = {"Data_Hora": hora_br_str, "Preparador": prep_dev.strip().upper(), "Rebolo": reb_dev.strip().upper(), "Motivo": motivo_dev.strip()}
+                        ARQUIVO_DEVOLUCOES = "historico_devolucoes.csv"
+                        
+                        if os.path.exists(ARQUIVO_DEVOLUCOES):
+                            df_dev = pd.read_csv(ARQUIVO_DEVOLUCOES)
+                            df_dev = pd.concat([df_dev, pd.DataFrame([nova_dev])], ignore_index=True)
+                            df_dev.to_csv(ARQUIVO_DEVOLUCOES, index=False)
+                        else:
+                            pd.DataFrame([nova_dev]).to_csv(ARQUIVO_DEVOLUCOES, index=False)
+                            
+                        st.success("✅ Devolução registrada com sucesso!")
+                        time.sleep(1)
+                        st.rerun()
+            
+            st.divider()
+            st.markdown("##### 📜 Histórico de Devoluções")
+            ARQUIVO_DEVOLUCOES = "historico_devolucoes.csv"
+            if os.path.exists(ARQUIVO_DEVOLUCOES):
+                df_dev = pd.read_csv(ARQUIVO_DEVOLUCOES)
+                if not df_dev.empty:
+                    st.dataframe(df_dev.sort_values(by="Data_Hora", ascending=False), use_container_width=True, hide_index=True)
+                else:
+                    st.info("Nenhuma devolução registrada no histórico.")
+            else:
+                st.info("Nenhuma devolução registrada no histórico.")
+        else:
+            st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode registrar devoluções.")
+
+    with aba6:
+        st.markdown("#### ✏️ Edição de Armários em Lote")
+        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Edite as gavetas diretamente na tabela, simulando um Excel. Ótimo para correções rápidas.</p>", unsafe_allow_html=True)
+        if st.session_state['perfil'] in ['preset', 'adm']:
+            df_arm_edit = df_arm.fillna("").copy()
+            
+            filtro_arm_lote = st.selectbox("Filtrar Armário (Tabela):", ["Todos", "Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"])
+            if filtro_arm_lote != "Todos":
+                df_exibir = df_arm_edit[df_arm_edit['Armario'] == filtro_arm_lote].copy()
+            else:
+                df_exibir = df_arm_edit.copy()
+                
+            config_colunas = {
+                "Armario": st.column_config.TextColumn("Armário", disabled=True),
+                "Posicao": st.column_config.TextColumn("Gaveta", disabled=True),
+                "Ordem": st.column_config.TextColumn("OP"),
+                "Item": st.column_config.TextColumn("Item"),
+                "Status": st.column_config.SelectboxColumn("Status", options=["VAZIO", "OCUPADO", "SEPARADO", "AGUARDANDO MÁQUINA"]),
+                "Rebolo": st.column_config.TextColumn("Rebolo"),
+                "Data_Hora": st.column_config.TextColumn("Hora"),
+                "Observacao": st.column_config.TextColumn("Observação")
+            }
+            
+            df_editado = st.data_editor(df_exibir, column_config=config_colunas, use_container_width=True, hide_index=True)
+            
+            if st.button("💾 Salvar Alterações em Lote", type="primary", use_container_width=True):
+                for idx, row in df_editado.iterrows():
+                    mask = (df_arm['Armario'] == row['Armario']) & (df_arm['Posicao'] == row['Posicao'])
+                    df_arm.loc[mask, 'Ordem'] = str(row['Ordem']).strip()
+                    df_arm.loc[mask, 'Item'] = str(row['Item']).strip()
+                    df_arm.loc[mask, 'Rebolo'] = str(row['Rebolo']).strip()
+                    df_arm.loc[mask, 'Status'] = str(row['Status']).strip()
+                    df_arm.loc[mask, 'Data_Hora'] = str(row['Data_Hora']).strip()
+                    df_arm.loc[mask, 'Observacao'] = str(row['Observacao']).strip()
+                df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
+                st.success("✅ Armários atualizados em lote com sucesso!")
+                time.sleep(0.5); st.rerun()
+        else:
+            st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode editar as gavetas em lote.")
 
     with aba2:
         if st.session_state['perfil'] in ['preset', 'adm']:
