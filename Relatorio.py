@@ -1585,6 +1585,13 @@ def tela_checkup():
                             turno_post_it = obter_turno_por_horario(h_alvo)
                         except: pass
 
+                    # Busca o status do programa
+                    prog_status = "Não validado ⚠️"
+                    if "[Prog: OK]" in st_m.upper() or "[PROG: OK]" in st_m.upper():
+                        prog_status = "OK ✅"
+                    elif "[Prog: NOK]" in st_m.upper() or "[PROG: NOK]" in st_m.upper():
+                        prog_status = "NOK ❌"
+
                     # Tenta extrair a OP e ITEM do status primeiro
                     op_maq, item_maq = "", ""
                     if "[Ordem:" in st_m:
@@ -1672,7 +1679,7 @@ def tela_checkup():
                         html_rebolo = f"<div style='margin: 0 0 2px 0;'><strong style='color: #000000 !important; font-size: 13px;'>🛞 Reb 1:</strong> <span style='color: #000000 !important; font-size: 13px;'>{reb1}</span></div><div style='margin: 0;'><strong style='color: #000000 !important; font-size: 13px;'>🛞 Reb 2:</strong> <span style='color: #000000 !important; font-size: 13px;'>{reb2}</span></div>"
 
                     # Montagem da String HTML em uma única linha (Evita quebras automáticas do Markdown)
-                    html = f"<div style='background-color: {bg_color}; padding: 15px; border-radius: 2px 20px 2px 15px; box-shadow: 3px 5px 10px rgba(0,0,0,0.4); margin-bottom: 20px; min-height: 200px; transform: rotate({rotate}deg);'><div style='margin: 0 0 10px 0; border-bottom: 1px solid {bd_color}; padding-bottom: 5px;'><strong style='color: #000000 !important; font-size: 16px;'>{cabecalho_maq}</strong></div><div style='margin: 0 0 4px 0;'><strong style='color: #000000 !important; font-size: 14px;'>{titulo_tempo}</strong> <span style='color: #000000 !important; font-size: 14px;'>{valor_tempo}</span></div><div style='margin: 0 0 4px 0;'><strong style='color: #000000 !important; font-size: 14px;'>📋 Setup:</strong> <span style='color: #000000 !important; font-size: 14px;'>{tipo_setup}</span></div><div style='margin: 0 0 8px 0;'><strong style='color: #000000 !important; font-size: 14px;'>🔄 Troca Rebolo:</strong> <span style='color: #000000 !important; font-size: 14px;'>{tem_rebolo}</span></div><div style='background: rgba(255,255,255,0.5); padding: 8px; border-radius: 6px; margin-bottom: 8px;'><div style='margin: 0 0 2px 0;'><strong style='color: #000000 !important; font-size: 13px;'>Ordem:</strong> <span style='color: #000000 !important; font-size: 13px;'>{final_op}</span></div><div style='margin: 0;'><strong style='color: #000000 !important; font-size: 13px;'>Item:</strong> <span style='color: #000000 !important; font-size: 13px;'>{final_item}</span></div></div>{html_rebolo}</div>"
+                    html = f"<div style='background-color: {bg_color}; padding: 15px; border-radius: 2px 20px 2px 15px; box-shadow: 3px 5px 10px rgba(0,0,0,0.4); margin-bottom: 20px; min-height: 200px; transform: rotate({rotate}deg);'><div style='margin: 0 0 10px 0; border-bottom: 1px solid {bd_color}; padding-bottom: 5px;'><strong style='color: #000000 !important; font-size: 16px;'>{cabecalho_maq}</strong></div><div style='margin: 0 0 4px 0;'><strong style='color: #000000 !important; font-size: 14px;'>{titulo_tempo}</strong> <span style='color: #000000 !important; font-size: 14px;'>{valor_tempo}</span></div><div style='margin: 0 0 4px 0;'><strong style='color: #000000 !important; font-size: 14px;'>📋 Setup:</strong> <span style='color: #000000 !important; font-size: 14px;'>{tipo_setup}</span></div><div style='margin: 0 0 8px 0;'><strong style='color: #000000 !important; font-size: 14px;'>💻 Programa:</strong> <span style='color: #000000 !important; font-size: 14px;'>{prog_status}</span></div><div style='margin: 0 0 8px 0;'><strong style='color: #000000 !important; font-size: 14px;'>🔄 Troca Rebolo:</strong> <span style='color: #000000 !important; font-size: 14px;'>{tem_rebolo}</span></div><div style='background: rgba(255,255,255,0.5); padding: 8px; border-radius: 6px; margin-bottom: 8px;'><div style='margin: 0 0 2px 0;'><strong style='color: #000000 !important; font-size: 13px;'>Ordem:</strong> <span style='color: #000000 !important; font-size: 13px;'>{final_op}</span></div><div style='margin: 0;'><strong style='color: #000000 !important; font-size: 13px;'>Item:</strong> <span style='color: #000000 !important; font-size: 13px;'>{final_item}</span></div></div>{html_rebolo}</div>"
                     
                     cols[j].markdown(html, unsafe_allow_html=True)
 
