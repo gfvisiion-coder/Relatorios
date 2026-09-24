@@ -1555,7 +1555,7 @@ def tela_checkup():
                             turno_post_it = obter_turno_por_horario(h_alvo)
                         except: pass
 
-                    # Tenta extrair a OP e ITEM do status primeiro (caso já esteja PREPARANDO a gaveta estará vazia)
+                    # Tenta extrair a OP e ITEM do status primeiro
                     op_maq, item_maq = "", ""
                     if "[Ordem:" in st_m:
                         try: op_maq = st_m.split("[Ordem:")[1].split("]")[0].strip()
@@ -1599,30 +1599,23 @@ def tela_checkup():
                     if tem_rebolo == "SIM" and reb1 == "-":
                         reb1 = "Não cadastrado"
 
-                    # Lógica de Cores
+                    # Lógica de Cores (Profissionais e Incisiva)
                     if "PARADA" in st_m.upper():
-                        bg_color, bd_color = "#FECACA", "#F87171" # Vermelho claro
+                        bg_color, bd_color = "#FCA5A5", "#DC2626" # Vermelho Profissional
                     elif "MANUTENÇÃO" in st_m.upper():
-                        bg_color, bd_color = "#FED7AA", "#FB923C" # Laranja claro
+                        bg_color, bd_color = "#FDBA74", "#EA580C" # Laranja Profissional
                     elif is_preparando:
-                        bg_color, bd_color = "#E9D5FF", "#A855F7" # Roxo/Lilás claro (Máquina Preparando)
+                        bg_color, bd_color = "#F472B6", "#BE185D" # Rosa Magenta Incisivo (Bem vibrante e chamativo)
                     elif turno_post_it == "1° TURNO":
-                        bg_color, bd_color = "#FCE7F3", "#F472B6" # Rosa bem clarinho
+                        bg_color, bd_color = "#E0E7FF", "#4338CA" # Azul Claro Corporativo
                     elif turno_post_it == "2° TURNO":
-                        bg_color, bd_color = "#FEF08A", "#EAB308" # Amarelo Claro
+                        bg_color, bd_color = "#FEF3C7", "#D97706" # Amarelo Claro Corporativo
                     elif turno_post_it == "3° TURNO":
-                        bg_color, bd_color = "#D9F99D", "#84CC16" # Verde Claro
+                        bg_color, bd_color = "#D1FAE5", "#059669" # Verde Claro Corporativo
                     else:
-                        bg_color, bd_color = "#E5E7EB", "#9CA3AF" # Cinza
+                        bg_color, bd_color = "#E5E7EB", "#4B5563" # Cinza
 
                     rotate = ( (i+j) % 3 ) * 2 - 2 
-
-                    html_rebolo = ""
-                    if tem_rebolo == "SIM":
-                        html_rebolo = f'''
-<div style="margin: 0 0 2px 0; font-size: 13px; color: #000000 !important;"><b>🛞 Reb 1:</b> {reb1}</div>
-<div style="margin: 0; font-size: 13px; color: #000000 !important;"><b>🛞 Reb 2:</b> {reb2}</div>
-                        '''
 
                     # Define cabeçalho e tempo de exibição
                     titulo_tempo = "⏰ Agendado para:"
@@ -1644,18 +1637,13 @@ def tela_checkup():
                                     valor_tempo = f"{mins} min"
                                 except: pass
 
-                    # HTML Limpo e Forçando a Cor Preta
-                    html = f'''<div style="background-color: {bg_color}; padding: 15px; border-radius: 2px 20px 2px 15px; box-shadow: 3px 5px 10px rgba(0,0,0,0.4); color: #000000 !important; margin-bottom: 20px; min-height: 200px; transform: rotate({rotate}deg);">
-<div style="margin: 0 0 10px 0; color: #000000 !important; border-bottom: 1px solid {bd_color}; font-size: 16px; font-weight: bold; padding-bottom: 5px;">{cabecalho_maq}</div>
-<div style="margin: 0 0 4px 0; font-size: 14px; color: #000000 !important;"><b>{titulo_tempo}</b> {valor_tempo}</div>
-<div style="margin: 0 0 4px 0; font-size: 14px; color: #000000 !important;"><b>📋 Setup:</b> {tipo_setup}</div>
-<div style="margin: 0 0 8px 0; font-size: 14px; color: #000000 !important;"><b>🔄 Troca Rebolo:</b> {tem_rebolo}</div>
-<div style="background: rgba(255,255,255,0.5); padding: 8px; border-radius: 6px; margin-bottom: 8px;">
-<div style="margin: 0 0 2px 0; font-size: 13px; color: #000000 !important;"><b>Ordem:</b> {final_op}</div>
-<div style="margin: 0; font-size: 13px; color: #000000 !important;"><b>Item:</b> {final_item}</div>
-</div>
-{html_rebolo}
-</div>'''
+                    html_rebolo = ""
+                    if tem_rebolo == "SIM":
+                        html_rebolo = f"<div style='margin: 0 0 2px 0;'><strong style='color: #000000 !important; font-size: 13px;'>🛞 Reb 1:</strong> <span style='color: #000000 !important; font-size: 13px;'>{reb1}</span></div><div style='margin: 0;'><strong style='color: #000000 !important; font-size: 13px;'>🛞 Reb 2:</strong> <span style='color: #000000 !important; font-size: 13px;'>{reb2}</span></div>"
+
+                    # Montagem da String HTML em uma única linha (Evita quebras automáticas do Markdown)
+                    html = f"<div style='background-color: {bg_color}; padding: 15px; border-radius: 2px 20px 2px 15px; box-shadow: 3px 5px 10px rgba(0,0,0,0.4); margin-bottom: 20px; min-height: 200px; transform: rotate({rotate}deg);'><div style='margin: 0 0 10px 0; border-bottom: 1px solid {bd_color}; padding-bottom: 5px;'><strong style='color: #000000 !important; font-size: 16px;'>{cabecalho_maq}</strong></div><div style='margin: 0 0 4px 0;'><strong style='color: #000000 !important; font-size: 14px;'>{titulo_tempo}</strong> <span style='color: #000000 !important; font-size: 14px;'>{valor_tempo}</span></div><div style='margin: 0 0 4px 0;'><strong style='color: #000000 !important; font-size: 14px;'>📋 Setup:</strong> <span style='color: #000000 !important; font-size: 14px;'>{tipo_setup}</span></div><div style='margin: 0 0 8px 0;'><strong style='color: #000000 !important; font-size: 14px;'>🔄 Troca Rebolo:</strong> <span style='color: #000000 !important; font-size: 14px;'>{tem_rebolo}</span></div><div style='background: rgba(255,255,255,0.5); padding: 8px; border-radius: 6px; margin-bottom: 8px;'><div style='margin: 0 0 2px 0;'><strong style='color: #000000 !important; font-size: 13px;'>Ordem:</strong> <span style='color: #000000 !important; font-size: 13px;'>{final_op}</span></div><div style='margin: 0;'><strong style='color: #000000 !important; font-size: 13px;'>Item:</strong> <span style='color: #000000 !important; font-size: 13px;'>{final_item}</span></div></div>{html_rebolo}</div>"
+                    
                     cols[j].markdown(html, unsafe_allow_html=True)
 
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] and perfil != 'preset':
