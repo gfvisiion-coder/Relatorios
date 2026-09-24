@@ -454,12 +454,12 @@ def executar_fechamento_silencioso(data_alvo, turno_alvo):
             df_recorte = df_maq.copy()
         
         if not is_power_down:
-            df_recorte = df_recorte[~df_recorte['Status'].str.contains("Queda de Energia", case=False, na=False)]
-            df_recorte['Status'] = df_recorte['Status'].astype(str).str.replace(" [Energia Restaurada]", "", regex=False)
-            if df_recorte.empty:
-                last_row = df_maq.iloc[-1:].copy()
-                last_row['Status'] = last_row['Status'].astype(str).str.replace(" [Energia Restaurada]", "", regex=False)
-                df_recorte = pd.DataFrame([last_row])
+                df_recorte = df_recorte[~df_recorte['Status'].str.contains("Queda de Energia", case=False, na=False)]
+                df_recorte['Status'] = df_recorte['Status'].astype(str).str.replace(" [Energia Restaurada]", "", regex=False)
+                if df_recorte.empty:
+                    last_row = df_maq.iloc[-1:].copy()
+                    last_row['Status'] = last_row['Status'].astype(str).str.replace(" [Energia Restaurada]", "", regex=False)
+                    df_recorte = last_row # <-- CORREÇÃO: last_row já é um DataFrame
         df_novo.append(df_recorte)
     
     if df_novo: pd.concat(df_novo).to_csv(ARQUIVO_DADOS, index=False)
