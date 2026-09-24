@@ -869,475 +869,404 @@ def painel_controle_maquina(maq_id, setor):
             except: pass
 
         st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
-        
-        status_exibicao = status_atual
-        if st.session_state.get('perfil') == 'preset':
-            status_exibicao = re.sub(r' \[Prep\. Sugerido:.*?\]', '', status_atual)
-            status_exibicao = re.sub(r' \[Prep:.*?\]', '', status_exibicao)
-            
-        if "AGUARDANDO PREPARADOR" in status_atual: st.warning(f"🟠 Status Atual: {status_exibicao}")
-        elif "AGENDADO" in status_atual or "AGENDADA" in status_atual: st.info(f"🔵 Status: {status_exibicao}")
-        elif "PREPARANDO" in status_atual: st.info(f"🟡 Status Atual: {status_exibicao} desde {hora_atual}{timer_str}")
-        elif "SEQUÊNCIA" in status_atual: st.info(f"🟣 Status Atual: {status_exibicao} desde {hora_atual}{timer_str}")
-        elif "PRODUZINDO" in status_atual: st.success(f"🟢 Status Atual: {status_exibicao}")
+        if "AGUARDANDO PREPARADOR" in status_atual: st.warning(f"🟠 Status Atual: {status_atual}")
+        elif "AGENDADO" in status_atual or "AGENDADA" in status_atual: st.info(f"🔵 Status: {status_atual}")
+        elif "PREPARANDO" in status_atual: st.info(f"🟡 Status Atual: {status_atual} desde {hora_atual}{timer_str}")
+        elif "SEQUÊNCIA" in status_atual: st.info(f"🟣 Status Atual: {status_atual} desde {hora_atual}{timer_str}")
+        elif "PRODUZINDO" in status_atual: st.success(f"🟢 Status Atual: {status_atual}")
         elif "PARADA" in status_atual: st.error(f"🔴 Status Atual: Paralisada desde {hora_atual}")
         elif "MANUTENÇÃO" in status_atual: st.warning(f"🛠️ Status Atual: Em Manutenção desde {hora_atual}{timer_str}")
-        else: st.warning(f"🟡 Status Atual: {status_exibicao} desde {hora_atual}{timer_str}")
+        else: st.warning(f"🟡 Status Atual: {status_atual} desde {hora_atual}{timer_str}")
             
+        flow_key = f"flow_{maq_id}"
+        is_setup_ativo = "PREPARANDO" in status_atual or "SEQUÊNCIA" in status_atual
+        is_espera = "AGUARDANDO PREPARADOR" in status_atual or "AGENDADO" in status_atual or "AGENDADA" in status_atual
+        
+        if flow_key not in st.session_state:
+            if is_espera: st.session_state[flow_key] = "acoes_espera"
+            else: st.session_state[flow_key] = "pergunta"
+                
         st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
-
-        if st.session_state.get('perfil') == 'preset':
-            # --- MODO SOMENTE LEITURA PARA O PRÉ-SET (POST-ITS) ---
-            st.markdown("<h5 style='color: #2DD4BF; margin-bottom: 15px;'>🔍 Resumo da Programação (Pré-Set)</h5>", unsafe_allow_html=True)
-            
-            is_seq = "SEQUÊNCIA" in status_atual.upper() or "SEQUENCIA" in status_atual.upper()
-            is_prep = "PREPARAÇÃO" in status_atual.upper() or "PREPARACAO" in status_atual.upper() or "PREPARANDO" in status_atual.upper()
-            
-            if is_seq: tipo_setup = "Sequência"
-            elif is_prep: tipo_setup = "Preparação"
-            else: tipo_setup = "N/A"
-            
-            tem_rebolo = "SIM" if "(C/ REBOLO)" in status_atual.upper() else "NÃO"
-            
-            rebolo1, rebolo2, desc = "-", "-", ""
-            if item_armario and os.path.exists(ARQUIVO_REBOLOS):
-                try:
-                    df_rebolos = pd.read_excel(ARQUIVO_REBOLOS, sheet_name='Banco De Rebolos', engine='openpyxl')
-                    novas_colunas = [unicodedata.normalize('NFKD', str(c).upper()).encode('ASCII', 'ignore').decode('ASCII').replace(" ", "").replace("\n", "").strip() for c in df_rebolos.columns]
-                    df_rebolos.columns = novas_colunas
-                    if 'ITEM' in df_rebolos.columns:
-                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM'].astype(str).str.upper().apply(lambda x: re.sub(r'\.0$', '', x.strip()).lstrip("0"))
-                        item_busca = str(item_armario).strip().upper()
-                        match = df_rebolos[df_rebolos['ITEM_BUSCA'] == item_busca]
-                        if match.empty: match = df_rebolos[df_rebolos['ITEM_BUSCA'].str.contains(item_busca, regex=False, na=False)]
-                        if not match.empty:
-                            row_reb = match.iloc[0]
-                            desc = str(row_reb.get('DESCRICAO', '')).strip()
-                            rebolo1 = str(row_reb.get('REBOLO', row_reb.get('REBOLO1', ''))).strip()
-                            rebolo2 = str(row_reb.get('REBOLO2', '')).strip()
-                            if rebolo1.lower() in ['nan', 'none', '']: rebolo1 = "-"
-                            if rebolo2.lower() in ['nan', 'none', '']: rebolo2 = "-"
-                except: pass
-
-            post_it_base = "padding: 15px; border-radius: 2px 20px 2px 15px; box-shadow: 4px 6px 12px rgba(0,0,0,0.5); color: #18181B !important; min-height: 150px; margin-bottom: 15px;"
-            col_p1, col_p2, col_p3 = st.columns(3)
-            
-            with col_p1:
-                st.markdown(f"""<div style="background-color: #FEF08A; {post_it_base} transform: rotate(-2deg);">
-<h4 style="color: #18181B !important; font-size: 16px; border-bottom: 1px solid #EAB308; padding-bottom: 5px; margin-top:0; font-weight:bold;">📝 Setup</h4>
-<p style="margin: 8px 0 4px 0; color: #18181B !important; font-size: 14px;"><b>Tipo:</b><br>{tipo_setup}</p>
-<p style="margin: 0; color: #18181B !important; font-size: 14px;"><b>Troca de Rebolo:</b><br>{tem_rebolo}</p>
-</div>""", unsafe_allow_html=True)
+        
+        if is_setup_ativo and st.session_state[flow_key] == "pergunta":
+            with st.form(f"form_fast_track_{maq_id}"):
+                st.markdown(f"<p style='text-align: center; font-weight: 600;'>O setup desta máquina foi finalizado?</p>", unsafe_allow_html=True)
+                obs_fast = st.text_input("Observação / Justificativa (Opcional):", placeholder="Ex: Demora por falta de ferramenta...")
                 
-            with col_p2:
-                st.markdown(f"""<div style="background-color: #BAE6FD; {post_it_base} transform: rotate(1deg);">
-<h4 style="color: #18181B !important; font-size: 16px; border-bottom: 1px solid #38BDF8; padding-bottom: 5px; margin-top:0; font-weight:bold;">📦 Produção</h4>
-<p style="margin: 8px 0 4px 0; color: #18181B !important; font-size: 14px;"><b>Próxima OP:</b><br>{op_armario if op_armario else 'Nenhuma'}</p>
-<p style="margin: 0; color: #18181B !important; font-size: 14px;"><b>Próximo Item:</b><br>{item_armario if item_armario else '-'}</p>
-</div>""", unsafe_allow_html=True)
+                c1, c2, c3 = st.columns(3)
+                btn_sim = c1.form_submit_button("✅ Sim (Produzir)")
+                btn_assumir = c2.form_submit_button("🔄 Assumir")
+                btn_alt = c3.form_submit_button("⚠️ Alterar")
                 
-            with col_p3:
-                desc_html = f"<br><span style='font-size: 11px; color: #4B5563;'>({desc})</span>" if desc and desc.lower() not in ['nan', 'none', ''] else ""
-                if item_armario:
-                    content_reb = f"""<p style="margin: 8px 0 4px 0; color: #18181B !important; font-size: 14px; line-height: 1.2;"><b>Rebolo 1:</b><br>{rebolo1}{desc_html}</p>
-<p style="margin: 0; color: #18181B !important; font-size: 14px;"><b>Rebolo 2:</b><br>{rebolo2}</p>"""
+                if btn_sim:
+                    hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                    info_atual = obter_info_maquina(maq_id, setor)
+                    st_atual = str(info_atual['Status']) if info_atual else ""
+                    tags_prod = extrair_tags_producao(st_atual)
+                    tags_prod = tags_prod.replace("[Novo Item:", "[Item:")
+                    tags_prod = tags_prod.replace("[Item Atual:", "[Item:")
+                    st_final = f"PRODUZINDO {tags_prod}".strip()
+                    if obs_fast.strip(): st_final += f" [Obs: {obs_fast.strip()}]"
+                    
+                    if "[Ordem:" in st_atual:
+                        op_ext = st_atual.split("[Ordem:")[1].split("]")[0].strip()
+                        dar_baixa_armario(op_ext, st.session_state.get('operador', 'SISTEMA'))
+                    
+                    salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                    st.session_state['maq_ativa'] = None
+                    del st.session_state[flow_key]
+                    st.rerun()
+                    
+                if btn_assumir: st.session_state[flow_key] = "assumir_prep"; st.rerun()
+                if btn_alt: st.session_state[flow_key] = "mudanca_status"; st.rerun()
+
+        elif st.session_state[flow_key] == "assumir_prep":
+            with st.form(f"form_assumir_{maq_id}"):
+                st.markdown("🧑‍🔧 **Assumir Setup de Outro Operador**")
+                novo_nome = st.text_input("Seu Nome para Assumir:", value=st.session_state['operador'])
+                if st.form_submit_button("🚀 ASSUMIR PREPARAÇÃO", type="primary"):
+                    if novo_nome.strip():
+                        hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                        info_atual = obter_info_maquina(maq_id, setor)
+                        tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
+                        st_andamento = f"PREPARANDO [Prep: {novo_nome.strip().upper()}] [Assumido] {tags_prod}".strip()
+                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                        st.session_state['maq_ativa'] = None
+                        del st.session_state[flow_key]
+                        st.success("✅ Setup assumido com sucesso!")
+                        time.sleep(0.5); st.rerun()
+
+        elif st.session_state[flow_key] == "pergunta" and not is_setup_ativo:
+            st.markdown(f"<p style='text-align: center; font-weight: 600;'>Esta máquina ainda está com o status atual?</p>", unsafe_allow_html=True)
+            c1, c2 = st.columns(2)
+            if c1.button("✅ Sim, continuar", key=f"s_{maq_id}", use_container_width=True):
+                st.session_state['maq_ativa'] = None
+                if flow_key in st.session_state: del st.session_state[flow_key]
+                st.rerun()
+            if c2.button("❌ Não, alterar", key=f"n_{maq_id}", use_container_width=True):
+                st.session_state[flow_key] = "mudanca_status"
+                st.rerun()
+                
+        elif st.session_state[flow_key] == "mudanca_status":
+            st.markdown("<p style='font-size: 12px; font-weight: bold; color: #14B8A6;'>SELECIONE O NOVO STATUS:</p>", unsafe_allow_html=True)
+            
+            if st.button("🟢 PRODUZINDO", key=f"st_prod_{maq_id}", use_container_width=True):
+                info_atual = obter_info_maquina(maq_id, setor)
+                st_atual = str(info_atual['Status']) if info_atual else ""
+                
+                tags_prod = extrair_tags_producao(st_atual)
+                
+                if "[Ordem:" not in tags_prod:
+                    try:
+                        df_temp = pd.read_csv(ARQUIVO_DADOS)
+                        df_temp_maq = df_temp[df_temp['Maquina'] == f"{setor} {maq_id}"]
+                        for idx in reversed(df_temp_maq.index):
+                            st_hist = str(df_temp_maq.loc[idx, 'Status'])
+                            if "[Ordem:" in st_hist:
+                                tags_prod = extrair_tags_producao(st_hist)
+                                break
+                    except: pass
+                
+                if "[Ordem:" in tags_prod:
+                    hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                    tags_prod = tags_prod.replace("[Novo Item:", "[Item:")
+                    tags_prod = tags_prod.replace("[Item Atual:", "[Item:")
+                    tags_prod = re.sub(r' \[Fim Previsto:.*?\]', '', tags_prod)
+                    st_final = f"PRODUZINDO {tags_prod}".strip()
+                    
+                    salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                    st.session_state['maq_ativa'] = None
+                    del st.session_state[flow_key]
+                    st.rerun()
                 else:
-                    content_reb = f"<p style='margin: 15px 0; color: #18181B !important; font-size: 14px; font-style: italic;'>Gaveta vazia. Insira um item para buscar os rebolos.</p>"
-
-                st.markdown(f"""<div style="background-color: #FBCFE8; {post_it_base} transform: rotate(-1deg);">
-<h4 style="color: #18181B !important; font-size: 16px; border-bottom: 1px solid #F472B6; padding-bottom: 5px; margin-top:0; font-weight:bold;">🛞 Ferramental</h4>
-{content_reb}
-</div>""", unsafe_allow_html=True)
-
-        else:
-            # --- FORMULÁRIOS INTERATIVOS PARA PREPARADORES E ADM ---
-            flow_key = f"flow_{maq_id}"
-            is_setup_ativo = "PREPARANDO" in status_atual or "SEQUÊNCIA" in status_atual
-            is_espera = "AGUARDANDO PREPARADOR" in status_atual or "AGENDADO" in status_atual or "AGENDADA" in status_atual
-            
-            if flow_key not in st.session_state:
-                if is_espera: st.session_state[flow_key] = "acoes_espera"
-                else: st.session_state[flow_key] = "pergunta"
-            
-            if is_setup_ativo and st.session_state[flow_key] == "pergunta":
-                with st.form(f"form_fast_track_{maq_id}"):
-                    st.markdown(f"<p style='text-align: center; font-weight: 600;'>O setup desta máquina foi finalizado?</p>", unsafe_allow_html=True)
-                    obs_fast = st.text_input("Observação / Justificativa (Opcional):", placeholder="Ex: Demora por falta de ferramenta...")
+                    st.session_state[flow_key] = "detalhe_prod"
+                    st.rerun()
                     
-                    c1, c2, c3 = st.columns(3)
-                    btn_sim = c1.form_submit_button("✅ Sim (Produzir)")
-                    btn_assumir = c2.form_submit_button("🔄 Assumir")
-                    btn_alt = c3.form_submit_button("⚠️ Alterar")
+            if st.button("🟡 PREPARAÇÃO / SEQUÊNCIA", key=f"st_prep_{maq_id}", use_container_width=True): st.session_state[flow_key] = "detalhe_prep"; st.rerun()
+            if st.button("🛠️ MANUTENÇÃO", key=f"st_man_{maq_id}", use_container_width=True): st.session_state[flow_key] = "detalhe_man"; st.rerun()
+            if st.button("🔴 PARADA", key=f"st_par_{maq_id}", use_container_width=True): st.session_state[flow_key] = "detalhe_parada"; st.rerun()
+
+        elif st.session_state[flow_key] == "detalhe_prod":
+            with st.form(f"form_prod_{maq_id}"):
+                st.markdown("🟢 **Apontamento de Produção**")
+                info_atual = obter_info_maquina(maq_id, setor)
+                st_atual = str(info_atual['Status']) if info_atual else ""
+                op_pre, item_pre = "", ""
+                if "[Ordem:" in st_atual: op_pre = st_atual.split("[Ordem:")[1].split("]")[0].strip()
+                if "[Novo Item:" in st_atual: item_pre = st_atual.split("[Novo Item:")[1].split("]")[0].strip()
+                elif "[Item:" in st_atual: item_pre = st_atual.split("[Item:")[1].split("]")[0].strip()
+                elif "[Item Atual:" in st_atual: item_pre = st_atual.split("[Item Atual:")[1].split("]")[0].strip()
+                
+                if not op_pre and op_armario: op_pre = op_armario
+                if not item_pre and item_armario: item_pre = item_armario
+                
+                ordem = st.text_input("Ordem de Produção (OP):", value=op_pre, placeholder="Ex: 987654")
+                item = st.text_input("Item:", value=item_pre, placeholder="Ex: 313324")
+                
+                if op_armario and (op_pre == op_armario or item_pre == item_armario):
+                    st.success("📦 Dados puxados automaticamente da gaveta do armário!")
                     
-                    if btn_sim:
+                pcs_hora = st.text_input("Produção (Pçs/Hora) - Opcional:", placeholder="Ex: 150")
+                obs = st.text_input("Observação / Justificativa (Opcional):", placeholder="Ex: Ajuste fino demorado...")
+                
+                if st.form_submit_button("🚀 INICIAR PRODUÇÃO", type="primary"):
+                    if not ordem.strip() or not item.strip():
+                        st.error("⚠️ A Ordem e o Item são obrigatórios!")
+                    else:
+                        hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                        item_limpo = item.strip().upper().replace(".0", "").lstrip("0")
+                        ordem_limpa = ordem.strip().upper().replace(".0", "").lstrip("0")
+                        st_final = f"PRODUZINDO [Ordem: {ordem_limpa}] [Item: {item_limpo}]"
+                        if pcs_hora.strip(): st_final += f" [Pçs/Hora: {pcs_hora.strip()}]"
+                        if obs.strip(): st_final += f" [Obs: {obs.strip()}]"
+                        
+                        dar_baixa_armario(ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
+                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                        st.session_state['maq_ativa'] = None
+                        del st.session_state[flow_key]
+                        st.success("✅ Apontamento registrado! Máquina em Produção.")
+                        time.sleep(0.5); st.rerun()
+
+        elif st.session_state[flow_key] == "detalhe_parada":
+            with st.form(f"form_par_{maq_id}"):
+                st.markdown("🔴 **Registro de Máquina Parada**")
+                motivo = st.selectbox("Motivo da Parada:", ["Falta de Operador", "Falta de Material", "Ajuste de Processo", "Manutenção Corretiva", "Outros"])
+                op_faltante = st.text_input("Nome do Operador Faltante (Se aplicável):", placeholder="Ex: João Silva")
+                detalhe = st.text_input("Outros Detalhes (Opcional):")
+                
+                if st.form_submit_button("💾 Registrar Parada", type="primary"):
+                    if not detalhe.strip() and motivo == "Outros":
+                        st.error("⚠️ Forneça os detalhes da parada.")
+                    else:
+                        hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                        mot_final = motivo
+                        if detalhe.strip(): mot_final += f" - {detalhe.strip()}"
+                        if op_faltante.strip() and motivo == "Falta de Operador": mot_final += f" [Op. Faltante: {op_faltante.strip().upper()}]"
+                        info_atual = obter_info_maquina(maq_id, setor)
+                        st_atual = str(info_atual['Status']) if info_atual else ""
+                        tags_prod = extrair_tags_producao(st_atual)
+                        st_final = f"PARADA - Motivo: {mot_final} {tags_prod}".strip()
+                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                        st.session_state['maq_ativa'] = None
+                        del st.session_state[flow_key]
+                        st.success("✅ Máquina registrada como PARADA!")
+                        time.sleep(0.5); st.rerun()
+
+        elif st.session_state[flow_key] == "detalhe_prep":
+            with st.form(f"form_prep_{maq_id}"):
+                st.markdown("⚙️ **Configuração de Preparação / Agendamento**")
+                info_atual = obter_info_maquina(maq_id, setor)
+                st_atual = str(info_atual['Status']) if info_atual else ""
+                
+                hora_pre_fill = ""
+                if "AGENDADA PARA" in st_atual:
+                    try: hora_pre_fill = st_atual.split("AGENDADA PARA")[1].strip()
+                    except: pass
+                elif "[AGENDADO:" in st_atual:
+                    try: hora_pre_fill = st_atual.split("[AGENDADO:")[1].split("]")[0].strip()
+                    except: pass
+                elif "[Fim Previsto:" in st_atual:
+                    try: hora_pre_fill = st_atual.split("[Fim Previsto:")[1].split("]")[0].strip()
+                    except: pass
+                    
+                hora_relatorio = st.text_input("⏰ Horário Alvo (Aparecerá no Relatório):", value=hora_pre_fill, placeholder="Ex: 12:30")
+                is_agendado = st.toggle("Marcar como Agendamento Futuro", value=True)
+                prep_sugerido = st.text_input("🧑‍🔧 Sugerir Preparador (Opcional):", placeholder="Ex: Lucas")
+                
+                op_pre, item_pre = "", ""
+                if "[Ordem:" in st_atual: op_pre = st_atual.split("[Ordem:")[1].split("]")[0].strip()
+                if "[Item Atual:" in st_atual: item_pre = st_atual.split("[Item Atual:")[1].split("]")[0].strip()
+                elif "[Novo Item:" in st_atual: item_pre = st_atual.split("[Novo Item:")[1].split("]")[0].strip()
+                elif "[Item:" in st_atual: item_pre = st_atual.split("[Item:")[1].split("]")[0].strip()
+                
+                st.markdown("📦 **Dados do Item**")
+                ordem_atual = st.text_input("Ordem Atual (OP):", value=op_pre, placeholder="Ex: 987654")
+                item_atual = st.text_input("Item Atual (Na Máquina):", value=item_pre, placeholder="Ex: 313324")
+                st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
+                
+                if setor == "AFC":
+                    tipo_afc = st.radio("Selecione o Status:", ["PREPARAÇÃO", "SEQUÊNCIA"], horizontal=True)
+                    troca_rebolo = st.toggle("Troca de Rebolo")
+                else:
+                    tipo_prep = st.radio("Setup:", ["HASTE", "GUIA"], horizontal=True)
+                    troca_diametro = False
+                    if tipo_prep == "HASTE": troca_diametro = st.toggle("Troca de Diâmetro")
+                    troca_rebolo = st.toggle("Troca de Rebolo")
+                
+                if st.form_submit_button("💾 Salvar Registro", type="primary"):
+                    if not hora_relatorio.strip():
+                        st.error("⚠️ O campo de horário é obrigatório!")
+                    else:
+                        if setor == "AFC":
+                            st_final = tipo_afc
+                            if troca_rebolo: st_final += " (C/ Rebolo)"
+                        else:
+                            st_final = f"PREPARAÇÃO - {tipo_prep}"
+                            if tipo_prep == "HASTE" and troca_diametro: st_final += " (C/ Diâmetro)"
+                            if troca_rebolo: st_final += " (C/ Rebolo)"
+                            
+                        if prep_sugerido.strip(): st_final += f" [Prep. Sugerido: {prep_sugerido.strip().upper()}]"
+                        if is_agendado and hora_relatorio.strip(): st_final += f" [AGENDADO:{hora_relatorio.strip()}]"
+                        else: st_final = f"AGUARDANDO PREPARADOR - {st_final}"
+                        
+                        ordem_limpa = ordem_atual.strip().upper().replace(".0", "").lstrip("0")
+                        item_limpo = item_atual.strip().upper().replace(".0", "").lstrip("0")
+                        if ordem_limpa: st_final += f" [Ordem: {ordem_limpa}]"
+                        if item_limpo: st_final += f" [Item Atual: {item_limpo}]"
+                        if ordem_limpa: dar_baixa_armario(ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
+                            
+                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
+                        st.session_state['maq_ativa'] = None
+                        del st.session_state[flow_key]
+                        st.success("✅ Registro salvo com sucesso!")
+                        time.sleep(0.5); st.rerun()
+
+        elif st.session_state[flow_key] == "acoes_espera":
+            with st.form(f"form_espera_{maq_id}"):
+                st.markdown("🧑‍🔧 **Assumir ou Sugerir Preparador**")
+                sug_nome = ""
+                if "[Prep. Sugerido:" in status_atual:
+                    try: sug_nome = status_atual.split("[Prep. Sugerido:")[1].split("]")[0].strip()
+                    except: pass
+                    
+                nome_input = st.text_input("Nome do Preparador:", value=sug_nome if sug_nome else "")
+                is_guia = "GUIA" in status_atual
+                is_seq = "SEQUÊNCIA" in status_atual
+                is_comum = not is_guia and not is_seq
+                
+                st.markdown("📦 **Dados da Preparação**")
+                nova_ordem_input = ""
+                
+                if is_comum:
+                    nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", value=op_armario, placeholder="Ex: 987654")
+                    if op_armario:
+                        st.success(f"📦 OP {op_armario} puxada automaticamente do armário! (Item: {item_armario})")
+                    else:
+                        st.info("ℹ️ O Item da peça será puxado automaticamente do armário baseado nesta OP.")
+                elif is_seq:
+                    nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", value=op_armario, placeholder="Ex: 987654")
+                    if op_armario:
+                        st.success(f"📦 OP {op_armario} puxada automaticamente do armário!")
+                    else:
+                        st.info("ℹ️ Sequência: O Item atual será mantido. Informe apenas a nova OP.")
+                elif is_guia:
+                    st.info("ℹ️ Preparação de Guia: A Ordem e o Item atuais serão mantidos. Nenhuma nova OP é necessária.")
+                
+                st.markdown("⏰ **Adiar Agendamento (Opcional)**")
+                col_adiar1, col_adiar2 = st.columns([3, 2])
+                novo_horario_adiar = col_adiar1.text_input("Novo Horário:", placeholder="Ex: 14:30")
+                btn_adiar = col_adiar2.form_submit_button("⏳ Adiar Agendamento")
+                st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
+                
+                bloquear_inicio = False
+                msg_bloqueio = ""
+                if "[AGENDADO:" in status_atual or "AGENDADA PARA" in status_atual:
+                    try:
+                        hora_agend = status_atual.split("AGENDADA PARA")[1].strip() if "AGENDADA PARA" in status_atual else status_atual.split("[AGENDADO:")[1].split("]")[0].strip()
+                        turno_agend = obter_turno_por_horario(hora_agend)
+                        if turno_agend != st.session_state.get('turno') and st.session_state.get('perfil') != 'adm':
+                            bloquear_inicio = True
+                            msg_bloqueio = f"⚠️ Setup programado para o {turno_agend}. Apenas operadores daquele turno podem iniciar."
+                    except: pass
+
+                if bloquear_inicio: st.warning(msg_bloqueio)
+                
+                c1, c2, c3 = st.columns(3)
+                btn_sugerir = c1.form_submit_button("💡 Apenas Sugerir")
+                btn_iniciar = c2.form_submit_button("🚀 INICIAR", type="primary", disabled=bloquear_inicio)
+                btn_alterar = c3.form_submit_button("⚠️ Alterar Status")
+                
+                if btn_alterar: st.session_state[flow_key] = "mudanca_status"; st.rerun()
+                if btn_adiar:
+                    if novo_horario_adiar.strip():
+                        info_atual = obter_info_maquina(maq_id, setor)
+                        if info_atual:
+                            raw_st = str(info_atual['Status'])
+                            if "AGENDADA PARA" in raw_st: raw_st = re.sub(r'AGENDADA PARA \d{2}:\d{2}', f"AGENDADA PARA {novo_horario_adiar.strip()}", raw_st)
+                            elif "[AGENDADO:" in raw_st: raw_st = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{novo_horario_adiar.strip()}]", raw_st)
+                            else: raw_st += f" [AGENDADO:{novo_horario_adiar.strip()}]"
+                            
+                            salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": raw_st, "Hora": novo_horario_adiar.strip()}, ARQUIVO_DADOS)
+                            st.session_state['maq_ativa'] = None
+                            del st.session_state[flow_key]
+                            st.success(f"✅ Agendamento adiado para {novo_horario_adiar.strip()}!")
+                            time.sleep(0.5); st.rerun()
+                    else: st.error("⚠️ Informe o novo horário para adiar!")
+                    
+                if btn_sugerir:
+                    if nome_input.strip():
+                        info_atual = obter_info_maquina(maq_id, setor)
+                        if info_atual:
+                            raw_st = str(info_atual['Status'])
+                            raw_st = re.sub(r' \[Prep\. Sugerido:.*?\]', '', raw_st)
+                            if "AGENDADA PARA" in raw_st:
+                                hora_agend = raw_st.split("AGENDADA PARA")[1].strip()
+                                st_base = raw_st.split(" AGENDADA PARA")[0]
+                                raw_st = f"{st_base} [Prep. Sugerido: {nome_input.strip().upper()}] [AGENDADO:{hora_agend}]"
+                            elif "[AGENDADO:" in raw_st: 
+                                raw_st = raw_st.replace(" [AGENDADO:", f" [Prep. Sugerido: {nome_input.strip().upper()}] [AGENDADO:")
+                            else: raw_st += f" [Prep. Sugerido: {nome_input.strip().upper()}]"
+                            
+                            hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                            salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": raw_st, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                            st.session_state['maq_ativa'] = None
+                            del st.session_state[flow_key]
+                            st.success("✅ Sugestão de preparador atualizada!")
+                            time.sleep(0.5); st.rerun()
+                    else: st.error("⚠️ Informe um nome para sugerir!")
+                        
+                if btn_iniciar:
+                    if is_comum and not nova_ordem_input.strip(): st.error("⚠️ Para INICIAR a preparação, informe a Nova Ordem (OP)!")
+                    elif is_seq and not nova_ordem_input.strip(): st.error("⚠️ Para INICIAR a Sequência, informe a Nova Ordem (OP)!")
+                    else:
+                        nome_final = nome_input if nome_input.strip() else st.session_state['operador']
+                        hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                        info_atual = obter_info_maquina(maq_id, setor)
+                        tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
+                        
+                        if is_comum:
+                            tags_prod = re.sub(r' \[Ordem:.*?\]', '', tags_prod) 
+                            tags_prod = re.sub(r' \[Novo Item:.*?\]', '', tags_prod) 
+                            tags_prod = re.sub(r' \[Item:.*?\]', '', tags_prod) 
+                            tags_prod = re.sub(r' \[Item Atual:.*?\]', '', tags_prod) 
+                        elif is_seq:
+                            tags_prod = re.sub(r' \[Ordem:.*?\]', '', tags_prod)
+                        
+                        st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}] {tags_prod}".strip()
+                        nova_ordem_limpa = nova_ordem_input.strip().upper().replace(".0", "").lstrip("0")
+
+                        if is_comum:
+                            item_buscado = buscar_item_por_ordem(nova_ordem_limpa)
+                            st_andamento += f" [Ordem: {nova_ordem_limpa}]"
+                            st_andamento += f" [Novo Item: {item_buscado}]"
+                            dar_baixa_armario(nova_ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
+                        elif is_seq:
+                            st_andamento += f" [Ordem: {nova_ordem_limpa}]"
+                            dar_baixa_armario(nova_ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
+                            
+                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                        st.session_state['maq_ativa'] = None
+                        del st.session_state[flow_key]
+                        st.success("✅ Preparação iniciada!")
+                        time.sleep(0.5); st.rerun()
+
+        elif st.session_state[flow_key] == "detalhe_man":
+            with st.form(f"form_man_{maq_id}"):
+                st.markdown("🛠️ **Registro de Manutenção**")
+                motivo = st.text_input("Motivo da Manutenção (Obrigatório):", placeholder="Descreva o problema...")
+                if st.form_submit_button("💾 Registrar Manutenção", type="primary"):
+                    if not motivo.strip(): st.error("⚠️ O motivo é obrigatório!")
+                    else:
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                         info_atual = obter_info_maquina(maq_id, setor)
                         st_atual = str(info_atual['Status']) if info_atual else ""
                         tags_prod = extrair_tags_producao(st_atual)
-                        tags_prod = tags_prod.replace("[Novo Item:", "[Item:")
-                        tags_prod = tags_prod.replace("[Item Atual:", "[Item:")
-                        st_final = f"PRODUZINDO {tags_prod}".strip()
-                        if obs_fast.strip(): st_final += f" [Obs: {obs_fast.strip()}]"
-                        
-                        if "[Ordem:" in st_atual:
-                            op_ext = st_atual.split("[Ordem:")[1].split("]")[0].strip()
-                            dar_baixa_armario(op_ext, st.session_state.get('operador', 'SISTEMA'))
-                        
+                        st_final = f"MANUTENÇÃO - Motivo: {motivo} {tags_prod}".strip()
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
-                        st.rerun()
-                        
-                    if btn_assumir: st.session_state[flow_key] = "assumir_prep"; st.rerun()
-                    if btn_alt: st.session_state[flow_key] = "mudanca_status"; st.rerun()
-
-            elif st.session_state[flow_key] == "assumir_prep":
-                with st.form(f"form_assumir_{maq_id}"):
-                    st.markdown("🧑‍🔧 **Assumir Setup de Outro Operador**")
-                    novo_nome = st.text_input("Seu Nome para Assumir:", value=st.session_state['operador'])
-                    if st.form_submit_button("🚀 ASSUMIR PREPARAÇÃO", type="primary"):
-                        if novo_nome.strip():
-                            hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                            info_atual = obter_info_maquina(maq_id, setor)
-                            tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
-                            st_andamento = f"PREPARANDO [Prep: {novo_nome.strip().upper()}] [Assumido] {tags_prod}".strip()
-                            salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
-                            st.session_state['maq_ativa'] = None
-                            del st.session_state[flow_key]
-                            st.success("✅ Setup assumido com sucesso!")
-                            time.sleep(0.5); st.rerun()
-
-            elif st.session_state[flow_key] == "pergunta" and not is_setup_ativo:
-                st.markdown(f"<p style='text-align: center; font-weight: 600;'>Esta máquina ainda está com o status atual?</p>", unsafe_allow_html=True)
-                c1, c2 = st.columns(2)
-                if c1.button("✅ Sim, continuar", key=f"s_{maq_id}", use_container_width=True):
-                    st.session_state['maq_ativa'] = None
-                    if flow_key in st.session_state: del st.session_state[flow_key]
-                    st.rerun()
-                if c2.button("❌ Não, alterar", key=f"n_{maq_id}", use_container_width=True):
-                    st.session_state[flow_key] = "mudanca_status"
-                    st.rerun()
-                    
-            elif st.session_state[flow_key] == "mudanca_status":
-                st.markdown("<p style='font-size: 12px; font-weight: bold; color: #14B8A6;'>SELECIONE O NOVO STATUS:</p>", unsafe_allow_html=True)
-                
-                if st.button("🟢 PRODUZINDO", key=f"st_prod_{maq_id}", use_container_width=True):
-                    info_atual = obter_info_maquina(maq_id, setor)
-                    st_atual = str(info_atual['Status']) if info_atual else ""
-                    
-                    tags_prod = extrair_tags_producao(st_atual)
-                    
-                    if "[Ordem:" not in tags_prod:
-                        try:
-                            df_temp = pd.read_csv(ARQUIVO_DADOS)
-                            df_temp_maq = df_temp[df_temp['Maquina'] == f"{setor} {maq_id}"]
-                            for idx in reversed(df_temp_maq.index):
-                                st_hist = str(df_temp_maq.loc[idx, 'Status'])
-                                if "[Ordem:" in st_hist:
-                                    tags_prod = extrair_tags_producao(st_hist)
-                                    break
-                        except: pass
-                    
-                    if "[Ordem:" in tags_prod:
-                        hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                        tags_prod = tags_prod.replace("[Novo Item:", "[Item:")
-                        tags_prod = tags_prod.replace("[Item Atual:", "[Item:")
-                        tags_prod = re.sub(r' \[Fim Previsto:.*?\]', '', tags_prod)
-                        st_final = f"PRODUZINDO {tags_prod}".strip()
-                        
-                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
-                        st.session_state['maq_ativa'] = None
-                        del st.session_state[flow_key]
-                        st.rerun()
-                    else:
-                        st.session_state[flow_key] = "detalhe_prod"
-                        st.rerun()
-                        
-                if st.button("🟡 PREPARAÇÃO / SEQUÊNCIA", key=f"st_prep_{maq_id}", use_container_width=True): st.session_state[flow_key] = "detalhe_prep"; st.rerun()
-                if st.button("🛠️ MANUTENÇÃO", key=f"st_man_{maq_id}", use_container_width=True): st.session_state[flow_key] = "detalhe_man"; st.rerun()
-                if st.button("🔴 PARADA", key=f"st_par_{maq_id}", use_container_width=True): st.session_state[flow_key] = "detalhe_parada"; st.rerun()
-
-            elif st.session_state[flow_key] == "detalhe_prod":
-                with st.form(f"form_prod_{maq_id}"):
-                    st.markdown("🟢 **Apontamento de Produção**")
-                    info_atual = obter_info_maquina(maq_id, setor)
-                    st_atual = str(info_atual['Status']) if info_atual else ""
-                    op_pre, item_pre = "", ""
-                    if "[Ordem:" in st_atual: op_pre = st_atual.split("[Ordem:")[1].split("]")[0].strip()
-                    if "[Novo Item:" in st_atual: item_pre = st_atual.split("[Novo Item:")[1].split("]")[0].strip()
-                    elif "[Item:" in st_atual: item_pre = st_atual.split("[Item:")[1].split("]")[0].strip()
-                    elif "[Item Atual:" in st_atual: item_pre = st_atual.split("[Item Atual:")[1].split("]")[0].strip()
-                    
-                    if not op_pre and op_armario: op_pre = op_armario
-                    if not item_pre and item_armario: item_pre = item_armario
-                    
-                    ordem = st.text_input("Ordem de Produção (OP):", value=op_pre, placeholder="Ex: 987654")
-                    item = st.text_input("Item:", value=item_pre, placeholder="Ex: 313324")
-                    
-                    if op_armario and (op_pre == op_armario or item_pre == item_armario):
-                        st.success("📦 Dados puxados automaticamente da gaveta do armário!")
-                        
-                    pcs_hora = st.text_input("Produção (Pçs/Hora) - Opcional:", placeholder="Ex: 150")
-                    obs = st.text_input("Observação / Justificativa (Opcional):", placeholder="Ex: Ajuste fino demorado...")
-                    
-                    if st.form_submit_button("🚀 INICIAR PRODUÇÃO", type="primary"):
-                        if not ordem.strip() or not item.strip():
-                            st.error("⚠️ A Ordem e o Item são obrigatórios!")
-                        else:
-                            hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                            item_limpo = item.strip().upper().replace(".0", "").lstrip("0")
-                            ordem_limpa = ordem.strip().upper().replace(".0", "").lstrip("0")
-                            st_final = f"PRODUZINDO [Ordem: {ordem_limpa}] [Item: {item_limpo}]"
-                            if pcs_hora.strip(): st_final += f" [Pçs/Hora: {pcs_hora.strip()}]"
-                            if obs.strip(): st_final += f" [Obs: {obs.strip()}]"
-                            
-                            dar_baixa_armario(ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
-                            salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
-                            st.session_state['maq_ativa'] = None
-                            del st.session_state[flow_key]
-                            st.success("✅ Apontamento registrado! Máquina em Produção.")
-                            time.sleep(0.5); st.rerun()
-
-            elif st.session_state[flow_key] == "detalhe_parada":
-                with st.form(f"form_par_{maq_id}"):
-                    st.markdown("🔴 **Registro de Máquina Parada**")
-                    motivo = st.selectbox("Motivo da Parada:", ["Falta de Operador", "Falta de Material", "Ajuste de Processo", "Manutenção Corretiva", "Outros"])
-                    op_faltante = st.text_input("Nome do Operador Faltante (Se aplicável):", placeholder="Ex: João Silva")
-                    detalhe = st.text_input("Outros Detalhes (Opcional):")
-                    
-                    if st.form_submit_button("💾 Registrar Parada", type="primary"):
-                        if not detalhe.strip() and motivo == "Outros":
-                            st.error("⚠️ Forneça os detalhes da parada.")
-                        else:
-                            hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                            mot_final = motivo
-                            if detalhe.strip(): mot_final += f" - {detalhe.strip()}"
-                            if op_faltante.strip() and motivo == "Falta de Operador": mot_final += f" [Op. Faltante: {op_faltante.strip().upper()}]"
-                            info_atual = obter_info_maquina(maq_id, setor)
-                            st_atual = str(info_atual['Status']) if info_atual else ""
-                            tags_prod = extrair_tags_producao(st_atual)
-                            st_final = f"PARADA - Motivo: {mot_final} {tags_prod}".strip()
-                            salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
-                            st.session_state['maq_ativa'] = None
-                            del st.session_state[flow_key]
-                            st.success("✅ Máquina registrada como PARADA!")
-                            time.sleep(0.5); st.rerun()
-
-            elif st.session_state[flow_key] == "detalhe_prep":
-                with st.form(f"form_prep_{maq_id}"):
-                    st.markdown("⚙️ **Configuração de Preparação / Agendamento**")
-                    info_atual = obter_info_maquina(maq_id, setor)
-                    st_atual = str(info_atual['Status']) if info_atual else ""
-                    
-                    hora_pre_fill = ""
-                    if "AGENDADA PARA" in st_atual:
-                        try: hora_pre_fill = st_atual.split("AGENDADA PARA")[1].strip()
-                        except: pass
-                    elif "[AGENDADO:" in st_atual:
-                        try: hora_pre_fill = st_atual.split("[AGENDADO:")[1].split("]")[0].strip()
-                        except: pass
-                    elif "[Fim Previsto:" in st_atual:
-                        try: hora_pre_fill = st_atual.split("[Fim Previsto:")[1].split("]")[0].strip()
-                        except: pass
-                        
-                    hora_relatorio = st.text_input("⏰ Horário Alvo (Aparecerá no Relatório):", value=hora_pre_fill, placeholder="Ex: 12:30")
-                    is_agendado = st.toggle("Marcar como Agendamento Futuro", value=True)
-                    prep_sugerido = st.text_input("🧑‍🔧 Sugerir Preparador (Opcional):", placeholder="Ex: Lucas")
-                    
-                    op_pre, item_pre = "", ""
-                    if "[Ordem:" in st_atual: op_pre = st_atual.split("[Ordem:")[1].split("]")[0].strip()
-                    if "[Item Atual:" in st_atual: item_pre = st_atual.split("[Item Atual:")[1].split("]")[0].strip()
-                    elif "[Novo Item:" in st_atual: item_pre = st_atual.split("[Novo Item:")[1].split("]")[0].strip()
-                    elif "[Item:" in st_atual: item_pre = st_atual.split("[Item:")[1].split("]")[0].strip()
-                    
-                    st.markdown("📦 **Dados do Item**")
-                    ordem_atual = st.text_input("Ordem Atual (OP):", value=op_pre, placeholder="Ex: 987654")
-                    item_atual = st.text_input("Item Atual (Na Máquina):", value=item_pre, placeholder="Ex: 313324")
-                    st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
-                    
-                    if setor == "AFC":
-                        tipo_afc = st.radio("Selecione o Status:", ["PREPARAÇÃO", "SEQUÊNCIA"], horizontal=True)
-                        troca_rebolo = st.toggle("Troca de Rebolo")
-                    else:
-                        tipo_prep = st.radio("Setup:", ["HASTE", "GUIA"], horizontal=True)
-                        troca_diametro = False
-                        if tipo_prep == "HASTE": troca_diametro = st.toggle("Troca de Diâmetro")
-                        troca_rebolo = st.toggle("Troca de Rebolo")
-                    
-                    if st.form_submit_button("💾 Salvar Registro", type="primary"):
-                        if not hora_relatorio.strip():
-                            st.error("⚠️ O campo de horário é obrigatório!")
-                        else:
-                            if setor == "AFC":
-                                st_final = tipo_afc
-                                if troca_rebolo: st_final += " (C/ Rebolo)"
-                            else:
-                                st_final = f"PREPARAÇÃO - {tipo_prep}"
-                                if tipo_prep == "HASTE" and troca_diametro: st_final += " (C/ Diâmetro)"
-                                if troca_rebolo: st_final += " (C/ Rebolo)"
-                                
-                            if prep_sugerido.strip(): st_final += f" [Prep. Sugerido: {prep_sugerido.strip().upper()}]"
-                            if is_agendado and hora_relatorio.strip(): st_final += f" [AGENDADO:{hora_relatorio.strip()}]"
-                            else: st_final = f"AGUARDANDO PREPARADOR - {st_final}"
-                            
-                            ordem_limpa = ordem_atual.strip().upper().replace(".0", "").lstrip("0")
-                            item_limpo = item_atual.strip().upper().replace(".0", "").lstrip("0")
-                            if ordem_limpa: st_final += f" [Ordem: {ordem_limpa}]"
-                            if item_limpo: st_final += f" [Item Atual: {item_limpo}]"
-                            if ordem_limpa: dar_baixa_armario(ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
-                                
-                            salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
-                            st.session_state['maq_ativa'] = None
-                            del st.session_state[flow_key]
-                            st.success("✅ Registro salvo com sucesso!")
-                            time.sleep(0.5); st.rerun()
-
-            elif st.session_state[flow_key] == "acoes_espera":
-                with st.form(f"form_espera_{maq_id}"):
-                    st.markdown("🧑‍🔧 **Assumir ou Sugerir Preparador**")
-                    sug_nome = ""
-                    if "[Prep. Sugerido:" in status_atual:
-                        try: sug_nome = status_atual.split("[Prep. Sugerido:")[1].split("]")[0].strip()
-                        except: pass
-                        
-                    nome_input = st.text_input("Nome do Preparador:", value=sug_nome if sug_nome else "")
-                    is_guia = "GUIA" in status_atual
-                    is_seq = "SEQUÊNCIA" in status_atual
-                    is_comum = not is_guia and not is_seq
-                    
-                    st.markdown("📦 **Dados da Preparação**")
-                    nova_ordem_input = ""
-                    
-                    if is_comum:
-                        nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", value=op_armario, placeholder="Ex: 987654")
-                        if op_armario:
-                            st.success(f"📦 OP {op_armario} puxada automaticamente do armário! (Item: {item_armario})")
-                        else:
-                            st.info("ℹ️ O Item da peça será puxado automaticamente do armário baseado nesta OP.")
-                    elif is_seq:
-                        nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", value=op_armario, placeholder="Ex: 987654")
-                        if op_armario:
-                            st.success(f"📦 OP {op_armario} puxada automaticamente do armário!")
-                        else:
-                            st.info("ℹ️ Sequência: O Item atual será mantido. Informe apenas a nova OP.")
-                    elif is_guia:
-                        st.info("ℹ️ Preparação de Guia: A Ordem e o Item atuais serão mantidos. Nenhuma nova OP é necessária.")
-                    
-                    st.markdown("⏰ **Adiar Agendamento (Opcional)**")
-                    col_adiar1, col_adiar2 = st.columns([3, 2])
-                    novo_horario_adiar = col_adiar1.text_input("Novo Horário:", placeholder="Ex: 14:30")
-                    btn_adiar = col_adiar2.form_submit_button("⏳ Adiar Agendamento")
-                    st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
-                    
-                    bloquear_inicio = False
-                    msg_bloqueio = ""
-                    if "[AGENDADO:" in status_atual or "AGENDADA PARA" in status_atual:
-                        try:
-                            hora_agend = status_atual.split("AGENDADA PARA")[1].strip() if "AGENDADA PARA" in status_atual else status_atual.split("[AGENDADO:")[1].split("]")[0].strip()
-                            turno_agend = obter_turno_por_horario(hora_agend)
-                            if turno_agend != st.session_state.get('turno') and st.session_state.get('perfil') != 'adm':
-                                bloquear_inicio = True
-                                msg_bloqueio = f"⚠️ Setup programado para o {turno_agend}. Apenas operadores daquele turno podem iniciar."
-                        except: pass
-
-                    if bloquear_inicio: st.warning(msg_bloqueio)
-                    
-                    c1, c2, c3 = st.columns(3)
-                    btn_sugerir = c1.form_submit_button("💡 Apenas Sugerir")
-                    btn_iniciar = c2.form_submit_button("🚀 INICIAR", type="primary", disabled=bloquear_inicio)
-                    btn_alterar = c3.form_submit_button("⚠️ Alterar Status")
-                    
-                    if btn_alterar: st.session_state[flow_key] = "mudanca_status"; st.rerun()
-                    if btn_adiar:
-                        if novo_horario_adiar.strip():
-                            info_atual = obter_info_maquina(maq_id, setor)
-                            if info_atual:
-                                raw_st = str(info_atual['Status'])
-                                if "AGENDADA PARA" in raw_st: raw_st = re.sub(r'AGENDADA PARA \d{2}:\d{2}', f"AGENDADA PARA {novo_horario_adiar.strip()}", raw_st)
-                                elif "[AGENDADO:" in raw_st: raw_st = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{novo_horario_adiar.strip()}]", raw_st)
-                                else: raw_st += f" [AGENDADO:{novo_horario_adiar.strip()}]"
-                                
-                                salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": raw_st, "Hora": novo_horario_adiar.strip()}, ARQUIVO_DADOS)
-                                st.session_state['maq_ativa'] = None
-                                del st.session_state[flow_key]
-                                st.success(f"✅ Agendamento adiado para {novo_horario_adiar.strip()}!")
-                                time.sleep(0.5); st.rerun()
-                        else: st.error("⚠️ Informe o novo horário para adiar!")
-                        
-                    if btn_sugerir:
-                        if nome_input.strip():
-                            info_atual = obter_info_maquina(maq_id, setor)
-                            if info_atual:
-                                raw_st = str(info_atual['Status'])
-                                raw_st = re.sub(r' \[Prep\. Sugerido:.*?\]', '', raw_st)
-                                if "AGENDADA PARA" in raw_st:
-                                    hora_agend = raw_st.split("AGENDADA PARA")[1].strip()
-                                    st_base = raw_st.split(" AGENDADA PARA")[0]
-                                    raw_st = f"{st_base} [Prep. Sugerido: {nome_input.strip().upper()}] [AGENDADO:{hora_agend}]"
-                                elif "[AGENDADO:" in raw_st: 
-                                    raw_st = raw_st.replace(" [AGENDADO:", f" [Prep. Sugerido: {nome_input.strip().upper()}] [AGENDADO:")
-                                else: raw_st += f" [Prep. Sugerido: {nome_input.strip().upper()}]"
-                                
-                                hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                                salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": raw_st, "Hora": hora_br_str}, ARQUIVO_DADOS)
-                                st.session_state['maq_ativa'] = None
-                                del st.session_state[flow_key]
-                                st.success("✅ Sugestão de preparador atualizada!")
-                                time.sleep(0.5); st.rerun()
-                        else: st.error("⚠️ Informe um nome para sugerir!")
-                            
-                    if btn_iniciar:
-                        if is_comum and not nova_ordem_input.strip(): st.error("⚠️ Para INICIAR a preparação, informe a Nova Ordem (OP)!")
-                        elif is_seq and not nova_ordem_input.strip(): st.error("⚠️ Para INICIAR a Sequência, informe a Nova Ordem (OP)!")
-                        else:
-                            nome_final = nome_input if nome_input.strip() else st.session_state['operador']
-                            hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                            info_atual = obter_info_maquina(maq_id, setor)
-                            tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
-                            
-                            if is_comum:
-                                tags_prod = re.sub(r' \[Ordem:.*?\]', '', tags_prod) 
-                                tags_prod = re.sub(r' \[Novo Item:.*?\]', '', tags_prod) 
-                                tags_prod = re.sub(r' \[Item:.*?\]', '', tags_prod) 
-                                tags_prod = re.sub(r' \[Item Atual:.*?\]', '', tags_prod) 
-                            elif is_seq:
-                                tags_prod = re.sub(r' \[Ordem:.*?\]', '', tags_prod)
-                            
-                            st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}] {tags_prod}".strip()
-                            nova_ordem_limpa = nova_ordem_input.strip().upper().replace(".0", "").lstrip("0")
-
-                            if is_comum:
-                                item_buscado = buscar_item_por_ordem(nova_ordem_limpa)
-                                st_andamento += f" [Ordem: {nova_ordem_limpa}]"
-                                st_andamento += f" [Novo Item: {item_buscado}]"
-                                dar_baixa_armario(nova_ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
-                            elif is_seq:
-                                st_andamento += f" [Ordem: {nova_ordem_limpa}]"
-                                dar_baixa_armario(nova_ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
-                                
-                            salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
-                            st.session_state['maq_ativa'] = None
-                            del st.session_state[flow_key]
-                            st.success("✅ Preparação iniciada!")
-                            time.sleep(0.5); st.rerun()
-
-            elif st.session_state[flow_key] == "detalhe_man":
-                with st.form(f"form_man_{maq_id}"):
-                    st.markdown("🛠️ **Registro de Manutenção**")
-                    motivo = st.text_input("Motivo da Manutenção (Obrigatório):", placeholder="Descreva o problema...")
-                    if st.form_submit_button("💾 Registrar Manutenção", type="primary"):
-                        if not motivo.strip(): st.error("⚠️ O motivo é obrigatório!")
-                        else:
-                            hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                            info_atual = obter_info_maquina(maq_id, setor)
-                            st_atual = str(info_atual['Status']) if info_atual else ""
-                            tags_prod = extrair_tags_producao(st_atual)
-                            st_final = f"MANUTENÇÃO - Motivo: {motivo} {tags_prod}".strip()
-                            salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
-                            st.session_state['maq_ativa'] = None
-                            del st.session_state[flow_key]
-                            st.success("✅ Registrado!")
-                            time.sleep(0.5); st.rerun()
+                        st.success("✅ Registrado!")
+                        time.sleep(0.5); st.rerun()
 
 def tela_login():
     st.markdown("<h2 style='text-align: center; color: #14B8A6 !important; margin-top: 30px;'>🏭 RELATORIO AFIAÇÃO</h2>", unsafe_allow_html=True)
@@ -1579,8 +1508,85 @@ def tela_checkup():
                     if turno_pendencia in preparacoes_futuras: preparacoes_futuras[turno_pendencia].append(item_lista)
                 else:
                     if "PRODUZINDO" not in st_val or "[Fim Previsto:" in st_val: incidencias_turno_atual.append(item_lista)
+
+    def renderizar_post_its_preset(lista_incidencias):
+        if not lista_incidencias:
+            st.success("✨ Nenhuma máquina na fila no momento.")
+            return
+
+        df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype=str) if os.path.exists(ARQUIVO_ARMARIOS) else pd.DataFrame()
+        df_rebolos = pd.DataFrame()
+        if os.path.exists(ARQUIVO_REBOLOS):
+            try:
+                df_rebolos = pd.read_excel(ARQUIVO_REBOLOS, sheet_name='Banco De Rebolos', engine='openpyxl')
+                df_rebolos.columns = [unicodedata.normalize('NFKD', str(c).upper()).encode('ASCII', 'ignore').decode('ASCII').replace(" ", "").replace("\n", "").strip() for c in df_rebolos.columns]
+                if 'ITEM' in df_rebolos.columns:
+                    df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM'].astype(str).str.upper().apply(lambda x: re.sub(r'\.0$', '', x.strip()).lstrip("0"))
+            except: pass
+
+        colors = ["#FEF08A", "#BAE6FD", "#FBCFE8", "#D9F99D", "#FECACA"]
+        border_colors = ["#EAB308", "#38BDF8", "#F472B6", "#84CC16", "#F87171"]
+
+        for i in range(0, len(lista_incidencias), 3):
+            cols = st.columns(3)
+            for j in range(3):
+                if i + j < len(lista_incidencias):
+                    setor_m, maq_m, st_m = lista_incidencias[i + j]
+
+                    is_seq = "SEQUÊNCIA" in st_m.upper() or "SEQUENCIA" in st_m.upper()
+                    is_prep = "PREPARAÇÃO" in st_m.upper() or "PREPARACAO" in st_m.upper() or "PREPARANDO" in st_m.upper()
+                    tipo_setup = "Sequência" if is_seq else ("Preparação" if is_prep else "Outro (Parada)")
+                    tem_rebolo = "SIM" if "(C/ REBOLO)" in st_m.upper() else "NÃO"
+
+                    h_alvo = "Imediato / Na Fila"
+                    if "AGENDADA PARA" in st_m.upper():
+                        try: h_alvo = st_m.upper().split('AGENDADA PARA')[1].strip()
+                        except: pass
+                    elif "[AGENDADO:" in st_m.upper():
+                        try: h_alvo = st_m.upper().split('[AGENDADO:')[1].split(']')[0].strip()
+                        except: pass
+
+                    op_arm, item_arm = "Nenhuma", "-"
+                    if not df_arm.empty:
+                        gaveta_num = maq_m.split("-")[0]
+                        filtro_arm = "Afiadoras" if setor_m == "AFC" else "Retíficas"
+                        gaveta_row = df_arm[(df_arm['Posicao'] == str(gaveta_num)) & (df_arm['Armario'].str.contains(filtro_arm))]
+                        if not gaveta_row.empty and str(gaveta_row.iloc[0]['Status']).strip() != 'VAZIO':
+                            op_arm = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nan', '').strip()
+                            item_arm = str(gaveta_row.iloc[0].get('Item', '')).replace('.0', '').replace('nan', '').strip()
+                            if not op_arm: op_arm = "Nenhuma"
+                            if not item_arm: item_arm = "-"
+
+                    reb1, reb2 = "-", "-"
+                    if item_arm != "-" and not df_rebolos.empty:
+                        item_busca = item_arm.upper()
+                        match = df_rebolos[df_rebolos['ITEM_BUSCA'] == item_busca]
+                        if match.empty: match = df_rebolos[df_rebolos['ITEM_BUSCA'].str.contains(item_busca, regex=False, na=False)]
+                        if not match.empty:
+                            reb1 = str(match.iloc[0].get('REBOLO', match.iloc[0].get('REBOLO1', ''))).strip()
+                            reb2 = str(match.iloc[0].get('REBOLO2', '')).strip()
+                            if reb1.lower() in ['nan', 'none', '']: reb1 = "-"
+                            if reb2.lower() in ['nan', 'none', '']: reb2 = "-"
+
+                    bg_color = colors[(i+j) % len(colors)]
+                    bd_color = border_colors[(i+j) % len(border_colors)]
+                    rotate = ( (i+j) % 3 ) * 2 - 2 
+
+                    html = f'''<div style="background-color: {bg_color}; padding: 15px; border-radius: 2px 20px 2px 15px; box-shadow: 3px 5px 10px rgba(0,0,0,0.4); color: #18181B !important; margin-bottom: 20px; min-height: 240px; transform: rotate({rotate}deg);">
+<h4 style="margin: 0 0 10px 0; color: #18181B !important; border-bottom: 1px solid {bd_color}; font-size: 16px; font-weight: bold; padding-bottom: 5px;">⚙️ {setor_m} {maq_m}</h4>
+<p style="margin: 0 0 4px 0; font-size: 14px; color: #18181B !important;"><b>⏰ Agendado para:</b> {h_alvo}</p>
+<p style="margin: 0 0 4px 0; font-size: 14px; color: #18181B !important;"><b>📋 Setup:</b> {tipo_setup}</p>
+<p style="margin: 0 0 8px 0; font-size: 14px; color: #18181B !important;"><b>🔄 Troca Rebolo:</b> {tem_rebolo}</p>
+<div style="background: rgba(255,255,255,0.4); padding: 8px; border-radius: 6px; margin-bottom: 8px;">
+<p style="margin: 0 0 2px 0; font-size: 13px; color: #18181B !important;"><b>Ordem:</b> {op_arm}</p>
+<p style="margin: 0; font-size: 13px; color: #18181B !important;"><b>Item:</b> {item_arm}</p>
+</div>
+<p style="margin: 0 0 2px 0; font-size: 13px; color: #18181B !important;"><b>🛞 Reb 1:</b> {reb1}</p>
+<p style="margin: 0; font-size: 13px; color: #18181B !important;"><b>🛞 Reb 2:</b> {reb2}</p>
+</div>'''
+                    cols[j].markdown(html, unsafe_allow_html=True)
                     
-    if st.session_state['maq_ativa'] and st.session_state['setor_ativo']:
+    if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] and perfil != 'preset':
         painel_controle_maquina(st.session_state['maq_ativa'], st.session_state['setor_ativo'])
         st.divider()
 
@@ -1590,18 +1596,15 @@ def tela_checkup():
         st.markdown(f"**Exibindo incidências e paradas previstas para o {turno_vigente_real}**")
         if not incidencias_turno_atual: st.success("✨ Ótimo! Nenhuma incidência ou parada prevista para o momento.")
         else:
-            for setor_m, maq_m, st_m in incidencias_turno_atual:
-                icone = get_status_icon(st_m)
-                
-                txt_botao = st_m
-                if st.session_state.get('perfil') == 'preset':
-                    txt_botao = re.sub(r' \[Prep\. Sugerido:.*?\]', '', txt_botao)
-                    txt_botao = re.sub(r' \[Prep:.*?\]', '', txt_botao)
-                    
-                if st.button(f"{icone} {setor_m} {maq_m} — {txt_botao}", key=f"chk_at_{setor_m}_{maq_m}", use_container_width=True):
-                    st.session_state['maq_ativa'] = maq_m
-                    st.session_state['setor_ativo'] = setor_m
-                    st.rerun()
+            if perfil == 'preset':
+                renderizar_post_its_preset(incidencias_turno_atual)
+            else:
+                for setor_m, maq_m, st_m in incidencias_turno_atual:
+                    icone = get_status_icon(st_m)
+                    if st.button(f"{icone} {setor_m} {maq_m} — {st_m}", key=f"chk_at_{setor_m}_{maq_m}", use_container_width=True):
+                        st.session_state['maq_ativa'] = maq_m
+                        st.session_state['setor_ativo'] = setor_m
+                        st.rerun()
 
     with aba_futuro:
         st.markdown("**Programação de Setups e Paradas por Turno**")
@@ -1609,18 +1612,15 @@ def tela_checkup():
         lista_futura = preparacoes_futuras[filtro_turno]
         if not lista_futura: st.info(f"Nenhum setup ou parada programada futuramente para o {filtro_turno}.")
         else:
-            for setor_m, maq_m, st_m in lista_futura:
-                icone = get_status_icon(st_m)
-                
-                txt_botao = st_m
-                if st.session_state.get('perfil') == 'preset':
-                    txt_botao = re.sub(r' \[Prep\. Sugerido:.*?\]', '', txt_botao)
-                    txt_botao = re.sub(r' \[Prep:.*?\]', '', txt_botao)
-                    
-                if st.button(f"{icone} {setor_m} {maq_m} — {txt_botao}", key=f"chk_fut_{setor_m}_{maq_m}", use_container_width=True):
-                    st.session_state['maq_ativa'] = maq_m
-                    st.session_state['setor_ativo'] = setor_m
-                    st.rerun()
+            if perfil == 'preset':
+                renderizar_post_its_preset(lista_futura)
+            else:
+                for setor_m, maq_m, st_m in lista_futura:
+                    icone = get_status_icon(st_m)
+                    if st.button(f"{icone} {setor_m} {maq_m} — {st_m}", key=f"chk_fut_{setor_m}_{maq_m}", use_container_width=True):
+                        st.session_state['maq_ativa'] = maq_m
+                        st.session_state['setor_ativo'] = setor_m
+                        st.rerun()
 
     with aba_previsao:
         st.markdown("#### ⏱️ Lançar Previsão de Parada por Fila")
