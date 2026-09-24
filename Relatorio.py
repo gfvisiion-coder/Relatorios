@@ -1544,6 +1544,16 @@ def tela_checkup():
             st.success("✨ Nenhuma máquina na fila no momento.")
             return
 
+        # INJEÇÃO DE CSS FORÇADO PARA MOBILE/DARK MODE (GARANTE LETRAS PRETAS)
+        st.markdown("""
+        <style>
+            .postit-card, .postit-card div, .postit-card span, .postit-card strong, .postit-card p, .postit-card b {
+                color: #000000 !important;
+                -webkit-text-fill-color: #000000 !important;
+            }
+        </style>
+        """, unsafe_allow_html=True)
+
         df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype=str) if os.path.exists(ARQUIVO_ARMARIOS) else pd.DataFrame()
         df_rebolos = pd.DataFrame()
         if os.path.exists(ARQUIVO_REBOLOS):
@@ -1676,10 +1686,10 @@ def tela_checkup():
 
                     html_rebolo = ""
                     if tem_rebolo == "SIM":
-                        html_rebolo = f"<div style='margin: 0 0 2px 0;'><strong style='color: #000000 !important; font-size: 13px;'>🛞 Reb 1:</strong> <span style='color: #000000 !important; font-size: 13px;'>{reb1}</span></div><div style='margin: 0;'><strong style='color: #000000 !important; font-size: 13px;'>🛞 Reb 2:</strong> <span style='color: #000000 !important; font-size: 13px;'>{reb2}</span></div>"
+                        html_rebolo = f"<div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>🛞 Reb 1:</strong> <span style='font-size: 13px;'>{reb1}</span></div><div style='margin: 0;'><strong style='font-size: 13px;'>🛞 Reb 2:</strong> <span style='font-size: 13px;'>{reb2}</span></div>"
 
-                    # Montagem da String HTML em uma única linha (Evita quebras automáticas do Markdown)
-                    html = f"<div style='background-color: {bg_color}; padding: 15px; border-radius: 2px 20px 2px 15px; box-shadow: 3px 5px 10px rgba(0,0,0,0.4); margin-bottom: 20px; min-height: 200px; transform: rotate({rotate}deg);'><div style='margin: 0 0 10px 0; border-bottom: 1px solid {bd_color}; padding-bottom: 5px;'><strong style='color: #000000 !important; font-size: 16px;'>{cabecalho_maq}</strong></div><div style='margin: 0 0 4px 0;'><strong style='color: #000000 !important; font-size: 14px;'>{titulo_tempo}</strong> <span style='color: #000000 !important; font-size: 14px;'>{valor_tempo}</span></div><div style='margin: 0 0 4px 0;'><strong style='color: #000000 !important; font-size: 14px;'>📋 Setup:</strong> <span style='color: #000000 !important; font-size: 14px;'>{tipo_setup}</span></div><div style='margin: 0 0 8px 0;'><strong style='color: #000000 !important; font-size: 14px;'>💻 Programa:</strong> <span style='color: #000000 !important; font-size: 14px;'>{prog_status}</span></div><div style='margin: 0 0 8px 0;'><strong style='color: #000000 !important; font-size: 14px;'>🔄 Troca Rebolo:</strong> <span style='color: #000000 !important; font-size: 14px;'>{tem_rebolo}</span></div><div style='background: rgba(255,255,255,0.5); padding: 8px; border-radius: 6px; margin-bottom: 8px;'><div style='margin: 0 0 2px 0;'><strong style='color: #000000 !important; font-size: 13px;'>Ordem:</strong> <span style='color: #000000 !important; font-size: 13px;'>{final_op}</span></div><div style='margin: 0;'><strong style='color: #000000 !important; font-size: 13px;'>Item:</strong> <span style='color: #000000 !important; font-size: 13px;'>{final_item}</span></div></div>{html_rebolo}</div>"
+                    # Montagem da String HTML em uma única linha, usando a classe CSS injetada
+                    html = f"<div class='postit-card' style='background-color: {bg_color}; padding: 15px; border-radius: 2px 20px 2px 15px; box-shadow: 3px 5px 10px rgba(0,0,0,0.4); margin-bottom: 20px; min-height: 200px; transform: rotate({rotate}deg);'><div style='margin: 0 0 10px 0; border-bottom: 1px solid {bd_color}; padding-bottom: 5px;'><strong style='font-size: 16px;'>{cabecalho_maq}</strong></div><div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>{titulo_tempo}</strong> <span style='font-size: 14px;'>{valor_tempo}</span></div><div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>📋 Setup:</strong> <span style='font-size: 14px;'>{tipo_setup}</span></div><div style='margin: 0 0 8px 0;'><strong style='font-size: 14px;'>💻 Programa:</strong> <span style='font-size: 14px;'>{prog_status}</span></div><div style='margin: 0 0 8px 0;'><strong style='font-size: 14px;'>🔄 Troca Rebolo:</strong> <span style='font-size: 14px;'>{tem_rebolo}</span></div><div style='background: rgba(255,255,255,0.5); padding: 8px; border-radius: 6px; margin-bottom: 8px;'><div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>Ordem:</strong> <span style='font-size: 13px;'>{final_op}</span></div><div style='margin: 0;'><strong style='font-size: 13px;'>Item:</strong> <span style='font-size: 13px;'>{final_item}</span></div></div>{html_rebolo}</div>"
                     
                     cols[j].markdown(html, unsafe_allow_html=True)
 
