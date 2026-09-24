@@ -1575,15 +1575,17 @@ def tela_checkup():
                             if reb1.lower() in ['nan', 'none', '']: reb1 = "-"
                             if reb2.lower() in ['nan', 'none', '']: reb2 = "-"
 
-                    # --- NOVA REGRA: Se tem rebolo e não achou na planilha, exibe "Não cadastrado" ---
+                    # Regra: Se tem rebolo e não achou na planilha, exibe "Não cadastrado"
                     if tem_rebolo == "SIM" and reb1 == "-":
                         reb1 = "Não cadastrado"
 
                     # Lógica de Cores
                     if "PARADA" in st_m.upper():
-                        bg_color, bd_color = "#FECACA", "#F87171" # Vermelho
+                        bg_color, bd_color = "#FECACA", "#F87171" # Vermelho claro
                     elif "MANUTENÇÃO" in st_m.upper():
-                        bg_color, bd_color = "#FED7AA", "#FB923C" # Laranja
+                        bg_color, bd_color = "#FED7AA", "#FB923C" # Laranja claro
+                    elif "PREPARANDO" in st_m.upper():
+                        bg_color, bd_color = "#E9D5FF", "#A855F7" # Roxo/Lilás claro (Preparação Ativa)
                     elif turno_post_it == "1° TURNO":
                         bg_color, bd_color = "#FCE7F3", "#F472B6" # Rosa bem clarinho
                     elif turno_post_it == "2° TURNO":
