@@ -459,7 +459,7 @@ def executar_fechamento_silencioso(data_alvo, turno_alvo):
                 if df_recorte.empty:
                     last_row = df_maq.iloc[-1:].copy()
                     last_row['Status'] = last_row['Status'].astype(str).str.replace(" [Energia Restaurada]", "", regex=False)
-                    df_recorte = last_row # <-- CORREÇÃO: last_row já é um DataFrame
+                    df_recorte = last_row
         df_novo.append(df_recorte)
     
     if df_novo: pd.concat(df_novo).to_csv(ARQUIVO_DADOS, index=False)
@@ -845,6 +845,18 @@ def painel_controle_maquina(maq_id, setor):
         status_atual = status_dict.get(f"{setor} {maq_id}", "PRODUZINDO")
         info = obter_info_maquina(maq_id, setor)
         hora_atual = info.get('Hora', '--:--') if info else ''
+
+        op_armario, item_armario = "", ""
+        if os.path.exists(ARQUIVO_ARMARIOS):
+            try:
+                df_arm_temp = pd.read_csv(ARQUIVO_ARMARIOS, dtype=str)
+                gaveta_num = maq_id.split("-")[0]
+                filtro_arm = "Afiadoras" if setor == "AFC" else "Retíficas"
+                gaveta_row = df_arm_temp[(df_arm_temp['Posicao'] == str(gaveta_num)) & (df_arm_temp['Armario'].str.contains(filtro_arm))]
+                if not gaveta_row.empty and str(gaveta_row.iloc[0]['Status']).strip() != 'VAZIO':
+                    op_armario = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nan', '').strip()
+                    item_armario = str(gaveta_row.iloc[0].get('Item', '')).replace('.0', '').replace('nan', '').strip()
+            except: pass
         
         timer_str = ""
         if ("MANUTENÇÃO" in status_atual or "PREPARAÇÃO" in status_atual or "SEQUÊNCIA" in status_atual or "PREPARANDO" in status_atual) and info:
@@ -985,8 +997,15 @@ def painel_controle_maquina(maq_id, setor):
                 elif "[Item:" in st_atual: item_pre = st_atual.split("[Item:")[1].split("]")[0].strip()
                 elif "[Item Atual:" in st_atual: item_pre = st_atual.split("[Item Atual:")[1].split("]")[0].strip()
                 
+                if not op_pre and op_armario: op_pre = op_armario
+                if not item_pre and item_armario: item_pre = item_armario
+                
                 ordem = st.text_input("Ordem de Produção (OP):", value=op_pre, placeholder="Ex: 987654")
                 item = st.text_input("Item:", value=item_pre, placeholder="Ex: 313324")
+                
+                if op_armario and (op_pre == op_armario or item_pre == item_armario):
+                    st.success("📦 Dados puxados automaticamente da gaveta do armário!")
+                    
                 pcs_hora = st.text_input("Produção (Pçs/Hora) - Opcional:", placeholder="Ex: 150")
                 obs = st.text_input("Observação / Justificativa (Opcional):", placeholder="Ex: Ajuste fino demorado...")
                 
@@ -1016,19 +1035,22 @@ def painel_controle_maquina(maq_id, setor):
                 detalhe = st.text_input("Outros Detalhes (Opcional):")
                 
                 if st.form_submit_button("💾 Registrar Parada", type="primary"):
-                    hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
-                    mot_final = motivo
-                    if detalhe.strip(): mot_final += f" - {detalhe.strip()}"
-                    if op_faltante.strip() and motivo == "Falta de Operador": mot_final += f" [Op. Faltante: {op_faltante.strip().upper()}]"
-                    info_atual = obter_info_maquina(maq_id, setor)
-                    st_atual = str(info_atual['Status']) if info_atual else ""
-                    tags_prod = extrair_tags_producao(st_atual)
-                    st_final = f"PARADA - Motivo: {mot_final} {tags_prod}".strip()
-                    salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
-                    st.session_state['maq_ativa'] = None
-                    del st.session_state[flow_key]
-                    st.success("✅ Máquina registrada como PARADA!")
-                    time.sleep(0.5); st.rerun()
+                    if not detalhe.strip() and motivo == "Outros":
+                        st.error("⚠️ Forneça os detalhes da parada.")
+                    else:
+                        hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                        mot_final = motivo
+                        if detalhe.strip(): mot_final += f" - {detalhe.strip()}"
+                        if op_faltante.strip() and motivo == "Falta de Operador": mot_final += f" [Op. Faltante: {op_faltante.strip().upper()}]"
+                        info_atual = obter_info_maquina(maq_id, setor)
+                        st_atual = str(info_atual['Status']) if info_atual else ""
+                        tags_prod = extrair_tags_producao(st_atual)
+                        st_final = f"PARADA - Motivo: {mot_final} {tags_prod}".strip()
+                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                        st.session_state['maq_ativa'] = None
+                        del st.session_state[flow_key]
+                        st.success("✅ Máquina registrada como PARADA!")
+                        time.sleep(0.5); st.rerun()
 
         elif st.session_state[flow_key] == "detalhe_prep":
             with st.form(f"form_prep_{maq_id}"):
@@ -1114,12 +1136,19 @@ def painel_controle_maquina(maq_id, setor):
                 
                 st.markdown("📦 **Dados da Preparação**")
                 nova_ordem_input = ""
+                
                 if is_comum:
-                    nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", placeholder="Ex: 987654")
-                    st.info("ℹ️ O Item da peça será puxado automaticamente do armário baseado nesta OP.")
+                    nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", value=op_armario, placeholder="Ex: 987654")
+                    if op_armario:
+                        st.success(f"📦 OP {op_armario} puxada automaticamente do armário! (Item: {item_armario})")
+                    else:
+                        st.info("ℹ️ O Item da peça será puxado automaticamente do armário baseado nesta OP.")
                 elif is_seq:
-                    nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", placeholder="Ex: 987654")
-                    st.info("ℹ️ Sequência: O Item atual será mantido. Informe apenas a nova OP.")
+                    nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", value=op_armario, placeholder="Ex: 987654")
+                    if op_armario:
+                        st.success(f"📦 OP {op_armario} puxada automaticamente do armário!")
+                    else:
+                        st.info("ℹ️ Sequência: O Item atual será mantido. Informe apenas a nova OP.")
                 elif is_guia:
                     st.info("ℹ️ Preparação de Guia: A Ordem e o Item atuais serão mantidos. Nenhuma nova OP é necessária.")
                 
