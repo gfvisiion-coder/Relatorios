@@ -1524,9 +1524,6 @@ def tela_checkup():
                     df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM'].astype(str).str.upper().apply(lambda x: re.sub(r'\.0$', '', x.strip()).lstrip("0"))
             except: pass
 
-        colors = ["#FEF08A", "#BAE6FD", "#FBCFE8", "#D9F99D", "#FECACA"]
-        border_colors = ["#EAB308", "#38BDF8", "#F472B6", "#84CC16", "#F87171"]
-
         for i in range(0, len(lista_incidencias), 3):
             cols = st.columns(3)
             for j in range(3):
@@ -1539,11 +1536,21 @@ def tela_checkup():
                     tem_rebolo = "SIM" if "(C/ REBOLO)" in st_m.upper() else "NÃO"
 
                     h_alvo = "Imediato / Na Fila"
+                    turno_post_it = turno_atual_horario()
                     if "AGENDADA PARA" in st_m.upper():
-                        try: h_alvo = st_m.upper().split('AGENDADA PARA')[1].strip()
+                        try: 
+                            h_alvo = st_m.upper().split('AGENDADA PARA')[1].strip()
+                            turno_post_it = obter_turno_por_horario(h_alvo)
                         except: pass
                     elif "[AGENDADO:" in st_m.upper():
-                        try: h_alvo = st_m.upper().split('[AGENDADO:')[1].split(']')[0].strip()
+                        try: 
+                            h_alvo = st_m.upper().split('[AGENDADO:')[1].split(']')[0].strip()
+                            turno_post_it = obter_turno_por_horario(h_alvo)
+                        except: pass
+                    elif "[Fim Previsto:" in st_m:
+                        try:
+                            h_alvo = st_m.split("[Fim Previsto:")[1].split("]")[0].strip()
+                            turno_post_it = obter_turno_por_horario(h_alvo)
                         except: pass
 
                     op_arm, item_arm = "Nenhuma", "-"
@@ -1568,10 +1575,23 @@ def tela_checkup():
                             if reb1.lower() in ['nan', 'none', '']: reb1 = "-"
                             if reb2.lower() in ['nan', 'none', '']: reb2 = "-"
 
-                    bg_color = colors[(i+j) % len(colors)]
-                    bd_color = border_colors[(i+j) % len(border_colors)]
+                    # Lógica de Cores exata que você pediu
+                    if "PARADA" in st_m.upper():
+                        bg_color, bd_color = "#FECACA", "#F87171" # Vermelho
+                    elif "MANUTENÇÃO" in st_m.upper():
+                        bg_color, bd_color = "#FED7AA", "#FB923C" # Laranja
+                    elif turno_post_it == "1° TURNO":
+                        bg_color, bd_color = "#BAE6FD", "#38BDF8" # Azul Claro
+                    elif turno_post_it == "2° TURNO":
+                        bg_color, bd_color = "#FEF08A", "#EAB308" # Amarelo Claro
+                    elif turno_post_it == "3° TURNO":
+                        bg_color, bd_color = "#D9F99D", "#84CC16" # Verde Claro
+                    else:
+                        bg_color, bd_color = "#E5E7EB", "#9CA3AF" # Cinza
+
                     rotate = ( (i+j) % 3 ) * 2 - 2 
 
+                    # IMPORTANTE: Sem espaços no começo para não bugar o Markdown!
                     html = f'''<div style="background-color: {bg_color}; padding: 15px; border-radius: 2px 20px 2px 15px; box-shadow: 3px 5px 10px rgba(0,0,0,0.4); color: #18181B !important; margin-bottom: 20px; min-height: 240px; transform: rotate({rotate}deg);">
 <h4 style="margin: 0 0 10px 0; color: #18181B !important; border-bottom: 1px solid {bd_color}; font-size: 16px; font-weight: bold; padding-bottom: 5px;">⚙️ {setor_m} {maq_m}</h4>
 <p style="margin: 0 0 4px 0; font-size: 14px; color: #18181B !important;"><b>⏰ Agendado para:</b> {h_alvo}</p>
@@ -1585,7 +1605,7 @@ def tela_checkup():
 <p style="margin: 0; font-size: 13px; color: #18181B !important;"><b>🛞 Reb 2:</b> {reb2}</p>
 </div>'''
                     cols[j].markdown(html, unsafe_allow_html=True)
-                    
+
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] and perfil != 'preset':
         painel_controle_maquina(st.session_state['maq_ativa'], st.session_state['setor_ativo'])
         st.divider()
