@@ -887,8 +887,8 @@ def painel_controle_maquina(maq_id, setor):
         st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
 
         if st.session_state.get('perfil') == 'preset':
-            # --- MODO SOMENTE LEITURA PARA O PRÉ-SET ---
-            st.markdown("<h5 style='color: #2DD4BF; margin-bottom: 15px;'>🔍 Detalhes da Programação</h5>", unsafe_allow_html=True)
+            # --- MODO SOMENTE LEITURA PARA O PRÉ-SET (POST-ITS) ---
+            st.markdown("<h5 style='color: #2DD4BF; margin-bottom: 15px;'>🔍 Resumo da Programação (Pré-Set)</h5>", unsafe_allow_html=True)
             
             is_seq = "SEQUÊNCIA" in status_atual.upper() or "SEQUENCIA" in status_atual.upper()
             is_prep = "PREPARAÇÃO" in status_atual.upper() or "PREPARACAO" in status_atual.upper() or "PREPARANDO" in status_atual.upper()
@@ -919,23 +919,35 @@ def painel_controle_maquina(maq_id, setor):
                             if rebolo2.lower() in ['nan', 'none', '']: rebolo2 = "-"
                 except: pass
 
-            html_preset = f"""
-            <div style='background-color: #18181B; padding: 15px; border-radius: 8px; border: 1px solid #3F3F46;'>
-                <p style='margin: 0 0 8px 0; color: #E4E4E7; font-size: 14px;'>⚙️ <b>Tipo de Setup:</b> <span style='color: #F4F4F5;'>{tipo_setup}</span></p>
-                <p style='margin: 0 0 8px 0; color: #E4E4E7; font-size: 14px;'>🔄 <b>Troca de Rebolo:</b> <span style='color: #F4F4F5;'>{tem_rebolo}</span></p>
-                <hr style='border-color: #27272A; margin: 12px 0;'>
-                <p style='margin: 0 0 8px 0; color: #2DD4BF; font-size: 14px;'>📦 <b>Próxima OP (Armário):</b> <span style='color: #5EEAD4;'>{op_armario if op_armario else 'Nenhuma OP na gaveta'}</span></p>
-                <p style='margin: 0 0 8px 0; color: #2DD4BF; font-size: 14px;'>⚙️ <b>Próximo Item (Armário):</b> <span style='color: #5EEAD4;'>{item_armario if item_armario else '-'}</span></p>
-            """
-            if item_armario:
-                desc_html = f" <span style='color: #A1A1AA; font-size: 12px;'>({desc})</span>" if desc and desc.lower() not in ['nan', 'none', ''] else ""
-                html_preset += f"""
-                <hr style='border-color: #27272A; margin: 12px 0;'>
-                <p style='margin: 0 0 8px 0; color: #E4E4E7; font-size: 14px;'>🛞 <b>Rebolo 1:</b> <span style='color: #F4F4F5;'>{rebolo1}</span>{desc_html}</p>
-                <p style='margin: 0 0 0 0; color: #E4E4E7; font-size: 14px;'>🛞 <b>Rebolo 2:</b> <span style='color: #F4F4F5;'>{rebolo2}</span></p>
-                """
-            html_preset += "</div>"
-            st.markdown(html_preset, unsafe_allow_html=True)
+            post_it_base = "padding: 15px; border-radius: 2px 20px 2px 15px; box-shadow: 4px 6px 12px rgba(0,0,0,0.5); color: #18181B !important; min-height: 150px; margin-bottom: 15px;"
+            col_p1, col_p2, col_p3 = st.columns(3)
+            
+            with col_p1:
+                st.markdown(f"""<div style="background-color: #FEF08A; {post_it_base} transform: rotate(-2deg);">
+<h4 style="color: #18181B !important; font-size: 16px; border-bottom: 1px solid #EAB308; padding-bottom: 5px; margin-top:0; font-weight:bold;">📝 Setup</h4>
+<p style="margin: 8px 0 4px 0; color: #18181B !important; font-size: 14px;"><b>Tipo:</b><br>{tipo_setup}</p>
+<p style="margin: 0; color: #18181B !important; font-size: 14px;"><b>Troca de Rebolo:</b><br>{tem_rebolo}</p>
+</div>""", unsafe_allow_html=True)
+                
+            with col_p2:
+                st.markdown(f"""<div style="background-color: #BAE6FD; {post_it_base} transform: rotate(1deg);">
+<h4 style="color: #18181B !important; font-size: 16px; border-bottom: 1px solid #38BDF8; padding-bottom: 5px; margin-top:0; font-weight:bold;">📦 Produção</h4>
+<p style="margin: 8px 0 4px 0; color: #18181B !important; font-size: 14px;"><b>Próxima OP:</b><br>{op_armario if op_armario else 'Nenhuma'}</p>
+<p style="margin: 0; color: #18181B !important; font-size: 14px;"><b>Próximo Item:</b><br>{item_armario if item_armario else '-'}</p>
+</div>""", unsafe_allow_html=True)
+                
+            with col_p3:
+                desc_html = f"<br><span style='font-size: 11px; color: #4B5563;'>({desc})</span>" if desc and desc.lower() not in ['nan', 'none', ''] else ""
+                if item_armario:
+                    content_reb = f"""<p style="margin: 8px 0 4px 0; color: #18181B !important; font-size: 14px; line-height: 1.2;"><b>Rebolo 1:</b><br>{rebolo1}{desc_html}</p>
+<p style="margin: 0; color: #18181B !important; font-size: 14px;"><b>Rebolo 2:</b><br>{rebolo2}</p>"""
+                else:
+                    content_reb = f"<p style='margin: 15px 0; color: #18181B !important; font-size: 14px; font-style: italic;'>Gaveta vazia. Insira um item para buscar os rebolos.</p>"
+
+                st.markdown(f"""<div style="background-color: #FBCFE8; {post_it_base} transform: rotate(-1deg);">
+<h4 style="color: #18181B !important; font-size: 16px; border-bottom: 1px solid #F472B6; padding-bottom: 5px; margin-top:0; font-weight:bold;">🛞 Ferramental</h4>
+{content_reb}
+</div>""", unsafe_allow_html=True)
 
         else:
             # --- FORMULÁRIOS INTERATIVOS PARA PREPARADORES E ADM ---
@@ -1581,7 +1593,6 @@ def tela_checkup():
             for setor_m, maq_m, st_m in incidencias_turno_atual:
                 icone = get_status_icon(st_m)
                 
-                # Se for preset, remove a exibição do preparador do botão para não poluir
                 txt_botao = st_m
                 if st.session_state.get('perfil') == 'preset':
                     txt_botao = re.sub(r' \[Prep\. Sugerido:.*?\]', '', txt_botao)
