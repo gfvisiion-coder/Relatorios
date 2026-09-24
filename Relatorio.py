@@ -1599,9 +1599,9 @@ def tela_checkup():
 <div style="margin: 0; font-size: 13px; color: #000000 !important;"><b>🛞 Reb 2:</b> {reb2}</div>
                         '''
 
-                    # Construção do HTML do Post-it (Letras Pretas Absolutas)
+                    # Construção do HTML do Post-it (Trocado <h4> por <div> para não sofrer overwrite do CSS global)
                     html = f'''<div style="background-color: {bg_color}; padding: 15px; border-radius: 2px 20px 2px 15px; box-shadow: 3px 5px 10px rgba(0,0,0,0.4); color: #000000 !important; margin-bottom: 20px; min-height: 200px; transform: rotate({rotate}deg);">
-<h4 style="margin: 0 0 10px 0; color: #000000 !important; border-bottom: 1px solid {bd_color}; font-size: 16px; font-weight: bold; padding-bottom: 5px;">⚙️ {setor_m} {maq_m}</h4>
+<div style="margin: 0 0 10px 0; color: #000000 !important; border-bottom: 1px solid {bd_color}; font-size: 16px; font-weight: bold; padding-bottom: 5px;">⚙️ {setor_m} {maq_m}</div>
 <div style="margin: 0 0 4px 0; font-size: 14px; color: #000000 !important;"><b>⏰ Agendado para:</b> {h_alvo}</div>
 <div style="margin: 0 0 4px 0; font-size: 14px; color: #000000 !important;"><b>📋 Setup:</b> {tipo_setup}</div>
 <div style="margin: 0 0 8px 0; font-size: 14px; color: #000000 !important;"><b>🔄 Troca Rebolo:</b> {tem_rebolo}</div>
