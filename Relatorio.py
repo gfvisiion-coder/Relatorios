@@ -869,14 +869,21 @@ def painel_controle_maquina(maq_id, setor):
             except: pass
 
         st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
-        if "AGUARDANDO PREPARADOR" in status_atual: st.warning(f"🟠 Status Atual: {status_atual}")
-        elif "AGENDADO" in status_atual or "AGENDADA" in status_atual: st.info(f"🔵 Status: {status_atual}")
-        elif "PREPARANDO" in status_atual: st.info(f"🟡 Status Atual: {status_atual} desde {hora_atual}{timer_str}")
-        elif "SEQUÊNCIA" in status_atual: st.info(f"🟣 Status Atual: {status_atual} desde {hora_atual}{timer_str}")
-        elif "PRODUZINDO" in status_atual: st.success(f"🟢 Status Atual: {status_atual}")
+        
+        status_exibicao = status_atual
+        if st.session_state.get('perfil') == 'preset':
+            status_exibicao = re.sub(r' \[Prep\. Sugerido:.*?\]', '', status_atual)
+            status_exibicao = re.sub(r' \[Prep:.*?\]', '', status_exibicao)
+            status_exibicao = re.sub(r' \[Prog:.*?\]', '', status_exibicao)
+            
+        if "AGUARDANDO PREPARADOR" in status_atual: st.warning(f"🟠 Status Atual: {status_exibicao}")
+        elif "AGENDADO" in status_atual or "AGENDADA" in status_atual: st.info(f"🔵 Status: {status_exibicao}")
+        elif "PREPARANDO" in status_atual: st.info(f"🟡 Status Atual: {status_exibicao} desde {hora_atual}{timer_str}")
+        elif "SEQUÊNCIA" in status_atual: st.info(f"🟣 Status Atual: {status_exibicao} desde {hora_atual}{timer_str}")
+        elif "PRODUZINDO" in status_atual: st.success(f"🟢 Status Atual: {status_exibicao}")
         elif "PARADA" in status_atual: st.error(f"🔴 Status Atual: Paralisada desde {hora_atual}")
         elif "MANUTENÇÃO" in status_atual: st.warning(f"🛠️ Status Atual: Em Manutenção desde {hora_atual}{timer_str}")
-        else: st.warning(f"🟡 Status Atual: {status_atual} desde {hora_atual}{timer_str}")
+        else: st.warning(f"🟡 Status Atual: {status_exibicao} desde {hora_atual}{timer_str}")
             
         flow_key = f"flow_{maq_id}"
         is_setup_ativo = "PREPARANDO" in status_atual or "SEQUÊNCIA" in status_atual
@@ -885,7 +892,7 @@ def painel_controle_maquina(maq_id, setor):
         if flow_key not in st.session_state:
             if is_espera: st.session_state[flow_key] = "acoes_espera"
             else: st.session_state[flow_key] = "pergunta"
-                
+            
         st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
         
         if is_setup_ativo and st.session_state[flow_key] == "pergunta":
@@ -1071,7 +1078,11 @@ def painel_controle_maquina(maq_id, setor):
                     
                 hora_relatorio = st.text_input("⏰ Horário Alvo (Aparecerá no Relatório):", value=hora_pre_fill, placeholder="Ex: 12:30")
                 is_agendado = st.toggle("Marcar como Agendamento Futuro", value=True)
+                
                 prep_sugerido = st.text_input("🧑‍🔧 Sugerir Preparador (Opcional):", placeholder="Ex: Lucas")
+                
+                st.markdown("💻 **Validação do Programa CNC**")
+                prog_status_prep = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
                 
                 op_pre, item_pre = "", ""
                 if "[Ordem:" in st_atual: op_pre = st_atual.split("[Ordem:")[1].split("]")[0].strip()
@@ -1096,6 +1107,8 @@ def painel_controle_maquina(maq_id, setor):
                 if st.form_submit_button("💾 Salvar Registro", type="primary"):
                     if not hora_relatorio.strip():
                         st.error("⚠️ O campo de horário é obrigatório!")
+                    elif prep_sugerido.strip() and prog_status_prep == "-- Vá até a máquina e verifique --":
+                        st.error("⚠️ Como você sugeriu um preparador, é OBRIGATÓRIO verificar na máquina se o Programa está OK!")
                     else:
                         if setor == "AFC":
                             st_final = tipo_afc
@@ -1105,7 +1118,11 @@ def painel_controle_maquina(maq_id, setor):
                             if tipo_prep == "HASTE" and troca_diametro: st_final += " (C/ Diâmetro)"
                             if troca_rebolo: st_final += " (C/ Rebolo)"
                             
-                        if prep_sugerido.strip(): st_final += f" [Prep. Sugerido: {prep_sugerido.strip().upper()}]"
+                        if prep_sugerido.strip(): 
+                            st_final += f" [Prep. Sugerido: {prep_sugerido.strip().upper()}]"
+                            val_prog = "OK" if "SIM" in prog_status_prep else "NOK"
+                            st_final += f" [Prog: {val_prog}]"
+                            
                         if is_agendado and hora_relatorio.strip(): st_final += f" [AGENDADO:{hora_relatorio.strip()}]"
                         else: st_final = f"AGUARDANDO PREPARADOR - {st_final}"
                         
@@ -1130,6 +1147,10 @@ def painel_controle_maquina(maq_id, setor):
                     except: pass
                     
                 nome_input = st.text_input("Nome do Preparador:", value=sug_nome if sug_nome else "")
+                
+                st.markdown("💻 **Validação do Programa CNC**")
+                prog_status_espera = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
+
                 is_guia = "GUIA" in status_atual
                 is_seq = "SEQUÊNCIA" in status_atual
                 is_comum = not is_guia and not is_seq
@@ -1194,27 +1215,36 @@ def painel_controle_maquina(maq_id, setor):
                     else: st.error("⚠️ Informe o novo horário para adiar!")
                     
                 if btn_sugerir:
-                    if nome_input.strip():
+                    if not nome_input.strip():
+                        st.error("⚠️ Informe um nome para sugerir!")
+                    elif prog_status_espera == "-- Vá até a máquina e verifique --":
+                        st.error("⚠️ É obrigatório verificar se o programa está OK antes de sugerir um preparador!")
+                    else:
                         info_atual = obter_info_maquina(maq_id, setor)
                         if info_atual:
                             raw_st = str(info_atual['Status'])
                             raw_st = re.sub(r' \[Prep\. Sugerido:.*?\]', '', raw_st)
+                            raw_st = re.sub(r' \[Prog:.*?\]', '', raw_st)
+                            
+                            val_prog = "OK" if "SIM" in prog_status_espera else "NOK"
+                            tag_prog = f" [Prog: {val_prog}]"
+                            
                             if "AGENDADA PARA" in raw_st:
                                 hora_agend = raw_st.split("AGENDADA PARA")[1].strip()
                                 st_base = raw_st.split(" AGENDADA PARA")[0]
-                                raw_st = f"{st_base} [Prep. Sugerido: {nome_input.strip().upper()}] [AGENDADO:{hora_agend}]"
+                                raw_st = f"{st_base} [Prep. Sugerido: {nome_input.strip().upper()}]{tag_prog} [AGENDADO:{hora_agend}]"
                             elif "[AGENDADO:" in raw_st: 
-                                raw_st = raw_st.replace(" [AGENDADO:", f" [Prep. Sugerido: {nome_input.strip().upper()}] [AGENDADO:")
-                            else: raw_st += f" [Prep. Sugerido: {nome_input.strip().upper()}]"
+                                raw_st = raw_st.replace(" [AGENDADO:", f" [Prep. Sugerido: {nome_input.strip().upper()}]{tag_prog} [AGENDADO:")
+                            else: 
+                                raw_st += f" [Prep. Sugerido: {nome_input.strip().upper()}]{tag_prog}"
                             
                             hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                             salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": raw_st, "Hora": hora_br_str}, ARQUIVO_DADOS)
                             st.session_state['maq_ativa'] = None
                             del st.session_state[flow_key]
-                            st.success("✅ Sugestão de preparador atualizada!")
+                            st.success("✅ Sugestão e validação do programa atualizadas!")
                             time.sleep(0.5); st.rerun()
-                    else: st.error("⚠️ Informe um nome para sugerir!")
-                        
+                            
                 if btn_iniciar:
                     if is_comum and not nova_ordem_input.strip(): st.error("⚠️ Para INICIAR a preparação, informe a Nova Ordem (OP)!")
                     elif is_seq and not nova_ordem_input.strip(): st.error("⚠️ Para INICIAR a Sequência, informe a Nova Ordem (OP)!")
