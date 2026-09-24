@@ -1532,6 +1532,8 @@ def tela_checkup():
 
                     is_seq = "SEQUÊNCIA" in st_m.upper() or "SEQUENCIA" in st_m.upper()
                     is_prep = "PREPARAÇÃO" in st_m.upper() or "PREPARACAO" in st_m.upper() or "PREPARANDO" in st_m.upper()
+                    is_preparando = "PREPARANDO" in st_m.upper()
+                    
                     tipo_setup = "Sequência" if is_seq else ("Preparação" if is_prep else "Outro (Parada)")
                     tem_rebolo = "SIM" if "(C/ REBOLO)" in st_m.upper() else "NÃO"
 
@@ -1553,7 +1555,23 @@ def tela_checkup():
                             turno_post_it = obter_turno_por_horario(h_alvo)
                         except: pass
 
-                    op_arm, item_arm = "Nenhuma", "-"
+                    # Tenta extrair a OP e ITEM do status primeiro (caso já esteja PREPARANDO a gaveta estará vazia)
+                    op_maq, item_maq = "", ""
+                    if "[Ordem:" in st_m:
+                        try: op_maq = st_m.split("[Ordem:")[1].split("]")[0].strip()
+                        except: pass
+                    if "[Novo Item:" in st_m:
+                        try: item_maq = st_m.split("[Novo Item:")[1].split("]")[0].strip()
+                        except: pass
+                    elif "[Item Atual:" in st_m:
+                        try: item_maq = st_m.split("[Item Atual:")[1].split("]")[0].strip()
+                        except: pass
+                    elif "[Item:" in st_m:
+                        try: item_maq = st_m.split("[Item:")[1].split("]")[0].strip()
+                        except: pass
+
+                    # Busca no armário (caso esteja AGUARDANDO, os dados ainda estão lá)
+                    op_arm, item_arm = "", ""
                     if not df_arm.empty:
                         gaveta_num = maq_m.split("-")[0]
                         filtro_arm = "Afiadoras" if setor_m == "AFC" else "Retíficas"
@@ -1561,12 +1579,15 @@ def tela_checkup():
                         if not gaveta_row.empty and str(gaveta_row.iloc[0]['Status']).strip() != 'VAZIO':
                             op_arm = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nan', '').strip()
                             item_arm = str(gaveta_row.iloc[0].get('Item', '')).replace('.0', '').replace('nan', '').strip()
-                            if not op_arm: op_arm = "Nenhuma"
-                            if not item_arm: item_arm = "-"
 
+                    # Define a OP e Item finais
+                    final_op = op_maq if op_maq else (op_arm if op_arm else "Nenhuma")
+                    final_item = item_maq if item_maq else (item_arm if item_arm else "-")
+
+                    # Busca rebolos baseados no Item Final
                     reb1, reb2 = "-", "-"
-                    if item_arm != "-" and not df_rebolos.empty:
-                        item_busca = item_arm.upper()
+                    if final_item != "-" and not df_rebolos.empty:
+                        item_busca = final_item.upper()
                         match = df_rebolos[df_rebolos['ITEM_BUSCA'] == item_busca]
                         if match.empty: match = df_rebolos[df_rebolos['ITEM_BUSCA'].str.contains(item_busca, regex=False, na=False)]
                         if not match.empty:
@@ -1575,7 +1596,6 @@ def tela_checkup():
                             if reb1.lower() in ['nan', 'none', '']: reb1 = "-"
                             if reb2.lower() in ['nan', 'none', '']: reb2 = "-"
 
-                    # Regra: Se tem rebolo e não achou na planilha, exibe "Não cadastrado"
                     if tem_rebolo == "SIM" and reb1 == "-":
                         reb1 = "Não cadastrado"
 
@@ -1584,8 +1604,8 @@ def tela_checkup():
                         bg_color, bd_color = "#FECACA", "#F87171" # Vermelho claro
                     elif "MANUTENÇÃO" in st_m.upper():
                         bg_color, bd_color = "#FED7AA", "#FB923C" # Laranja claro
-                    elif "PREPARANDO" in st_m.upper():
-                        bg_color, bd_color = "#E9D5FF", "#A855F7" # Roxo/Lilás claro (Preparação Ativa)
+                    elif is_preparando:
+                        bg_color, bd_color = "#E9D5FF", "#A855F7" # Roxo/Lilás claro (Máquina Preparando)
                     elif turno_post_it == "1° TURNO":
                         bg_color, bd_color = "#FCE7F3", "#F472B6" # Rosa bem clarinho
                     elif turno_post_it == "2° TURNO":
@@ -1597,7 +1617,6 @@ def tela_checkup():
 
                     rotate = ( (i+j) % 3 ) * 2 - 2 
 
-                    # Lógica de exibição dos rebolos (Oculta se não houver troca)
                     html_rebolo = ""
                     if tem_rebolo == "SIM":
                         html_rebolo = f'''
@@ -1605,15 +1624,35 @@ def tela_checkup():
 <div style="margin: 0; font-size: 13px; color: #000000 !important;"><b>🛞 Reb 2:</b> {reb2}</div>
                         '''
 
-                    # Construção do HTML do Post-it
+                    # Define cabeçalho e tempo de exibição
+                    titulo_tempo = "⏰ Agendado para:"
+                    valor_tempo = h_alvo
+                    cabecalho_maq = f"⚙️ {setor_m} {maq_m}"
+                    
+                    if is_preparando:
+                        cabecalho_maq = f"⚙️ {setor_m} {maq_m} (PREPARANDO)"
+                        titulo_tempo = "⏳ Tempo de Setup:"
+                        valor_tempo = "0 min"
+                        info_maq = obter_info_maquina(maq_m, setor_m)
+                        if info_maq:
+                            h_inicio = info_maq.get('Hora', '--:--')
+                            if h_inicio != '--:--':
+                                try:
+                                    dt_reg = datetime.strptime(f"{datetime.now(FUSO_BR).strftime('%Y-%m-%d')} {h_inicio}", "%Y-%m-%d %H:%M")
+                                    t_decorrido = datetime.now(FUSO_BR) - dt_reg.replace(tzinfo=FUSO_BR)
+                                    mins = int(t_decorrido.total_seconds() // 60)
+                                    valor_tempo = f"{mins} min"
+                                except: pass
+
+                    # HTML Limpo e Forçando a Cor Preta
                     html = f'''<div style="background-color: {bg_color}; padding: 15px; border-radius: 2px 20px 2px 15px; box-shadow: 3px 5px 10px rgba(0,0,0,0.4); color: #000000 !important; margin-bottom: 20px; min-height: 200px; transform: rotate({rotate}deg);">
-<div style="margin: 0 0 10px 0; color: #000000 !important; border-bottom: 1px solid {bd_color}; font-size: 16px; font-weight: bold; padding-bottom: 5px;">⚙️ {setor_m} {maq_m}</div>
-<div style="margin: 0 0 4px 0; font-size: 14px; color: #000000 !important;"><b>⏰ Agendado para:</b> {h_alvo}</div>
+<div style="margin: 0 0 10px 0; color: #000000 !important; border-bottom: 1px solid {bd_color}; font-size: 16px; font-weight: bold; padding-bottom: 5px;">{cabecalho_maq}</div>
+<div style="margin: 0 0 4px 0; font-size: 14px; color: #000000 !important;"><b>{titulo_tempo}</b> {valor_tempo}</div>
 <div style="margin: 0 0 4px 0; font-size: 14px; color: #000000 !important;"><b>📋 Setup:</b> {tipo_setup}</div>
 <div style="margin: 0 0 8px 0; font-size: 14px; color: #000000 !important;"><b>🔄 Troca Rebolo:</b> {tem_rebolo}</div>
 <div style="background: rgba(255,255,255,0.5); padding: 8px; border-radius: 6px; margin-bottom: 8px;">
-<div style="margin: 0 0 2px 0; font-size: 13px; color: #000000 !important;"><b>Ordem:</b> {op_arm}</div>
-<div style="margin: 0; font-size: 13px; color: #000000 !important;"><b>Item:</b> {item_arm}</div>
+<div style="margin: 0 0 2px 0; font-size: 13px; color: #000000 !important;"><b>Ordem:</b> {final_op}</div>
+<div style="margin: 0; font-size: 13px; color: #000000 !important;"><b>Item:</b> {final_item}</div>
 </div>
 {html_rebolo}
 </div>'''
