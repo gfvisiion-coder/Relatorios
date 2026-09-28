@@ -1163,7 +1163,11 @@ def painel_controle_maquina(maq_id, setor):
                 
                 if not is_guia:
                     st.markdown("💻 **Validação do Programa CNC**")
-                    prog_status_prep = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
+                    if "[Prog: OK" in st_atual:
+                        st.success("✅ Programa já enviado para a máquina pelo Programador!")
+                        prog_status_prep = "SIM (Programa OK)"
+                    else:
+                        prog_status_prep = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
                 else:
                     prog_status_prep = "SIM (Programa OK)"
                 
@@ -1228,7 +1232,11 @@ def painel_controle_maquina(maq_id, setor):
                 
                 if not is_guia:
                     st.markdown("💻 **Validação do Programa CNC**")
-                    prog_status_espera = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
+                    if "[Prog: OK" in status_atual:
+                        st.success("✅ Programa já enviado para a máquina pelo Programador!")
+                        prog_status_espera = "SIM (Programa OK)"
+                    else:
+                        prog_status_espera = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
                 else:
                     prog_status_espera = "SIM (Programa OK)"
                 
@@ -2791,7 +2799,9 @@ def tela_programador():
     status_dict = ler_status_atual()
     lista_incidencias = []
     
-    # Filtra apenas máquinas que estão em setup ou aguardando
+    # Carrega os armários para buscar a OP/Item caso não esteja no status
+    df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype=str) if os.path.exists(ARQUIVO_ARMARIOS) else pd.DataFrame()
+    
     for m in TODAS_AFC + TODAS_RTF:
         prefixo = "AFC" if m in TODAS_AFC else "RTF"
         st_val = status_dict.get(f"{prefixo} {m}", "PRODUZINDO")
@@ -2803,26 +2813,40 @@ def tela_programador():
         st.success("✨ Nenhuma máquina em preparação aguardando programa no momento.")
         return
 
-    # Renderiza em grid de 3 colunas
     for i in range(0, len(lista_incidencias), 3):
         cols = st.columns(3)
         for j in range(3):
             if i + j < len(lista_incidencias):
                 setor_m, maq_m, st_m = lista_incidencias[i + j]
                 
-                # Extrai Preparador
                 preparador = "Sugerir / Aguardando..."
                 if "[Prep:" in st_m: preparador = st_m.split("[Prep:")[1].split("]")[0].strip()
                 elif "[Prep. Sugerido:" in st_m: preparador = st_m.split("[Prep. Sugerido:")[1].split("]")[0].strip()
                 elif "[PREP:" in st_m.upper(): preparador = st_m.upper().split("[PREP:")[1].split("]")[0].strip()
 
-                # Extrai OP e Item
-                op_maq, item_maq = "-", "-"
-                if "[Ordem:" in st_m: op_maq = st_m.split("[Ordem:")[1].split("]")[0].strip()
-                if "[Novo Item:" in st_m: item_maq = st_m.split("[Novo Item:")[1].split("]")[0].strip()
-                elif "[Item Atual:" in st_m: item_maq = st_m.split("[Item Atual:")[1].split("]")[0].strip()
+                op_maq, item_maq = "", ""
+                if "[Ordem:" in st_m:
+                    try: op_maq = st_m.split("[Ordem:")[1].split("]")[0].strip()
+                    except: pass
+                if "[Novo Item:" in st_m:
+                    try: item_maq = st_m.split("[Novo Item:")[1].split("]")[0].strip()
+                    except: pass
+                elif "[Item Atual:" in st_m:
+                    try: item_maq = st_m.split("[Item Atual:")[1].split("]")[0].strip()
+                    except: pass
 
-                # Extrai Horário alvo se houver
+                # Se a OP não estiver no status, busca no armário
+                if not op_maq and not df_arm.empty:
+                    gaveta_num = maq_m.split("-")[0]
+                    filtro_arm = "Afiadoras" if setor_m == "AFC" else "Retíficas"
+                    gaveta_row = df_arm[(df_arm['Posicao'] == str(gaveta_num)) & (df_arm['Armario'].str.contains(filtro_arm))]
+                    if not gaveta_row.empty and str(gaveta_row.iloc[0]['Status']).strip() != 'VAZIO':
+                        op_maq = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nan', '').strip()
+                        item_maq = str(gaveta_row.iloc[0].get('Item', '')).replace('.0', '').replace('nan', '').strip()
+
+                final_op = op_maq if op_maq else "-"
+                final_item = item_maq if item_maq else "-"
+
                 h_alvo = "Imediato"
                 if "AGENDADA PARA" in st_m.upper():
                     try: h_alvo = st_m.upper().split('AGENDADA PARA')[1].strip()
@@ -2831,15 +2855,13 @@ def tela_programador():
                     try: h_alvo = st_m.upper().split('[AGENDADO:')[1].split(']')[0].strip()
                     except: pass
 
-                # Verifica se o programa já está OK (Apenas visual do sistema antigo ou deste)
                 is_prog_ok = "[Prog: OK" in st_m
                 hora_colocado = ""
                 if is_prog_ok and "-" in st_m.split("[Prog:")[1].split("]")[0]:
                     try: hora_colocado = st_m.split("[Prog: OK - ")[1].split("]")[0].strip()
                     except: pass
 
-                # Cores do Post-it
-                bg_color = "#D1FAE5" if is_prog_ok else "#FEF9C3" # Verde claro se OK, Amarelo claro se pendente
+                bg_color = "#D1FAE5" if is_prog_ok else "#FEF9C3"
                 bd_color = "#059669" if is_prog_ok else "#CA8A04"
                 
                 html = f"""
@@ -2850,8 +2872,8 @@ def tela_programador():
                     <div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>🧑‍🔧 Preparador:</strong> <span style='font-size: 14px;'>{preparador}</span></div>
                     <div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>⏰ Previsão:</strong> <span style='font-size: 14px;'>{h_alvo}</span></div>
                     <div style='background: rgba(255,255,255,0.6); padding: 8px; border-radius: 6px; margin: 8px 0;'>
-                        <div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>Ordem:</strong> <span style='font-size: 13px;'>{op_maq}</span></div>
-                        <div style='margin: 0;'><strong style='font-size: 13px;'>Item:</strong> <span style='font-size: 13px;'>{item_maq}</span></div>
+                        <div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>Ordem:</strong> <span style='font-size: 13px;'>{final_op}</span></div>
+                        <div style='margin: 0;'><strong style='font-size: 13px;'>Item:</strong> <span style='font-size: 13px;'>{final_item}</span></div>
                     </div>
                 """
                 
@@ -2863,13 +2885,11 @@ def tela_programador():
                 html += "</div>"
                 cols[j].markdown(html, unsafe_allow_html=True)
                 
-                # Botões de Ação
                 if not is_prog_ok:
                     if cols[j].button("💻 MARCAR PROGRAMA EM MÁQUINA", key=f"btn_prog_{maq_m}", use_container_width=True, type="primary"):
                         hora_br = datetime.now(FUSO_BR).strftime("%H:%M")
                         st_limpo = re.sub(r' \[Prog:.*?\]', '', st_m)
                         st_final = f"{st_limpo} [Prog: OK - {hora_br}]"
-                        
                         salvar_csv({"Setor": setor_m, "Maquina": f"{setor_m} {maq_m}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br}, ARQUIVO_DADOS)
                         st.success(f"✅ Programa marcado na {maq_m} às {hora_br}!")
                         time.sleep(1); st.rerun()
@@ -2877,7 +2897,6 @@ def tela_programador():
                     if cols[j].button("↩️ Desmarcar Programa", key=f"btn_desmarcar_{maq_m}", use_container_width=True):
                         st_limpo = re.sub(r' \[Prog:.*?\]', '', st_m)
                         hora_br = datetime.now(FUSO_BR).strftime("%H:%M")
-                        
                         salvar_csv({"Setor": setor_m, "Maquina": f"{setor_m} {maq_m}", "Operador": st.session_state['operador'], "Status": st_limpo, "Hora": hora_br}, ARQUIVO_DADOS)
                         st.warning(f"⚠️ Programa removido da {maq_m}!")
                         time.sleep(1); st.rerun()
