@@ -1358,9 +1358,14 @@ def painel_controle_maquina(maq_id, setor):
                         info_atual = obter_info_maquina(maq_id, setor)
                         if info_atual:
                             raw_st = str(info_atual['Status'])
-                            if "AGENDADA PARA" in raw_st.upper(): raw_st = re.sub(r'AGENDADA PARA \d{2}:\d{2}', f"AGENDADA PARA {novo_horario_adiar.strip()}", raw_st, flags=re.IGNORECASE)
-                            elif "[AGENDADO:" in raw_st.upper(): raw_st = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{novo_horario_adiar.strip()}]", raw_st, flags=re.IGNORECASE)
-                            else: raw_st += f" [AGENDADO:{novo_horario_adiar.strip()}]"
+                            
+                            # CORREÇÃO: Remove qualquer marcação de agendamento ou horário antigo anterior
+                            raw_st = re.sub(r'AGENDADA PARA \d{2}:\d{2}', '', raw_st, flags=re.IGNORECASE)
+                            raw_st = re.sub(r'\[AGENDADO:\d{2}:\d{2}\]', '', raw_st, flags=re.IGNORECASE)
+                            raw_st = raw_st.strip()
+                            
+                            # Adiciona a nova tag com o horário atualizado do adiamento
+                            raw_st += f" [AGENDADO:{novo_horario_adiar.strip()}]"
                             
                             salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": raw_st, "Hora": novo_horario_adiar.strip()}, ARQUIVO_DADOS)
                             st.session_state['maq_ativa'] = None
