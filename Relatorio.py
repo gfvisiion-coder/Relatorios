@@ -559,7 +559,10 @@ def verificar_virada_turno():
         
         is_setup = st_upper.startswith("PREPARAÇÃO") or st_upper.startswith("PREPARACAO") or st_upper.startswith("PREPARANDO") or st_upper.startswith("SEQUÊNCIA") or st_upper.startswith("SEQUENCIA")
         
-        if is_setup and ("[AGENDADO:" not in st_upper):
+        # CORREÇÃO: Se tiver agendamento futuro, NÃO aplica o corte de turno forçado para AGUARDANDO PREPARADOR
+        tem_agendamento_futuro = "[AGENDADO:" in st_upper or "AGENDADA PARA" in st_upper
+        
+        if is_setup and not tem_agendamento_futuro:
             mins_passados = diff_mins(hora_registro, datetime.now(FUSO_BR).strftime("%H:%M"))
             if mins_passados > 0: 
                 precisa_cortar = (turno_real == "1° TURNO" and diff_mins(hora_registro, "06:20") > 0 and diff_mins("06:20", hora_registro) > 12*60) or \
