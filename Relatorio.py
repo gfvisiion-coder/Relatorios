@@ -2299,20 +2299,25 @@ def tela_armarios():
 
     with aba2:
         if st.session_state['perfil'] in ['preset', 'adm']:
-            with st.form("form_alimentar_lista", clear_on_submit=True):
-                st.markdown("📥 **Guardar Ferramental / Setup**")
-                c1, c2 = st.columns(2)
-                armario_sel = c1.selectbox("Selecione o Armário:", ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"], key="aba2_arm_sel")
-                pos_vazias = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Status'] == 'VAZIO')]
-                pos_vazias_lista = pos_vazias['Posicao'].tolist()
-                
-                if not pos_vazias_lista:
-                    st.warning(f"O {armario_sel} está cheio!")
-                    pos_sel = None
-                else:
-                    pos_vazias_sorted = sorted([int(x) for x in pos_vazias_lista])
-                    pos_sel = c2.selectbox("Máquina Alvo:", [str(x) for x in pos_vazias_sorted], key="aba2_pos_sel")
+            st.markdown("📥 **Guardar Ferramental / Setup**")
+            
+            # --- SELEÇÃO DINÂMICA FORA DO FORMULÁRIO ---
+            c1, c2 = st.columns(2)
+            armario_sel = c1.selectbox("Selecione o Armário:", ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"], key="aba2_arm_sel")
+            
+            # Filtra as máquinas vazias baseadas no armário selecionado
+            pos_vazias = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Status'] == 'VAZIO')]
+            pos_vazias_lista = pos_vazias['Posicao'].tolist()
+            
+            if not pos_vazias_lista:
+                st.warning(f"O {armario_sel} está cheio!")
+                pos_sel = None
+            else:
+                pos_vazias_sorted = sorted([int(x) for x in pos_vazias_lista])
+                pos_sel = c2.selectbox("Máquina Alvo:", [str(x) for x in pos_vazias_sorted], key="aba2_pos_sel")
 
+            # --- DADOS DE ENTRADA DENTRO DO FORMULÁRIO ---
+            with st.form("form_alimentar_lista", clear_on_submit=True):
                 motivos_rapidos = [
                     "-- Selecione um Motivo Rápido (Opcional) --",
                     "Aguardando Jagura",
@@ -2334,8 +2339,10 @@ def tela_armarios():
                     if obs_in.strip():
                         obs_final = f"{obs_final} - {obs_in.strip()}" if obs_final else obs_in.strip()
 
-                    if not ordem_in.strip() and not obs_final.strip(): st.error("⚠️ A Ordem (OP) ou um Motivo Rápido são obrigatórios!")
-                    elif pos_sel is None: st.error("⚠️ Não há posições disponíveis selecionadas!")
+                    if not ordem_in.strip() and not obs_final.strip(): 
+                        st.error("⚠️ A Ordem (OP) ou um Motivo Rápido são obrigatórios!")
+                    elif pos_sel is None: 
+                        st.error("⚠️ Não há posições disponíveis selecionadas!")
                     else:
                         ordem_limpa = ordem_in.strip().upper().replace(".0", "").lstrip("0")
                         item_limpa = item_in.strip().upper().replace(".0", "").lstrip("0")
@@ -2350,7 +2357,8 @@ def tela_armarios():
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                             st.success(f"✅ Ferramental guardado para a MAQ {pos_sel} do {armario_sel}!")
                             time.sleep(1.5); st.rerun()
-        else: st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode inserir ou remover itens nos armários.")
+        else: 
+            st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode inserir ou remover itens nos armários.")
 
     with aba3:
         st.markdown("#### 🔔 Histórico de Setups Retirados para a Produção")
