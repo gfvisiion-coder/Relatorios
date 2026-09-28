@@ -234,51 +234,55 @@ def processar_padrao(df_all, maquinas, prefixo_setor):
         ciclo_ativo, status_limpo, hora_prep, preparador = False, "", "", ""
         for _, row in df_maq.iterrows():
             st_val, h_val = str(row['Status']), str(row['Hora'])
-            if "Energia Restaurada" in st_val: continue
+            st_upper = st_val.upper()
+            if "ENERGIA RESTAURADA" in st_upper: continue
             
             prep_atual = ""
             if "[Prep:" in st_val: prep_atual = st_val.split("[Prep:")[1].split("]")[0].strip()
             elif "[Prep. Sugerido:" in st_val: prep_atual = st_val.split("[Prep. Sugerido:")[1].split("]")[0].strip()
-            elif "[PREP:" in st_val.upper(): prep_atual = st_val.upper().split("[PREP:")[1].split("]")[0].strip()
+            elif "[PREP:" in st_upper: prep_atual = st_upper.split("[PREP:")[1].split("]")[0].strip()
             if prep_atual: preparador = prep_atual
 
-            if "PREPARAÇÃO" in st_val or "SEQUÊNCIA" in st_val or "AGUARDANDO" in st_val:
+            # Trava de segurança: Lê APENAS o início do status, ignorando palavras soltas nas observações
+            is_setup_wait = st_upper.startswith("PREPARAÇÃO") or st_upper.startswith("PREPARACAO") or st_upper.startswith("SEQUÊNCIA") or st_upper.startswith("SEQUENCIA") or st_upper.startswith("AGUARDANDO")
+            is_preparando = st_upper.startswith("PREPARANDO")
+            is_conclusao = st_upper.startswith("PRODUZINDO") or st_upper.startswith("PARADA") or st_upper.startswith("MANUTENÇÃO")
+
+            if is_setup_wait:
                 if not ciclo_ativo:
                     ciclo_ativo, hora_prep = True, h_val
-                    if "[AGENDADO:" in st_val:
-                        try: hora_prep = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
-                        except: pass
-                    elif "AGENDADA PARA" in st_val:
-                        try: hora_prep = st_val.split("AGENDADA PARA")[1].strip()
-                        except: pass
                     s_limpo = st_val.split("[")[0].strip().upper().replace("PREPARAÇÃO - ", "")
                     status_limpo = s_limpo if s_limpo else "SETUP"
-                else:
-                    if "[AGENDADO:" in st_val:
-                        try: hora_prep = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
-                        except: pass
-                    elif "AGENDADA PARA" in st_val:
-                        try: hora_prep = st_val.split("AGENDADA PARA")[1].strip()
-                        except: pass
-            elif "PREPARANDO" in st_val:
-                if not ciclo_ativo: ciclo_ativo, hora_prep = True, h_val
-                if "[AGENDADO:" in st_val:
-                    try: hora_prep = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
+                    
+                if "[AGENDADO:" in st_upper:
+                    try: hora_prep = st_upper.split("[AGENDADO:")[1].split("]")[0].strip()
                     except: pass
-                elif "AGENDADA PARA" in st_val:
-                    try: hora_prep = st_val.split("AGENDADA PARA")[1].strip()
+                elif "AGENDADA PARA" in st_upper:
+                    try: hora_prep = st_upper.split("AGENDADA PARA")[1].strip()
+                    except: pass
+                    
+            elif is_preparando:
+                if not ciclo_ativo: ciclo_ativo, hora_prep = True, h_val
+                if "[AGENDADO:" in st_upper:
+                    try: hora_prep = st_upper.split("[AGENDADO:")[1].split("]")[0].strip()
+                    except: pass
+                elif "AGENDADA PARA" in st_upper:
+                    try: hora_prep = st_upper.split("AGENDADA PARA")[1].strip()
                     except: pass
                 status_limpo = "PREPARANDO"
-            elif ("PRODUZINDO" in st_val or "PARADA" in st_val or "MANUTENÇÃO" in st_val) and ciclo_ativo:
-                if "Queda de Energia" in st_val: continue
+                
+            elif is_conclusao and ciclo_ativo:
+                if "QUEDA DE ENERGIA" in st_upper: continue
                 num_maq, str_prep = maq.replace(f"{prefixo_setor} ", ""), f" - {preparador}" if preparador else ""
-                if "PRODUZINDO" in st_val:
+                
+                if st_upper.startswith("PRODUZINDO"):
                     status_final = "MÁQUINA LIBERADA"
                     if "[Obs:" in st_val:
                         try: str_prep += f" (Obs: {st_val.split('[Obs:')[1].split(']')[0].strip()})"
                         except: pass
-                elif "MANUTENÇÃO" in st_val: status_final = "SETUP INTERROMPIDO (MANUTENÇÃO)"
+                elif st_upper.startswith("MANUTENÇÃO"): status_final = "SETUP INTERROMPIDO (MANUTENÇÃO)"
                 else: status_final = "SETUP INTERROMPIDO (PARADA)"
+                
                 tags_prod = extrair_tags_producao(st_val)
                 linhas.append((hora_prep if hora_prep != '--' else '00:00', f"{num_maq} - {hora_prep} - {status_final}{str_prep} {tags_prod}\n\n"))
                 ciclo_ativo, preparador = False, ""
@@ -290,6 +294,7 @@ def processar_padrao(df_all, maquinas, prefixo_setor):
     linhas.sort(key=lambda x: get_sort_key(x[0]))
     return "".join([item[1] for item in linhas])
 
+
 def gerar_relatorio_tempos(df_all, maquinas, prefixo):
     texto_saida = []
     def salvar_ciclo(maq_num, h_agenda_orig, adiamentos, h_inicio, h_assumido, h_fim, p1, p2, st_final=""):
@@ -299,6 +304,7 @@ def gerar_relatorio_tempos(df_all, maquinas, prefixo):
             if adiamentos: txt += f"Adiado para: {', '.join(adiamentos)}.\n"
             txt += "Preparador sugerido: AGUARDANDO OPERADOR\n\n"
             return (h_agenda_str, txt)
+        
         h_agenda_final = adiamentos[-1] if adiamentos else h_agenda_orig
         t_espera_mins = diff_mins(h_agenda_final, h_inicio, eh_espera=True) if h_agenda_final else 0
         t_espera = format_tempo(t_espera_mins)
@@ -312,7 +318,10 @@ def gerar_relatorio_tempos(df_all, maquinas, prefixo):
         else:
             txt_maq += "Iniciado diretamente, sem tempo de espera agendado prévio.\n"
         
-        is_finished, is_interrompido = "PRODUZINDO" in st_final, "PARADA" in st_final or "MANUTENÇÃO" in st_final
+        st_final_up = st_final.upper()
+        is_finished = st_final_up.startswith("PRODUZINDO")
+        is_interrompido = st_final_up.startswith("PARADA") or st_final_up.startswith("MANUTENÇÃO")
+        
         obs_texto = ""
         if "[Obs:" in st_final:
             try: obs_texto = f" | Obs: {st_final.split('[Obs:')[1].split(']')[0].strip()}"
@@ -341,50 +350,58 @@ def gerar_relatorio_tempos(df_all, maquinas, prefixo):
         prep_1, prep_2 = None, None
         
         for _, h_row in df_hist.iterrows():
-            st_val, h_val = str(h_row['Status']).upper(), str(h_row['Hora'])
-            if "ENERGIA RESTAURADA" in st_val: continue
+            st_val, h_val = str(h_row['Status']), str(h_row['Hora'])
+            st_upper = st_val.upper()
+            if "ENERGIA RESTAURADA" in st_upper: continue
             
-            if "PREPARAÇÃO" in st_val or "SEQUÊNCIA" in st_val or "AGUARDANDO" in st_val:
+            is_setup_wait = st_upper.startswith("PREPARAÇÃO") or st_upper.startswith("PREPARACAO") or st_upper.startswith("SEQUÊNCIA") or st_upper.startswith("SEQUENCIA") or st_upper.startswith("AGUARDANDO")
+            is_preparando = st_upper.startswith("PREPARANDO")
+            is_conclusao = st_upper.startswith("PRODUZINDO") or st_upper.startswith("PARADA") or st_upper.startswith("MANUTENÇÃO")
+            
+            if is_setup_wait:
                 if not ciclo_ativo:
                     ciclo_ativo = True
                     hora_agenda_orig = h_val
                     adiamentos = []
                     hora_inicio, hora_assumido, hora_fim, prep_1, prep_2 = None, None, None, None, None
                     
-                if "AGENDADA PARA" in st_val:
+                if "AGENDADA PARA" in st_upper:
                     try: 
-                        h_novo = st_val.split("AGENDADA PARA")[1].strip()
+                        h_novo = st_upper.split("AGENDADA PARA")[1].strip()
                         if not hora_agenda_orig: hora_agenda_orig = h_novo
                         elif h_novo != hora_agenda_orig and h_novo not in adiamentos: adiamentos.append(h_novo)
                     except: pass
-                elif "[AGENDADO:" in st_val:
+                elif "[AGENDADO:" in st_upper:
                     try: 
-                        h_novo = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
+                        h_novo = st_upper.split("[AGENDADO:")[1].split("]")[0].strip()
                         if not hora_agenda_orig: hora_agenda_orig = h_novo
                         elif h_novo != hora_agenda_orig and h_novo not in adiamentos: adiamentos.append(h_novo)
                     except: pass
                     
-            elif "PREPARANDO" in st_val:
+            elif is_preparando:
                 ciclo_ativo = True
                 if not hora_agenda_orig: hora_agenda_orig = h_val
-                if "[ASSUMIDO]" in st_val:
+                if "[ASSUMIDO]" in st_upper:
                     hora_assumido = h_val
-                    try: prep_2 = st_val.split("[PREP:")[1].split("]")[0].strip()
+                    try: prep_2 = st_upper.split("[PREP:")[1].split("]")[0].strip()
                     except: pass
                 else:
                     if hora_inicio is None: hora_inicio = h_val
-                    try: prep_1 = st_val.split("[PREP:")[1].split("]")[0].strip()
+                    try: prep_1 = st_upper.split("[PREP:")[1].split("]")[0].strip()
                     except: pass
-            elif ("PRODUZINDO" in st_val or "PARADA" in st_val or "MANUTENÇÃO" in st_val) and ciclo_ativo:
-                if "QUEDA DE ENERGIA" in st_val: continue
+                    
+            elif is_conclusao and ciclo_ativo:
+                if "QUEDA DE ENERGIA" in st_upper: continue
                 hora_fim = h_val
                 texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda_orig, adiamentos, hora_inicio, hora_assumido, hora_fim, prep_1, prep_2, st_val))
                 ciclo_ativo = False
+                
         if ciclo_ativo: 
             texto_saida.append(salvar_ciclo(maq.replace(f"{prefixo} ", ""), hora_agenda_orig, adiamentos, hora_inicio, hora_assumido, None, prep_1, prep_2, ""))
             
     texto_saida.sort(key=lambda x: get_sort_key(x[0]))
     return "".join([i[1] for i in texto_saida])
+
 
 def calcular_tempos_interrupcoes(df_all, palavra_chave):
     texto = ""
@@ -395,9 +412,10 @@ def calcular_tempos_interrupcoes(df_all, palavra_chave):
         motivo = ""
         for _, row in df_maq.iterrows():
             st_val, h_val = str(row['Status']), str(row['Hora'])
-            if "Energia Restaurada" in st_val or "Queda de Energia" in st_val: continue
+            st_upper = st_val.upper()
+            if "ENERGIA RESTAURADA" in st_upper or "QUEDA DE ENERGIA" in st_upper: continue
             
-            is_target = palavra_chave in st_val.upper()
+            is_target = st_upper.startswith(palavra_chave.upper())
             if is_target and not in_status:
                 in_status = True
                 h_in = h_val
@@ -414,8 +432,10 @@ def calcular_tempos_interrupcoes(df_all, palavra_chave):
             texto += f"{num_maq} - Desde {h_in} (Em andamento: {dur}) - Motivo: {motivo}\n"
     return texto if texto else "N/A\n\n"
 
+
 def gerar_textos_fechamento(data_alvo, df_completo):
-    setup_mask = df_completo['Status'].str.contains('PREPARAÇÃO|SEQUÊNCIA|AGUARDANDO|PREPARANDO', na=False)
+    # Match exato no início da string
+    setup_mask = df_completo['Status'].str.match(r'^(?i)(PREPARAÇÃO|PREPARACAO|SEQUÊNCIA|SEQUENCIA|AGUARDANDO|PREPARANDO)') if not df_completo.empty else pd.Series(dtype=bool)
     maquinas_com_setup = df_completo[setup_mask]['Maquina'].unique() if not df_completo.empty else []
 
     texto_padrao = f"*PLANTA AFIACAO E RETIFICA {data_alvo}*\n\n"
@@ -534,9 +554,12 @@ def verificar_virada_turno():
         df_maq = df[df['Maquina'] == maq]
         ultimo_registro = df_maq.iloc[-1]
         st_atual = str(ultimo_registro['Status'])
+        st_upper = st_atual.upper()
         hora_registro = str(ultimo_registro['Hora'])
         
-        if ("PREPARAÇÃO" in st_atual or "PREPARANDO" in st_atual or "SEQUÊNCIA" in st_atual) and ("[AGENDADO:" not in st_atual):
+        is_setup = st_upper.startswith("PREPARAÇÃO") or st_upper.startswith("PREPARACAO") or st_upper.startswith("PREPARANDO") or st_upper.startswith("SEQUÊNCIA") or st_upper.startswith("SEQUENCIA")
+        
+        if is_setup and ("[AGENDADO:" not in st_upper):
             mins_passados = diff_mins(hora_registro, datetime.now(FUSO_BR).strftime("%H:%M"))
             if mins_passados > 0: 
                 precisa_cortar = (turno_real == "1° TURNO" and diff_mins(hora_registro, "06:20") > 0 and diff_mins("06:20", hora_registro) > 12*60) or \
