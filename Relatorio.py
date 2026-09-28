@@ -234,7 +234,7 @@ def processar_padrao(df_all, maquinas, prefixo_setor):
         ciclo_ativo, status_limpo, hora_prep, preparador = False, "", "", ""
         for _, row in df_maq.iterrows():
             st_val, h_val = str(row['Status']), str(row['Hora'])
-            st_upper = st_val.strip().upper() # .strip() adicionado aqui também
+            st_upper = st_val.strip().upper()
             if "ENERGIA RESTAURADA" in st_upper: continue
             
             prep_atual = ""
@@ -302,13 +302,11 @@ def gerar_relatorio_tempos(df_all, maquinas, prefixo):
         is_finished = st_final_up.startswith("PRODUZINDO")
         is_interrompido = st_final_up.startswith("PARADA") or st_final_up.startswith("MANUTENÇÃO")
         
-        # CORREÇÃO: Se pulou a etapa "PREPARANDO" e foi direto para "PRODUZINDO"
         if h_inicio is None and h_fim is not None:
-            h_inicio = h_fim # Iguala o tempo para registrar como 0 minutos de preparo
+            h_inicio = h_fim 
             p1 = "Apontamento Direto"
             
         if h_inicio is None: 
-            # Se continua None e não tem h_fim, aí sim está realmente aguardando
             txt = f"Máquina {maq_num}: Aguardando preparador desde as {h_agenda_str}.\n"
             if adiamentos: txt += f"Adiado para: {', '.join(adiamentos)}.\n"
             txt += "Preparador sugerido: AGUARDANDO OPERADOR\n\n"
@@ -356,7 +354,7 @@ def gerar_relatorio_tempos(df_all, maquinas, prefixo):
         
         for _, h_row in df_hist.iterrows():
             st_val, h_val = str(h_row['Status']), str(h_row['Hora'])
-            st_upper = st_val.strip().upper() # .strip() adicionado por precaução
+            st_upper = st_val.strip().upper()
             if "ENERGIA RESTAURADA" in st_upper: continue
             
             is_setup_wait = st_upper.startswith("PREPARAÇÃO") or st_upper.startswith("PREPARACAO") or st_upper.startswith("SEQUÊNCIA") or st_upper.startswith("SEQUENCIA") or st_upper.startswith("AGUARDANDO")
@@ -439,7 +437,6 @@ def calcular_tempos_interrupcoes(df_all, palavra_chave):
 
 
 def gerar_textos_fechamento(data_alvo, df_completo):
-    # Match exato no início da string
     setup_mask = df_completo['Status'].str.match(r'^(?i)(PREPARAÇÃO|PREPARACAO|SEQUÊNCIA|SEQUENCIA|AGUARDANDO|PREPARANDO)') if not df_completo.empty else pd.Series(dtype=bool)
     maquinas_com_setup = df_completo[setup_mask]['Maquina'].unique() if not df_completo.empty else []
 
@@ -568,8 +565,8 @@ def verificar_virada_turno():
             mins_passados = diff_mins(hora_registro, datetime.now(FUSO_BR).strftime("%H:%M"))
             if mins_passados > 0: 
                 precisa_cortar = (turno_real == "1° TURNO" and diff_mins(hora_registro, "06:20") > 0 and diff_mins("06:20", hora_registro) > 12*60) or \
-                                 (turno_real == "2° TURNO" and diff_mins(hora_registro, "14:20") > 0 and diff_mins(hora_registro, "14:20") < 8*60) or \
-                                 (turno_real == "3° TURNO" and diff_mins(hora_registro, "22:20") > 0 and diff_mins(hora_registro, "22:20") < 8*60)
+                               (turno_real == "2° TURNO" and diff_mins(hora_registro, "14:20") > 0 and diff_mins(hora_registro, "14:20") < 8*60) or \
+                               (turno_real == "3° TURNO" and diff_mins(hora_registro, "22:20") > 0 and diff_mins(hora_registro, "22:20") < 8*60)
                 if precisa_cortar:
                     tags = extrair_tags_producao(st_atual)
                     novo_st = f"AGUARDANDO PREPARADOR [Corte de Turno] {tags}".strip()
@@ -737,7 +734,6 @@ def exibir_alertas_preparador():
     alertas_prog = []
     
     for maq, st_val in status_dict.items():
-        # Lógica 1: Alertas de Tempo (Preparações Próximas ou Atrasadas)
         if f"[PREP: {nome_usuario}]" in st_val.upper() or f"[PREP. SUGERIDO: {nome_usuario}]" in st_val.upper():
             hora_alvo = ""
             if "AGENDADA PARA" in st_val.upper():
@@ -757,7 +753,6 @@ def exibir_alertas_preparador():
                 if -120 <= delta_mins <= 30:
                     alertas_tempo.append({'maquina': maq, 'hora': hora_alvo, 'delta': delta_mins})
 
-        # Lógica 2: Alerta de Programa Validado na Máquina pelo Programador
         is_sugerido = f"[PREP. SUGERIDO: {nome_usuario}]" in st_val.upper()
         is_aguardando = "AGUARDANDO" in st_val.upper() or "AGENDADO" in st_val.upper() or "AGENDADA" in st_val.upper()
         is_prog_ok = "[PROG: OK" in st_val.upper()
@@ -1779,8 +1774,8 @@ def tela_checkup():
                             except: pass
 
                         prog_status = "Não validado ⚠️"
-                        is_prog_ok = "[Prog: OK" in st_m.upper()
-                        is_prog_nok = "[Prog: NOK" in st_m.upper()
+                        is_prog_ok = "[PROG: OK" in st_m.upper()
+                        is_prog_nok = "[PROG: NOK" in st_m.upper()
                         
                         if is_prog_ok: prog_status = "OK ✅"
                         elif is_prog_nok: prog_status = "NOK ❌"
@@ -1805,7 +1800,7 @@ def tela_checkup():
                             filtro_arm = "Afiadoras" if setor_m == "AFC" else "Retíficas"
                             gaveta_row = df_arm[(df_arm['Posicao'] == str(gaveta_num)) & (df_arm['Armario'].str.contains(filtro_arm))]
                             if not gaveta_row.empty and str(gaveta_row.iloc[0]['Status']).strip() != 'VAZIO':
-                                op_arm = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nam', '').strip()
+                                op_arm = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nan', '').strip()
                                 item_arm = str(gaveta_row.iloc[0].get('Item', '')).replace('.0', '').replace('nan', '').strip()
 
                         if is_guia:
@@ -2889,7 +2884,6 @@ def tela_programador():
                     is_manutencao = "MANUTENÇÃO" in st_m.upper()
                     is_prog_ok = "[PROG: OK" in st_m.upper()
                     
-                    # Definição do Tipo de Setup
                     tipo_setup = "Outro"
                     if is_seq:
                         tipo_setup = "Sequência"
@@ -2900,18 +2894,17 @@ def tela_programador():
                     elif is_manutencao:
                         tipo_setup = "Manutenção"
                     
-                    # Configuração de Cores Profissionais para Dark Mode
                     if is_manutencao:
-                        bg_color, bd_color = "#3F1515", "#EF4444" # Vermelho
+                        bg_color, bd_color = "#3F1515", "#EF4444" 
                         status_label_txt = "Em Manutenção"
                     elif is_preparando:
-                        bg_color, bd_color = "#172554", "#3B82F6" # Azul Escuro
+                        bg_color, bd_color = "#172554", "#3B82F6" 
                         status_label_txt = "Em Preparação (Executando)"
                     elif is_prog_ok:
-                        bg_color, bd_color = "#022C22", "#10B981" # Verde Escuro
+                        bg_color, bd_color = "#022C22", "#10B981" 
                         status_label_txt = "Agendado / Programa OK"
                     else:
-                        bg_color, bd_color = "#451A03", "#F59E0B" # Laranja Escuro
+                        bg_color, bd_color = "#451A03", "#F59E0B" 
                         status_label_txt = "Agendado / Sem Programa"
 
                     preparador = "Sugerir / Aguardando..."
@@ -2962,11 +2955,6 @@ def tela_programador():
                         tempo_ou_status_html = f"<div style='margin: 0 0 4px 0;'><strong style='font-size: 14px; color: #A1A1AA;'>⏰ Agendado para:</strong> <span style='font-size: 14px; color: #E4E4E7;'>{h_alvo}</span></div>"
                     else:
                         tempo_ou_status_html = f"<div style='margin: 0 0 4px 0;'><strong style='font-size: 14px; color: #A1A1AA;'>📌 Status:</strong> <span style='font-size: 14px; color: #E4E4E7;'>{status_label_txt}</span></div>"
-
-                    hora_colocado = ""
-                    if is_prog_ok and "-" in st_m.split("[Prog:")[1].split("]")[0]:
-                        try: hora_colocado = st_m.split("[Prog: OK - ")[1].split("]")[0].strip()
-                        except: pass
                     
                     html = f"""
                     <div class='postit-prog' style='background-color: {bg_color}; padding: 15px; border-radius: 8px; border: 1px solid #27272A; border-top: 4px solid {bd_color}; margin-bottom: 10px; min-height: 220px;'>
@@ -2983,7 +2971,7 @@ def tela_programador():
                     """
                     
                     if is_prog_ok:
-                        html += f"<div style='margin-top: 10px; color: #34D399;'><strong style='font-size: 14px;'>✅ Programa OK ({hora_colocado})</strong></div>"
+                        html += f"<div style='margin-top: 10px; color: #34D399;'><strong style='font-size: 14px;'>✅ Programa OK</strong></div>"
                     else:
                         html += "<div style='margin-top: 10px; color: #FBBF24;'><strong style='font-size: 14px;'>⚠️ Aguardando Programa</strong></div>"
                         
@@ -2992,11 +2980,11 @@ def tela_programador():
                     
                     if not is_prog_ok:
                         if cols[j].button("💻 MARCAR PROGRAMA EM MÁQUINA", key=f"btn_prog_{maq_m}", use_container_width=True, type="primary"):
-                            hora_br = datetime.now(FUSO_BR).strftime("%H:%M")
                             st_limpo = re.sub(r' \[Prog:.*?\]', '', st_m)
-                            st_final = f"{st_limpo} [Prog: OK - {hora_br}]"
+                            st_final = f"{st_limpo} [Prog: OK]"
+                            hora_br = datetime.now(FUSO_BR).strftime("%H:%M")
                             salvar_csv({"Setor": setor_m, "Maquina": f"{setor_m} {maq_m}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br}, ARQUIVO_DADOS)
-                            st.success(f"✅ Programa marcado na {maq_m} às {hora_br}!")
+                            st.success(f"✅ Programa marcado como OK na {maq_m}!")
                             time.sleep(1); st.rerun()
                     else:
                         if cols[j].button("↩️ Desmarcar Programa", key=f"btn_desmarcar_{maq_m}", use_container_width=True):
