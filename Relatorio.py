@@ -104,17 +104,7 @@ st.markdown(CSS_APP, unsafe_allow_html=True)
 
 # --- GERENCIADOR DE COOKIES E ARQUIVOS ---
 cookie_manager = stx.CookieManager()
-
-# Trava de sincronização para celulares (espera o iframe carregar os cookies)
-if 'cookie_sync' not in st.session_state:
-    st.session_state['cookie_sync'] = False
-
 cookies_salvos = cookie_manager.get_all()
-
-if not cookies_salvos and not st.session_state['cookie_sync']:
-    st.session_state['cookie_sync'] = True
-    time.sleep(0.3)  # Aguarda 300ms para navegadores mobile sincronizarem
-    st.rerun()
 
 ARQUIVO_DADOS = "banco_operacao.csv"
 ARQUIVO_EQUIPE = "banco_equipe.csv"
@@ -210,23 +200,6 @@ def get_turno_logico(dt=None):
     else:
         if t < dtime(6, 20): d -= timedelta(days=1)
         return d.strftime("%d/%m/%Y"), "3° TURNO"
-
-def obter_item_rodando_atual(maq_full):
-    """Busca no histórico de dados o último item que rodou ou está rodando na máquina"""
-    if not os.path.exists(ARQUIVO_DADOS): return "-"
-    try:
-        df = pd.read_csv(ARQUIVO_DADOS)
-        df_maq = df[df['Maquina'] == maq_full]
-        for idx in reversed(df_maq.index):
-            st_hist = str(df_maq.loc[idx, 'Status'])
-            if "[Item:" in st_hist:
-                return st_hist.split("[Item:")[1].split("]")[0].strip()
-            elif "[Item Atual:" in st_hist:
-                return st_hist.split("[Item Atual:")[1].split("]")[0].strip()
-            elif "[Novo Item:" in st_hist:
-                return st_hist.split("[Novo Item:")[1].split("]")[0].strip()
-    except: pass
-    return "-"
 
 def processar_padrao(df_all, maquinas, prefixo_setor):
     linhas = []
@@ -726,6 +699,7 @@ def exibir_alertas_preparador():
                 
                 delta_mins = int((h_alvo_dt - agora_dt).total_seconds() / 60)
                 
+                # Se faltar 30 min ou menos, ou se estiver atrasado, adiciona ao alerta
                 if -120 <= delta_mins <= 30:
                     alertas.append({'maquina': maq, 'hora': hora_alvo, 'delta': delta_mins})
     
@@ -734,12 +708,14 @@ def exibir_alertas_preparador():
         html_alertas += "<h4 style='margin-top:0; color:#fca5a5;'>⏰ ATENÇÃO: SUAS PREPARAÇÕES PRÓXIMAS / ATRASADAS</h4>"
         
         for alerta in sorted(alertas, key=lambda x: x['delta']):
+            # Exibir balões Toast (Canto da tela)
             chave_toast = f"toast_prep_{alerta['maquina']}_{alerta['hora']}"
             if chave_toast not in st.session_state:
                 st.session_state[chave_toast] = True
                 msg = f"Sua preparação na {alerta['maquina']} será às {alerta['hora']}!" if alerta['delta'] > 0 else f"A máquina {alerta['maquina']} está ATRASADA ({alerta['hora']})!"
                 st.toast(msg, icon="⏰")
 
+            # Montar banner vermelho piscante na tela
             if alerta['delta'] > 0: tempo_txt = f"falta(m) {alerta['delta']} min"
             elif alerta['delta'] == 0: tempo_txt = "é agora!"
             else: tempo_txt = f"atrasada há {abs(alerta['delta'])} min"
@@ -1159,11 +1135,11 @@ def painel_controle_maquina(maq_id, setor):
                 st_atual = str(info_atual['Status']) if info_atual else ""
                 
                 hora_pre_fill = ""
-                if "AGENDADA PARA" in st_atual.upper():
-                    try: hora_pre_fill = st_atual.upper().split("AGENDADA PARA")[1].strip()
+                if "AGENDADA PARA" in st_atual:
+                    try: hora_pre_fill = st_atual.split("AGENDADA PARA")[1].strip()
                     except: pass
-                elif "[AGENDADO:" in st_atual.upper():
-                    try: hora_pre_fill = st_atual.upper().split("[AGENDADO:")[1].split("]")[0].strip()
+                elif "[AGENDADO:" in st_atual:
+                    try: hora_pre_fill = st_atual.split("[AGENDADO:")[1].split("]")[0].strip()
                     except: pass
                 elif "[Fim Previsto:" in st_atual:
                     try: hora_pre_fill = st_atual.split("[Fim Previsto:")[1].split("]")[0].strip()
@@ -1183,17 +1159,17 @@ def painel_controle_maquina(maq_id, setor):
                     if tipo_setup == "HASTE": troca_diametro = st.toggle("Troca de Diâmetro")
                     troca_rebolo = st.toggle("Troca de Rebolo")
                 
-                is_guia = (setor != "AFC" and tipo_setup == "GUIA") or "GUIA" in st_atual.upper()
+                is_guia = (setor != "AFC" and tipo_setup == "GUIA")
                 
-                if is_guia:
-                    prog_status_prep = "SIM (Programa OK)"
-                elif "[PROG: OK" in st_atual.upper():
+                if not is_guia:
                     st.markdown("💻 **Validação do Programa CNC**")
-                    st.success("✅ Programa já enviado para a máquina pelo Programador!")
-                    prog_status_prep = "SIM (Programa OK)"
+                    if "[Prog: OK" in st_atual:
+                        st.success("✅ Programa já enviado para a máquina pelo Programador!")
+                        prog_status_prep = "SIM (Programa OK)"
+                    else:
+                        prog_status_prep = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
                 else:
-                    st.markdown("💻 **Validação do Programa CNC**")
-                    prog_status_prep = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
+                    prog_status_prep = "SIM (Programa OK)"
                 
                 op_pre, item_pre = "", ""
                 if "[Ordem:" in st_atual: op_pre = st_atual.split("[Ordem:")[1].split("]")[0].strip()
@@ -1250,19 +1226,19 @@ def painel_controle_maquina(maq_id, setor):
                     
                 nome_input = st.text_input("Nome do Preparador:", value=sug_nome if sug_nome else "")
                 
-                is_guia = "GUIA" in status_atual.upper()
-                is_seq = "SEQUÊNCIA" in status_atual.upper() or "SEQUENCIA" in status_atual.upper()
+                is_guia = "GUIA" in status_atual
+                is_seq = "SEQUÊNCIA" in status_atual
                 is_comum = not is_guia and not is_seq
                 
-                if is_guia:
-                    prog_status_espera = "SIM (Programa OK)"
-                elif "[PROG: OK" in status_atual.upper():
+                if not is_guia:
                     st.markdown("💻 **Validação do Programa CNC**")
-                    st.success("✅ Programa já enviado para a máquina pelo Programador!")
-                    prog_status_espera = "SIM (Programa OK)"
+                    if "[Prog: OK" in status_atual:
+                        st.success("✅ Programa já enviado para a máquina pelo Programador!")
+                        prog_status_espera = "SIM (Programa OK)"
+                    else:
+                        prog_status_espera = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
                 else:
-                    st.markdown("💻 **Validação do Programa CNC**")
-                    prog_status_espera = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
+                    prog_status_espera = "SIM (Programa OK)"
                 
                 st.markdown("📦 **Dados da Preparação**")
                 nova_ordem_input = ""
@@ -1290,7 +1266,7 @@ def painel_controle_maquina(maq_id, setor):
                 
                 bloquear_inicio = False
                 msg_bloqueio = ""
-                if "[AGENDADO:" in status_atual.upper() or "AGENDADA PARA" in status_atual.upper():
+                if "[AGENDADO:" in status_atual or "AGENDADA PARA" in status_atual:
                     try:
                         hora_agend = status_atual.split("AGENDADA PARA")[1].strip() if "AGENDADA PARA" in status_atual else status_atual.split("[AGENDADO:")[1].split("]")[0].strip()
                         turno_agend = obter_turno_por_horario(hora_agend)
@@ -1312,8 +1288,8 @@ def painel_controle_maquina(maq_id, setor):
                         info_atual = obter_info_maquina(maq_id, setor)
                         if info_atual:
                             raw_st = str(info_atual['Status'])
-                            if "AGENDADA PARA" in raw_st.upper(): raw_st = re.sub(r'AGENDADA PARA \d{2}:\d{2}', f"AGENDADA PARA {novo_horario_adiar.strip()}", raw_st, flags=re.IGNORECASE)
-                            elif "[AGENDADO:" in raw_st.upper(): raw_st = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{novo_horario_adiar.strip()}]", raw_st, flags=re.IGNORECASE)
+                            if "AGENDADA PARA" in raw_st: raw_st = re.sub(r'AGENDADA PARA \d{2}:\d{2}', f"AGENDADA PARA {novo_horario_adiar.strip()}", raw_st)
+                            elif "[AGENDADO:" in raw_st: raw_st = re.sub(r'\[AGENDADO:.*?\]', f"[AGENDADO:{novo_horario_adiar.strip()}]", raw_st)
                             else: raw_st += f" [AGENDADO:{novo_horario_adiar.strip()}]"
                             
                             salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": raw_st, "Hora": novo_horario_adiar.strip()}, ARQUIVO_DADOS)
@@ -1332,17 +1308,17 @@ def painel_controle_maquina(maq_id, setor):
                         info_atual = obter_info_maquina(maq_id, setor)
                         if info_atual:
                             raw_st = str(info_atual['Status'])
-                            raw_st = re.sub(r' \[Prep\. Sugerido:.*?\]', '', raw_st, flags=re.IGNORECASE)
-                            raw_st = re.sub(r' \[Prog:.*?\]', '', raw_st, flags=re.IGNORECASE)
+                            raw_st = re.sub(r' \[Prep\. Sugerido:.*?\]', '', raw_st)
+                            raw_st = re.sub(r' \[Prog:.*?\]', '', raw_st)
                             
                             val_prog = "OK" if "SIM" in prog_status_espera else "NOK"
                             tag_prog = f" [Prog: {val_prog}]"
                             
-                            if "AGENDADA PARA" in raw_st.upper():
-                                hora_agend = raw_st.upper().split("AGENDADA PARA")[1].strip()
-                                st_base = raw_st.upper().split(" AGENDADA PARA")[0]
+                            if "AGENDADA PARA" in raw_st:
+                                hora_agend = raw_st.split("AGENDADA PARA")[1].strip()
+                                st_base = raw_st.split(" AGENDADA PARA")[0]
                                 raw_st = f"{st_base} [Prep. Sugerido: {nome_input.strip().upper()}]{tag_prog} [AGENDADO:{hora_agend}]"
-                            elif "[AGENDADO:" in raw_st.upper(): 
+                            elif "[AGENDADO:" in raw_st: 
                                 raw_st = raw_st.replace(" [AGENDADO:", f" [Prep. Sugerido: {nome_input.strip().upper()}]{tag_prog} [AGENDADO:")
                             else: 
                                 raw_st += f" [Prep. Sugerido: {nome_input.strip().upper()}]{tag_prog}"
@@ -1665,6 +1641,7 @@ def tela_checkup():
             st.success("✨ Nenhuma máquina na fila no momento.")
             return
 
+        # INJEÇÃO DE CSS FORÇADO PARA MOBILE/DARK MODE (GARANTE LETRAS PRETAS)
         st.markdown("""
         <style>
             .postit-card, .postit-card div, .postit-card span, .postit-card strong, .postit-card p, .postit-card b {
@@ -1684,6 +1661,7 @@ def tela_checkup():
                     df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM'].astype(str).str.upper().apply(lambda x: re.sub(r'\.0$', '', x.strip()).lstrip("0"))
             except: pass
 
+        # Separar AFC e RTF
         lista_afc = [item for item in lista_incidencias if item[0] == "AFC"]
         lista_rtf = [item for item in lista_incidencias if item[0] == "RTF"]
 
@@ -1701,14 +1679,14 @@ def tela_checkup():
                         is_seq = "SEQUÊNCIA" in st_m.upper() or "SEQUENCIA" in st_m.upper()
                         is_prep = "PREPARAÇÃO" in st_m.upper() or "PREPARACAO" in st_m.upper() or "PREPARANDO" in st_m.upper()
                         is_preparando = "PREPARANDO" in st_m.upper()
-                        is_guia = "GUIA" in st_m.upper()
                         
+                        # Extrai Haste ou Guia
                         tipo_setup = "Outro (Parada/Manut.)"
                         if is_seq:
                             tipo_setup = "Sequência"
                         elif is_prep:
                             if "HASTE" in st_m.upper(): tipo_setup = "Preparação - HASTE"
-                            elif is_guia: tipo_setup = "Preparação - GUIA"
+                            elif "GUIA" in st_m.upper(): tipo_setup = "Preparação - GUIA"
                             else: tipo_setup = "Preparação"
                             
                         tem_rebolo = "SIM" if "(C/ REBOLO)" in st_m.upper() else "NÃO"
@@ -1731,13 +1709,14 @@ def tela_checkup():
                                 turno_post_it = obter_turno_por_horario(h_alvo)
                             except: pass
 
+                        # Busca o status do programa
                         prog_status = "Não validado ⚠️"
-                        is_prog_ok = "[Prog: OK" in st_m.upper()
-                        is_prog_nok = "[Prog: NOK" in st_m.upper()
-                        
-                        if is_prog_ok: prog_status = "OK ✅"
-                        elif is_prog_nok: prog_status = "NOK ❌"
+                        if "[Prog: OK]" in st_m.upper() or "[PROG: OK]" in st_m.upper():
+                            prog_status = "OK ✅"
+                        elif "[Prog: NOK]" in st_m.upper() or "[PROG: NOK]" in st_m.upper():
+                            prog_status = "NOK ❌"
 
+                        # Tenta extrair a OP e ITEM do status primeiro
                         op_maq, item_maq = "", ""
                         if "[Ordem:" in st_m:
                             try: op_maq = st_m.split("[Ordem:")[1].split("]")[0].strip()
@@ -1752,26 +1731,21 @@ def tela_checkup():
                             try: item_maq = st_m.split("[Item:")[1].split("]")[0].strip()
                             except: pass
 
+                        # Busca no armário (caso esteja AGUARDANDO, os dados ainda estão lá)
                         op_arm, item_arm = "", ""
                         if not df_arm.empty:
                             gaveta_num = maq_m.split("-")[0]
                             filtro_arm = "Afiadoras" if setor_m == "AFC" else "Retíficas"
                             gaveta_row = df_arm[(df_arm['Posicao'] == str(gaveta_num)) & (df_arm['Armario'].str.contains(filtro_arm))]
                             if not gaveta_row.empty and str(gaveta_row.iloc[0]['Status']).strip() != 'VAZIO':
-                                op_arm = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nam', '').strip()
+                                op_arm = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nan', '').strip()
                                 item_arm = str(gaveta_row.iloc[0].get('Item', '')).replace('.0', '').replace('nan', '').strip()
 
-                        if is_guia:
-                            item_guia = item_maq if item_maq else obter_item_rodando_atual(f"{setor_m} {maq_m}")
-                            if not item_guia or item_guia == "-": item_guia = item_arm if item_arm else "-"
-                            final_item = item_guia
-                            label_item_txt = "Item Rodando (Atual)"
-                            final_op = op_maq if op_maq else (op_arm if op_arm else "Manter Atual")
-                        else:
-                            final_op = op_maq if op_maq else (op_arm if op_arm else "Nenhuma")
-                            final_item = item_maq if item_maq else (item_arm if item_arm else "-")
-                            label_item_txt = "Item"
+                        # Define a OP e Item finais
+                        final_op = op_maq if op_maq else (op_arm if op_arm else "Nenhuma")
+                        final_item = item_maq if item_maq else (item_arm if item_arm else "-")
 
+                        # Busca rebolos baseados no Item Final
                         reb1, reb2 = "-", "-"
                         if final_item != "-" and not df_rebolos.empty:
                             item_busca = final_item.upper()
@@ -1786,18 +1760,20 @@ def tela_checkup():
                         if tem_rebolo == "SIM" and reb1 == "-":
                             reb1 = "Não cadastrado"
 
+                        # Define cabeçalho e tempo de exibição base
                         titulo_tempo = "⏰ Agendado para:"
                         valor_tempo = h_alvo
                         cabecalho_maq = f"⚙️ {setor_m} {maq_m}"
 
+                        # Lógica de Cores e Nomenclatura do Cabeçalho
                         if "MANUTENÇÃO" in st_m.upper():
-                            bg_color, bd_color = "#FECACA", "#DC2626" 
+                            bg_color, bd_color = "#FECACA", "#DC2626" # Vermelho Profissional
                             cabecalho_maq = f"🛠️ {setor_m} {maq_m} (MANUTENÇÃO)"
                         elif "PARADA" in st_m.upper():
-                            bg_color, bd_color = "#FECACA", "#DC2626" 
+                            bg_color, bd_color = "#FECACA", "#DC2626" # Vermelho Profissional
                             cabecalho_maq = f"🔴 {setor_m} {maq_m} (PARADA)"
                         elif is_preparando:
-                            bg_color, bd_color = "#F472B6", "#BE185D" 
+                            bg_color, bd_color = "#F472B6", "#BE185D" # Rosa Magenta Incisivo
                             cabecalho_maq = f"⚙️ {setor_m} {maq_m} (PREPARANDO)"
                             titulo_tempo = "⏳ Tempo de Setup:"
                             valor_tempo = "0 min"
@@ -1811,16 +1787,21 @@ def tela_checkup():
                                         mins = int(t_decorrido.total_seconds() // 60)
                                         valor_tempo = f"{mins} min"
                                     except: pass
-                        elif is_prog_ok:
-                            bg_color, bd_color = "#D1FAE5", "#059669" 
+                        elif turno_post_it == "1° TURNO":
+                            bg_color, bd_color = "#E0E7FF", "#4338CA" # Azul Claro Corporativo
+                        elif turno_post_it == "2° TURNO":
+                            bg_color, bd_color = "#FEF3C7", "#D97706" # Amarelo Claro Corporativo
+                        elif turno_post_it == "3° TURNO":
+                            bg_color, bd_color = "#D1FAE5", "#059669" # Verde Claro Corporativo
                         else:
-                            bg_color, bd_color = "#FFEDD5", "#EA580C" 
+                            bg_color, bd_color = "#E5E7EB", "#4B5563" # Cinza
 
                         html_rebolo = ""
                         if tem_rebolo == "SIM":
                             html_rebolo = f"<div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>🛞 Reb 1:</strong> <span style='font-size: 13px;'>{reb1}</span></div><div style='margin: 0;'><strong style='font-size: 13px;'>🛞 Reb 2:</strong> <span style='font-size: 13px;'>{reb2}</span></div>"
 
-                        html = f"<div class='postit-card' style='background-color: {bg_color}; padding: 15px; border-radius: 6px; box-shadow: 2px 4px 8px rgba(0,0,0,0.3); margin-bottom: 20px; min-height: 250px;'><div style='margin: 0 0 10px 0; border-bottom: 2px solid {bd_color}; padding-bottom: 5px;'><strong style='font-size: 16px;'>{cabecalho_maq}</strong></div><div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>{titulo_tempo}</strong> <span style='font-size: 14px;'>{valor_tempo}</span></div><div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>📋 Setup:</strong> <span style='font-size: 14px;'>{tipo_setup}</span></div><div style='margin: 0 0 8px 0;'><strong style='font-size: 14px;'>💻 Programa:</strong> <span style='font-size: 14px;'>{prog_status}</span></div><div style='margin: 0 0 8px 0;'><strong style='font-size: 14px;'>🔄 Troca Rebolo:</strong> <span style='font-size: 14px;'>{tem_rebolo}</span></div><div style='background: rgba(255,255,255,0.6); padding: 8px; border-radius: 6px; margin-bottom: 8px;'><div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>Ordem:</strong> <span style='font-size: 13px;'>{final_op}</span></div><div style='margin: 0;'><strong style='font-size: 13px;'>{label_item_txt}:</strong> <span style='font-size: 13px;'>{final_item}</span></div></div>{html_rebolo}</div>"
+                        # Montagem da String HTML em bloco alinhado e reto (Sem Rotate)
+                        html = f"<div class='postit-card' style='background-color: {bg_color}; padding: 15px; border-radius: 6px; box-shadow: 2px 4px 8px rgba(0,0,0,0.3); margin-bottom: 20px; min-height: 250px;'><div style='margin: 0 0 10px 0; border-bottom: 2px solid {bd_color}; padding-bottom: 5px;'><strong style='font-size: 16px;'>{cabecalho_maq}</strong></div><div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>{titulo_tempo}</strong> <span style='font-size: 14px;'>{valor_tempo}</span></div><div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>📋 Setup:</strong> <span style='font-size: 14px;'>{tipo_setup}</span></div><div style='margin: 0 0 8px 0;'><strong style='font-size: 14px;'>💻 Programa:</strong> <span style='font-size: 14px;'>{prog_status}</span></div><div style='margin: 0 0 8px 0;'><strong style='font-size: 14px;'>🔄 Troca Rebolo:</strong> <span style='font-size: 14px;'>{tem_rebolo}</span></div><div style='background: rgba(255,255,255,0.6); padding: 8px; border-radius: 6px; margin-bottom: 8px;'><div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>Ordem:</strong> <span style='font-size: 13px;'>{final_op}</span></div><div style='margin: 0;'><strong style='font-size: 13px;'>Item:</strong> <span style='font-size: 13px;'>{final_item}</span></div></div>{html_rebolo}</div>"
                         
                         cols[j].markdown(html, unsafe_allow_html=True)
 
@@ -1837,7 +1818,7 @@ def tela_checkup():
         st.markdown(f"**Exibindo incidências e paradas previstas para o {turno_vigente_real}**")
         if not incidencias_turno_atual: st.success("✨ Ótimo! Nenhuma incidência ou parada prevista para o momento.")
         else:
-            if perfil in ['preset', 'preparador', 'adm', 'programador']:
+            if perfil == 'preset':
                 renderizar_post_its_preset(incidencias_turno_atual)
             else:
                 for setor_m, maq_m, st_m in incidencias_turno_atual:
@@ -1853,7 +1834,7 @@ def tela_checkup():
         lista_futura = preparacoes_futuras[filtro_turno]
         if not lista_futura: st.info(f"Nenhum setup ou parada programada futuramente para o {filtro_turno}.")
         else:
-            if perfil in ['preset', 'preparador', 'adm', 'programador']:
+            if perfil == 'preset':
                 renderizar_post_its_preset(lista_futura)
             else:
                 for setor_m, maq_m, st_m in lista_futura:
@@ -2818,6 +2799,7 @@ def tela_programador():
     status_dict = ler_status_atual()
     lista_incidencias = []
     
+    # Carrega os armários para buscar a OP/Item caso não esteja no status
     df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype=str) if os.path.exists(ARQUIVO_ARMARIOS) else pd.DataFrame()
     
     for m in TODAS_AFC + TODAS_RTF:
@@ -2837,9 +2819,6 @@ def tela_programador():
             if i + j < len(lista_incidencias):
                 setor_m, maq_m, st_m = lista_incidencias[i + j]
                 
-                is_guia = "GUIA" in st_m.upper()
-                is_preparando = "PREPARANDO" in st_m.upper()
-
                 preparador = "Sugerir / Aguardando..."
                 if "[Prep:" in st_m: preparador = st_m.split("[Prep:")[1].split("]")[0].strip()
                 elif "[Prep. Sugerido:" in st_m: preparador = st_m.split("[Prep. Sugerido:")[1].split("]")[0].strip()
@@ -2856,25 +2835,17 @@ def tela_programador():
                     try: item_maq = st_m.split("[Item Atual:")[1].split("]")[0].strip()
                     except: pass
 
-                op_arm, item_arm = "", ""
-                if not df_arm.empty:
+                # Se a OP não estiver no status, busca no armário
+                if not op_maq and not df_arm.empty:
                     gaveta_num = maq_m.split("-")[0]
                     filtro_arm = "Afiadoras" if setor_m == "AFC" else "Retíficas"
                     gaveta_row = df_arm[(df_arm['Posicao'] == str(gaveta_num)) & (df_arm['Armario'].str.contains(filtro_arm))]
                     if not gaveta_row.empty and str(gaveta_row.iloc[0]['Status']).strip() != 'VAZIO':
-                        op_arm = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nan', '').strip()
-                        item_arm = str(gaveta_row.iloc[0].get('Item', '')).replace('.0', '').replace('nan', '').strip()
+                        op_maq = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nan', '').strip()
+                        item_maq = str(gaveta_row.iloc[0].get('Item', '')).replace('.0', '').replace('nan', '').strip()
 
-                if is_guia:
-                    item_guia = item_maq if item_maq else obter_item_rodando_atual(f"{setor_m} {maq_m}")
-                    if not item_guia or item_guia == "-": item_guia = item_arm if item_arm else "-"
-                    final_item = item_guia
-                    label_item_txt = "Item Rodando (Atual)"
-                    final_op = op_maq if op_maq else (op_arm if op_arm else "Manter Atual")
-                else:
-                    final_op = op_maq if op_maq else (op_arm if op_arm else "Nenhuma")
-                    final_item = item_maq if item_maq else (item_arm if item_arm else "-")
-                    label_item_txt = "Item"
+                final_op = op_maq if op_maq else "-"
+                final_item = item_maq if item_maq else "-"
 
                 h_alvo = "Imediato"
                 if "AGENDADA PARA" in st_m.upper():
@@ -2890,13 +2861,8 @@ def tela_programador():
                     try: hora_colocado = st_m.split("[Prog: OK - ")[1].split("]")[0].strip()
                     except: pass
 
-                # HIERARQUIA DE CORES
-                if is_preparando:
-                    bg_color, bd_color = "#F472B6", "#BE185D" # Rosa Magenta (Preparando)
-                elif is_prog_ok:
-                    bg_color, bd_color = "#D1FAE5", "#059669" # Verde Claro (Programa OK)
-                else:
-                    bg_color, bd_color = "#FFEDD5", "#EA580C" # Laranja/Amarelo Claro (Pendente)
+                bg_color = "#D1FAE5" if is_prog_ok else "#FEF9C3"
+                bd_color = "#059669" if is_prog_ok else "#CA8A04"
                 
                 html = f"""
                 <div class='postit-prog' style='background-color: {bg_color}; padding: 15px; border-radius: 6px; box-shadow: 2px 4px 8px rgba(0,0,0,0.3); margin-bottom: 10px; min-height: 200px;'>
@@ -2907,7 +2873,7 @@ def tela_programador():
                     <div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>⏰ Previsão:</strong> <span style='font-size: 14px;'>{h_alvo}</span></div>
                     <div style='background: rgba(255,255,255,0.6); padding: 8px; border-radius: 6px; margin: 8px 0;'>
                         <div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>Ordem:</strong> <span style='font-size: 13px;'>{final_op}</span></div>
-                        <div style='margin: 0;'><strong style='font-size: 13px;'>{label_item_txt}:</strong> <span style='font-size: 13px;'>{final_item}</span></div>
+                        <div style='margin: 0;'><strong style='font-size: 13px;'>Item:</strong> <span style='font-size: 13px;'>{final_item}</span></div>
                     </div>
                 """
                 
