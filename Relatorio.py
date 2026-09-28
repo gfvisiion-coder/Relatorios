@@ -2834,11 +2834,11 @@ def tela_programador():
         prefixo = "AFC" if m in TODAS_AFC else "RTF"
         st_val = status_dict.get(f"{prefixo} {m}", "PRODUZINDO")
         
-        if any(x in st_val.upper() for x in ["PREPARAÇÃO", "PREPARANDO", "AGUARDANDO", "SEQUÊNCIA", "AGENDADA", "AGENDADO"]):
+        if any(x in st_val.upper() for x in ["PREPARAÇÃO", "PREPARANDO", "AGUARDANDO", "SEQUÊNCIA", "AGENDADA", "AGENDADO", "MANUTENÇÃO"]):
             lista_incidencias.append((prefixo, m, st_val))
 
     if not lista_incidencias:
-        st.success("✨ Nenhuma máquina em preparação aguardando programa no momento.")
+        st.success("✨ Nenhuma máquina em preparação ou agendada aguardando programa no momento.")
         return
 
     lista_afc = [item for item in lista_incidencias if item[0] == "AFC"]
@@ -2858,6 +2858,8 @@ def tela_programador():
                     is_prep = "PREPARAÇÃO" in st_m.upper() or "PREPARACAO" in st_m.upper() or "PREPARANDO" in st_m.upper()
                     is_guia = "GUIA" in st_m.upper()
                     is_preparando = "PREPARANDO" in st_m.upper()
+                    is_manutencao = "MANUTENÇÃO" in st_m.upper()
+                    is_prog_ok = "[PROG: OK" in st_m.upper()
                     
                     # Definição do Tipo de Setup
                     tipo_setup = "Outro"
@@ -2867,11 +2869,22 @@ def tela_programador():
                         if "HASTE" in st_m.upper(): tipo_setup = "Preparação - HASTE"
                         elif is_guia: tipo_setup = "Preparação - GUIA"
                         else: tipo_setup = "Preparação"
+                    elif is_manutencao:
+                        tipo_setup = "Manutenção"
                     
-                    if is_preparando:
+                    # Configuração de Cores Profissionais para Dark Mode
+                    if is_manutencao:
+                        bg_color, bd_color = "#3F1515", "#EF4444" # Vermelho
+                        status_label_txt = "Em Manutenção"
+                    elif is_preparando:
+                        bg_color, bd_color = "#172554", "#3B82F6" # Azul Escuro
                         status_label_txt = "Em Preparação (Executando)"
+                    elif is_prog_ok:
+                        bg_color, bd_color = "#022C22", "#10B981" # Verde Escuro
+                        status_label_txt = "Agendado / Programa OK"
                     else:
-                        status_label_txt = "Aguardando preparador"
+                        bg_color, bd_color = "#451A03", "#F59E0B" # Laranja Escuro
+                        status_label_txt = "Agendado / Sem Programa"
 
                     preparador = "Sugerir / Aguardando..."
                     if "[Prep:" in st_m: preparador = st_m.split("[Prep:")[1].split("]")[0].strip()
@@ -2922,19 +2935,10 @@ def tela_programador():
                     else:
                         tempo_ou_status_html = f"<div style='margin: 0 0 4px 0;'><strong style='font-size: 14px; color: #A1A1AA;'>📌 Status:</strong> <span style='font-size: 14px; color: #E4E4E7;'>{status_label_txt}</span></div>"
 
-                    is_prog_ok = "[Prog: OK" in st_m
                     hora_colocado = ""
                     if is_prog_ok and "-" in st_m.split("[Prog:")[1].split("]")[0]:
                         try: hora_colocado = st_m.split("[Prog: OK - ")[1].split("]")[0].strip()
                         except: pass
-
-                    # Cores profissionais (Dark mode compatíveis)
-                    if is_preparando:
-                        bg_color, bd_color = "#18181B", "#3B82F6" 
-                    elif is_prog_ok:
-                        bg_color, bd_color = "#18181B", "#10B981" 
-                    else:
-                        bg_color, bd_color = "#18181B", "#F59E0B" 
                     
                     html = f"""
                     <div class='postit-prog' style='background-color: {bg_color}; padding: 15px; border-radius: 8px; border: 1px solid #27272A; border-top: 4px solid {bd_color}; margin-bottom: 10px; min-height: 220px;'>
@@ -2944,7 +2948,7 @@ def tela_programador():
                         <div style='margin: 0 0 4px 0;'><strong style='font-size: 14px; color: #A1A1AA;'>📋 Setup:</strong> <span style='font-size: 14px; color: #E4E4E7;'>{tipo_setup}</span></div>
                         <div style='margin: 0 0 4px 0;'><strong style='font-size: 14px; color: #A1A1AA;'>🧑‍🔧 Preparador:</strong> <span style='font-size: 14px; color: #E4E4E7;'>{preparador}</span></div>
                         {tempo_ou_status_html}
-                        <div style='background: #27272A; padding: 10px; border-radius: 6px; margin: 10px 0; border: 1px solid #3F3F46;'>
+                        <div style='background: #18181B; padding: 10px; border-radius: 6px; margin: 10px 0; border: 1px solid #3F3F46;'>
                             <div style='margin: 0 0 2px 0;'><strong style='font-size: 13px; color: #A1A1AA;'>Ordem:</strong> <span style='font-size: 13px; color: #F4F4F5;'>{final_op}</span></div>
                             <div style='margin: 0;'><strong style='font-size: 13px; color: #A1A1AA;'>{label_item_txt}:</strong> <span style='font-size: 13px; color: #F4F4F5;'>{final_item}</span></div>
                         </div>
