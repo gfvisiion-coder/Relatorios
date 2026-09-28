@@ -234,7 +234,7 @@ def processar_padrao(df_all, maquinas, prefixo_setor):
         ciclo_ativo, status_limpo, hora_prep, preparador = False, "", "", ""
         for _, row in df_maq.iterrows():
             st_val, h_val = str(row['Status']), str(row['Hora'])
-            st_upper = st_val.upper()
+            st_upper = st_val.strip().upper() # .strip() adicionado aqui também
             if "ENERGIA RESTAURADA" in st_upper: continue
             
             prep_atual = ""
@@ -243,7 +243,6 @@ def processar_padrao(df_all, maquinas, prefixo_setor):
             elif "[PREP:" in st_upper: prep_atual = st_upper.split("[PREP:")[1].split("]")[0].strip()
             if prep_atual: preparador = prep_atual
 
-            # Trava de segurança: Lê APENAS o início do status, ignorando palavras soltas nas observações
             is_setup_wait = st_upper.startswith("PREPARAÇÃO") or st_upper.startswith("PREPARACAO") or st_upper.startswith("SEQUÊNCIA") or st_upper.startswith("SEQUENCIA") or st_upper.startswith("AGUARDANDO")
             is_preparando = st_upper.startswith("PREPARANDO")
             is_conclusao = st_upper.startswith("PRODUZINDO") or st_upper.startswith("PARADA") or st_upper.startswith("MANUTENÇÃO")
@@ -294,12 +293,22 @@ def processar_padrao(df_all, maquinas, prefixo_setor):
     linhas.sort(key=lambda x: get_sort_key(x[0]))
     return "".join([item[1] for item in linhas])
 
-
 def gerar_relatorio_tempos(df_all, maquinas, prefixo):
     texto_saida = []
     def salvar_ciclo(maq_num, h_agenda_orig, adiamentos, h_inicio, h_assumido, h_fim, p1, p2, st_final=""):
         h_agenda_str = h_agenda_orig if h_agenda_orig else '00:00'
+        st_final_up = str(st_final).strip().upper()
+        
+        is_finished = st_final_up.startswith("PRODUZINDO")
+        is_interrompido = st_final_up.startswith("PARADA") or st_final_up.startswith("MANUTENÇÃO")
+        
+        # CORREÇÃO: Se pulou a etapa "PREPARANDO" e foi direto para "PRODUZINDO"
+        if h_inicio is None and h_fim is not None:
+            h_inicio = h_fim # Iguala o tempo para registrar como 0 minutos de preparo
+            p1 = "Apontamento Direto"
+            
         if h_inicio is None: 
+            # Se continua None e não tem h_fim, aí sim está realmente aguardando
             txt = f"Máquina {maq_num}: Aguardando preparador desde as {h_agenda_str}.\n"
             if adiamentos: txt += f"Adiado para: {', '.join(adiamentos)}.\n"
             txt += "Preparador sugerido: AGUARDANDO OPERADOR\n\n"
@@ -317,10 +326,6 @@ def gerar_relatorio_tempos(df_all, maquinas, prefixo):
             txt_maq += f"Aguardou {t_espera} (após última previsão) até o início.\n"
         else:
             txt_maq += "Iniciado diretamente, sem tempo de espera agendado prévio.\n"
-        
-        st_final_up = st_final.upper()
-        is_finished = st_final_up.startswith("PRODUZINDO")
-        is_interrompido = st_final_up.startswith("PARADA") or st_final_up.startswith("MANUTENÇÃO")
         
         obs_texto = ""
         if "[Obs:" in st_final:
@@ -351,7 +356,7 @@ def gerar_relatorio_tempos(df_all, maquinas, prefixo):
         
         for _, h_row in df_hist.iterrows():
             st_val, h_val = str(h_row['Status']), str(h_row['Hora'])
-            st_upper = st_val.upper()
+            st_upper = st_val.strip().upper() # .strip() adicionado por precaução
             if "ENERGIA RESTAURADA" in st_upper: continue
             
             is_setup_wait = st_upper.startswith("PREPARAÇÃO") or st_upper.startswith("PREPARACAO") or st_upper.startswith("SEQUÊNCIA") or st_upper.startswith("SEQUENCIA") or st_upper.startswith("AGUARDANDO")
