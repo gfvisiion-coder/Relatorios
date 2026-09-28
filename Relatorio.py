@@ -405,7 +405,6 @@ def gerar_relatorio_tempos(df_all, maquinas, prefixo):
     texto_saida.sort(key=lambda x: get_sort_key(x[0]))
     return "".join([i[1] for i in texto_saida])
 
-
 def calcular_tempos_interrupcoes(df_all, palavra_chave):
     texto = ""
     for maq in df_all['Maquina'].unique():
@@ -434,7 +433,6 @@ def calcular_tempos_interrupcoes(df_all, palavra_chave):
             num_maq = maq.replace("AFC ", "").replace("RTF ", "")
             texto += f"{num_maq} - Desde {h_in} (Em andamento: {dur}) - Motivo: {motivo}\n"
     return texto if texto else "N/A\n\n"
-
 
 def gerar_textos_fechamento(data_alvo, df_completo):
     setup_mask = df_completo['Status'].str.match(r'^(?i)(PREPARAÇÃO|PREPARACAO|SEQUÊNCIA|SEQUENCIA|AGUARDANDO|PREPARANDO)') if not df_completo.empty else pd.Series(dtype=bool)
@@ -894,39 +892,42 @@ def ler_status_atual():
     try:
         df = pd.read_csv(ARQUIVO_DADOS)
         status_calculado = {}
-        agora_br = datetime.now(FUSO_BR)
-        agora_str = agora_br.strftime("%H:%M")
+        agora_br_dt = datetime.now(FUSO_BR)
+        agora_str = agora_br_dt.strftime("%H:%M")
         df_ultimo = df.drop_duplicates(subset=['Maquina'], keep='last')
+        
         for _, row in df_ultimo.iterrows():
             maq = row['Maquina']
             st_raw = str(row['Status']).replace(" [Energia Restaurada]", "") 
+            
+            hora_alvo = ""
             if "AGENDADA PARA" in st_raw:
-                try:
-                    hora_alvo = st_raw.split("AGENDADA PARA")[1].strip()
-                    tipo_agendado = st_raw.split(" AGENDADA PARA")[0]
-                    h_agora = datetime.strptime(agora_str, "%H:%M")
-                    h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M")
-                    if h_alvo_dt < h_agora and (h_agora - h_alvo_dt).total_seconds() > 12 * 3600: h_alvo_dt += timedelta(days=1)
-                    if h_agora < h_alvo_dt: status_calculado[maq] = f"{tipo_agendado} AGENDADA PARA {hora_alvo}"
-                    else: 
-                        sug = f" [Prep. Sugerido: {st_raw.split('[Prep. Sugerido:')[1].split(']')[0].strip()}]" if "[Prep. Sugerido:" in st_raw else ""
-                        tags = extrair_tags_producao(st_raw)
-                        status_calculado[maq] = f"AGUARDANDO PREPARADOR{sug} {tags}".strip()
-                except: status_calculado[maq] = st_raw
+                try: hora_alvo = st_raw.split("AGENDADA PARA")[1].strip().split(" ")[0]
+                except: pass
             elif "[AGENDADO:" in st_raw:
+                try: hora_alvo = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
+                except: pass
+                
+            if hora_alvo:
                 try:
-                    hora_alvo = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
-                    tipo_agendado = st_raw.split(" [AGENDADO:")[0]
-                    h_agora = datetime.strptime(agora_str, "%H:%M")
-                    h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M")
-                    if h_alvo_dt < h_agora and (h_agora - h_alvo_dt).total_seconds() > 12 * 3600: h_alvo_dt += timedelta(days=1)
-                    if h_agora < h_alvo_dt: status_calculado[maq] = f"{tipo_agendado} AGENDADA PARA {hora_alvo}"
-                    else: 
+                    h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M").replace(year=agora_br_dt.year, month=agora_br_dt.month, day=agora_br_dt.day, tzinfo=FUSO_BR)
+                    if h_alvo_dt < agora_br_dt and (agora_br_dt - h_alvo_dt).total_seconds() > 12 * 3600: 
+                        h_alvo_dt += timedelta(days=1)
+                    elif agora_br_dt < h_alvo_dt and (h_alvo_dt - agora_br_dt).total_seconds() > 12 * 3600: 
+                        h_alvo_dt -= timedelta(days=1)
+                        
+                    if agora_br_dt >= h_alvo_dt:
+                        tipo_agendado = st_raw.split(" AGENDADA PARA")[0] if "AGENDADA PARA" in st_raw else st_raw.split(" [AGENDADO:")[0]
                         sug = f" [Prep. Sugerido: {st_raw.split('[Prep. Sugerido:')[1].split(']')[0].strip()}]" if "[Prep. Sugerido:" in st_raw else ""
                         tags = extrair_tags_producao(st_raw)
                         status_calculado[maq] = f"AGUARDANDO PREPARADOR{sug} {tags}".strip()
-                except: status_calculado[maq] = st_raw
-            else: status_calculado[maq] = st_raw
+                    else:
+                        status_calculado[maq] = st_raw
+                except:
+                    status_calculado[maq] = st_raw
+            else:
+                status_calculado[maq] = st_raw
+                
         return status_calculado
     except: return {}
 
@@ -1202,7 +1203,7 @@ def painel_controle_maquina(maq_id, setor):
                 
                 hora_pre_fill = ""
                 if "AGENDADA PARA" in st_atual.upper():
-                    try: hora_pre_fill = st_atual.upper().split("AGENDADA PARA")[1].strip()
+                    try: hora_pre_fill = st_atual.upper().split("AGENDADA PARA")[1].strip().split(" ")[0]
                     except: pass
                 elif "[AGENDADO:" in st_atual.upper():
                     try: hora_pre_fill = st_atual.upper().split("[AGENDADO:")[1].split("]")[0].strip()
@@ -1334,7 +1335,7 @@ def painel_controle_maquina(maq_id, setor):
                 msg_bloqueio = ""
                 if "[AGENDADO:" in status_atual.upper() or "AGENDADA PARA" in status_atual.upper():
                     try:
-                        hora_agend = status_atual.split("AGENDADA PARA")[1].strip() if "AGENDADA PARA" in status_atual else status_atual.split("[AGENDADO:")[1].split("]")[0].strip()
+                        hora_agend = status_atual.split("AGENDADA PARA")[1].strip().split(" ")[0] if "AGENDADA PARA" in status_atual else status_atual.split("[AGENDADO:")[1].split("]")[0].strip()
                         turno_agend = obter_turno_por_horario(hora_agend)
                         if turno_agend != st.session_state.get('turno') and st.session_state.get('perfil') != 'adm':
                             bloquear_inicio = True
@@ -1381,7 +1382,7 @@ def painel_controle_maquina(maq_id, setor):
                             tag_prog = f" [Prog: {val_prog}]"
                             
                             if "AGENDADA PARA" in raw_st.upper():
-                                hora_agend = raw_st.upper().split("AGENDADA PARA")[1].strip()
+                                hora_agend = raw_st.upper().split("AGENDADA PARA")[1].strip().split(" ")[0]
                                 st_base = raw_st.upper().split(" AGENDADA PARA")[0]
                                 raw_st = f"{st_base} [Prep. Sugerido: {nome_input.strip().upper()}]{tag_prog} [AGENDADO:{hora_agend}]"
                             elif "[AGENDADO:" in raw_st.upper(): 
@@ -1673,7 +1674,7 @@ def tela_checkup():
                 turno_pendencia = turno_vigente_real 
                 h_alvo = ""
                 if "AGENDADA PARA" in st_val:
-                    try: h_alvo = st_val.split("AGENDADA PARA")[1].strip()
+                    try: h_alvo = st_val.split("AGENDADA PARA")[1].strip().split(" ")[0]
                     except: pass
                 elif "[AGENDADO:" in st_val:
                     try: h_alvo = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
@@ -1759,7 +1760,7 @@ def tela_checkup():
                         turno_post_it = turno_atual_horario()
                         if "AGENDADA PARA" in st_m.upper():
                             try: 
-                                h_alvo = st_m.upper().split('AGENDADA PARA')[1].strip()
+                                h_alvo = st_m.upper().split('AGENDADA PARA')[1].strip().split(" ")[0]
                                 turno_post_it = obter_turno_por_horario(h_alvo)
                             except: pass
                         elif "[AGENDADO:" in st_m.upper():
@@ -2517,7 +2518,7 @@ def tela_armarios():
                 if "(C/ REBOLO)" in st_val.upper() and "PRODUZINDO" not in st_val.upper():
                     hora_alvo = ""
                     if "AGENDADA PARA" in st_val.upper():
-                        try: hora_alvo = st_val.upper().split("AGENDADA PARA")[1].strip()
+                        try: hora_alvo = st_val.upper().split("AGENDADA PARA")[1].strip().split(" ")[0]
                         except: pass
                     elif "[AGENDADO:" in st_val.upper():
                         try: hora_alvo = st_val.upper().split("[AGENDADO:")[1].split("]")[0].strip()
@@ -2945,7 +2946,7 @@ def tela_programador():
 
                     h_alvo = ""
                     if "AGENDADA PARA" in st_m.upper():
-                        try: h_alvo = st_m.upper().split('AGENDADA PARA')[1].strip()
+                        try: h_alvo = st_m.upper().split('AGENDADA PARA')[1].strip().split(" ")[0]
                         except: pass
                     elif "[AGENDADO:" in st_m.upper():
                         try: h_alvo = st_m.upper().split('[AGENDADO:')[1].split(']')[0].strip()
