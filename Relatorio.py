@@ -673,6 +673,59 @@ def exibir_alertas_preset():
         html_alertas += "</div>"
         st.markdown(html_alertas, unsafe_allow_html=True)
 
+def exibir_alertas_preparador():
+    if st.session_state.get('perfil') != 'preparador': return
+    
+    nome_usuario = st.session_state.get('operador', '').upper()
+    if not nome_usuario: return
+    
+    status_dict = ler_status_atual()
+    agora_dt = datetime.now(FUSO_BR)
+    alertas = []
+    
+    for maq, st_val in status_dict.items():
+        if f"[PREP: {nome_usuario}]" in st_val.upper() or f"[PREP. SUGERIDO: {nome_usuario}]" in st_val.upper():
+            hora_alvo = ""
+            if "AGENDADA PARA" in st_val.upper():
+                try: hora_alvo = st_val.upper().split("AGENDADA PARA")[1].strip()
+                except: pass
+            elif "[AGENDADO:" in st_val.upper():
+                try: hora_alvo = st_val.upper().split("[AGENDADO:")[1].split("]")[0].strip()
+                except: pass
+                
+            if hora_alvo:
+                h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M").replace(year=agora_dt.year, month=agora_dt.month, day=agora_dt.day, tzinfo=FUSO_BR)
+                if h_alvo_dt < agora_dt and (agora_dt - h_alvo_dt).total_seconds() > 12 * 3600: h_alvo_dt += timedelta(days=1)
+                elif h_alvo_dt > agora_dt and (h_alvo_dt - agora_dt).total_seconds() > 12 * 3600: h_alvo_dt -= timedelta(days=1)
+                
+                delta_mins = int((h_alvo_dt - agora_dt).total_seconds() / 60)
+                
+                # Se faltar 30 min ou menos, ou se estiver atrasado, adiciona ao alerta
+                if -120 <= delta_mins <= 30:
+                    alertas.append({'maquina': maq, 'hora': hora_alvo, 'delta': delta_mins})
+    
+    if alertas:
+        html_alertas = "<div class='alerta-pisca'>"
+        html_alertas += "<h4 style='margin-top:0; color:#fca5a5;'>⏰ ATENÇÃO: SUAS PREPARAÇÕES PRÓXIMAS / ATRASADAS</h4>"
+        
+        for alerta in sorted(alertas, key=lambda x: x['delta']):
+            # Exibir balões Toast (Canto da tela)
+            chave_toast = f"toast_prep_{alerta['maquina']}_{alerta['hora']}"
+            if chave_toast not in st.session_state:
+                st.session_state[chave_toast] = True
+                msg = f"Sua preparação na {alerta['maquina']} será às {alerta['hora']}!" if alerta['delta'] > 0 else f"A máquina {alerta['maquina']} está ATRASADA ({alerta['hora']})!"
+                st.toast(msg, icon="⏰")
+
+            # Montar banner vermelho piscante na tela
+            if alerta['delta'] > 0: tempo_txt = f"falta(m) {alerta['delta']} min"
+            elif alerta['delta'] == 0: tempo_txt = "é agora!"
+            else: tempo_txt = f"atrasada há {abs(alerta['delta'])} min"
+            
+            html_alertas += f"<p style='color:#fee2e2; margin-bottom:5px; font-size:15px;'>• Máquina <b>{alerta['maquina']}</b> (Agendada para <b>{alerta['hora']}</b>) — <i>{tempo_txt}</i></p>"
+            
+        html_alertas += "</div>"
+        st.markdown(html_alertas, unsafe_allow_html=True)
+
 def dar_baixa_armario(ordem_alvo, operador_nome="SISTEMA"):
     if not ordem_alvo or not str(ordem_alvo).strip() or not os.path.exists(ARQUIVO_ARMARIOS): return
     try:
@@ -1352,10 +1405,12 @@ def tela_login():
                 st.session_state['perfil'] = perfil_val
                 st.session_state['operador'] = nome_formatado
                 
-                cookie_manager.set("user_logado", nome_formatado, key="set_logado")
-                cookie_manager.set("user_turno", turno_val, key="set_turno")
-                cookie_manager.set("user_setor", setor_val, key="set_setor")
-                cookie_manager.set("user_perfil", perfil_val, key="set_perfil")
+                expiracao = datetime.now() + timedelta(days=30)
+                cookie_manager.set("user_logado", nome_formatado, key="set_logado", expires_at=expiracao)
+                cookie_manager.set("user_turno", turno_val, key="set_turno", expires_at=expiracao)
+                cookie_manager.set("user_setor", setor_val, key="set_setor", expires_at=expiracao)
+                cookie_manager.set("user_perfil", perfil_val, key="set_perfil", expires_at=expiracao)
+                
                 time.sleep(0.5)
                 mudar_tela('menu')
             else: st.error("⚠️ Credenciais inválidas.")
@@ -1389,6 +1444,7 @@ def tela_hub_relatorios():
 
 def tela_menu():
     exibir_alertas_preset()
+    exibir_alertas_preparador()
     perfil = st.session_state['perfil']
     if perfil == 'adm': setor_txt = "Gerência"
     elif st.session_state['setor_usuario'] == 'TECNICO': setor_txt = "Técnico (Geral)"
@@ -1877,6 +1933,7 @@ def tela_checkup():
                             st.success("✅ Previsões atualizadas com sucesso!")
                             time.sleep(1); st.rerun()
                         else: st.info("Nenhuma alteração de horário detectada.")
+
 def tela_minhas_incidencias():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown(f"#### ⚡ Minhas Incidências — {st.session_state['operador']}")
@@ -2301,11 +2358,9 @@ def tela_armarios():
         if st.session_state['perfil'] in ['preset', 'adm']:
             st.markdown("📥 **Guardar Ferramental / Setup**")
             
-            # --- SELEÇÃO DINÂMICA FORA DO FORMULÁRIO ---
             c1, c2 = st.columns(2)
             armario_sel = c1.selectbox("Selecione o Armário:", ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"], key="aba2_arm_sel")
             
-            # Filtra as máquinas vazias baseadas no armário selecionado
             pos_vazias = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Status'] == 'VAZIO')]
             pos_vazias_lista = pos_vazias['Posicao'].tolist()
             
@@ -2316,7 +2371,6 @@ def tela_armarios():
                 pos_vazias_sorted = sorted([int(x) for x in pos_vazias_lista])
                 pos_sel = c2.selectbox("Máquina Alvo:", [str(x) for x in pos_vazias_sorted], key="aba2_pos_sel")
 
-            # --- DADOS DE ENTRADA DENTRO DO FORMULÁRIO ---
             with st.form("form_alimentar_lista", clear_on_submit=True):
                 motivos_rapidos = [
                     "-- Selecione um Motivo Rápido (Opcional) --",
