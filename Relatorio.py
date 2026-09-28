@@ -223,10 +223,27 @@ def processar_padrao(df_all, maquinas, prefixo_setor):
                     if "[AGENDADO:" in st_val:
                         try: hora_prep = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
                         except: pass
+                    elif "AGENDADA PARA" in st_val:
+                        try: hora_prep = st_val.split("AGENDADA PARA")[1].strip()
+                        except: pass
                     s_limpo = st_val.split("[")[0].strip().upper().replace("PREPARAÇÃO - ", "")
                     status_limpo = s_limpo if s_limpo else "SETUP"
+                else:
+                    # ATUALIZA O HORÁRIO SE HOUVER UM ADIAMENTO NO MEIO DO CICLO
+                    if "[AGENDADO:" in st_val:
+                        try: hora_prep = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
+                        except: pass
+                    elif "AGENDADA PARA" in st_val:
+                        try: hora_prep = st_val.split("AGENDADA PARA")[1].strip()
+                        except: pass
             elif "PREPARANDO" in st_val:
                 if not ciclo_ativo: ciclo_ativo, hora_prep = True, h_val
+                if "[AGENDADO:" in st_val:
+                    try: hora_prep = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
+                    except: pass
+                elif "AGENDADA PARA" in st_val:
+                    try: hora_prep = st_val.split("AGENDADA PARA")[1].strip()
+                    except: pass
                 status_limpo = "PREPARANDO"
             elif ("PRODUZINDO" in st_val or "PARADA" in st_val or "MANUTENÇÃO" in st_val) and ciclo_ativo:
                 if "Queda de Energia" in st_val: continue
@@ -1081,8 +1098,22 @@ def painel_controle_maquina(maq_id, setor):
                 
                 prep_sugerido = st.text_input("🧑‍🔧 Sugerir Preparador (Opcional):", placeholder="Ex: Lucas")
                 
-                st.markdown("💻 **Validação do Programa CNC**")
-                prog_status_prep = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
+                if setor == "AFC":
+                    tipo_setup = st.radio("Selecione o Status:", ["PREPARAÇÃO", "SEQUÊNCIA"], horizontal=True)
+                    troca_rebolo = st.toggle("Troca de Rebolo")
+                else:
+                    tipo_setup = st.radio("Setup:", ["HASTE", "GUIA"], horizontal=True)
+                    troca_diametro = False
+                    if tipo_setup == "HASTE": troca_diametro = st.toggle("Troca de Diâmetro")
+                    troca_rebolo = st.toggle("Troca de Rebolo")
+                
+                is_guia = (setor != "AFC" and tipo_setup == "GUIA")
+                
+                if not is_guia:
+                    st.markdown("💻 **Validação do Programa CNC**")
+                    prog_status_prep = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
+                else:
+                    prog_status_prep = "SIM (Programa OK)"
                 
                 op_pre, item_pre = "", ""
                 if "[Ordem:" in st_atual: op_pre = st_atual.split("[Ordem:")[1].split("]")[0].strip()
@@ -1095,27 +1126,18 @@ def painel_controle_maquina(maq_id, setor):
                 item_atual = st.text_input("Item Atual (Na Máquina):", value=item_pre, placeholder="Ex: 313324")
                 st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
                 
-                if setor == "AFC":
-                    tipo_afc = st.radio("Selecione o Status:", ["PREPARAÇÃO", "SEQUÊNCIA"], horizontal=True)
-                    troca_rebolo = st.toggle("Troca de Rebolo")
-                else:
-                    tipo_prep = st.radio("Setup:", ["HASTE", "GUIA"], horizontal=True)
-                    troca_diametro = False
-                    if tipo_prep == "HASTE": troca_diametro = st.toggle("Troca de Diâmetro")
-                    troca_rebolo = st.toggle("Troca de Rebolo")
-                
                 if st.form_submit_button("💾 Salvar Registro", type="primary"):
                     if not hora_relatorio.strip():
                         st.error("⚠️ O campo de horário é obrigatório!")
-                    elif prep_sugerido.strip() and prog_status_prep == "-- Vá até a máquina e verifique --":
+                    elif prep_sugerido.strip() and not is_guia and prog_status_prep == "-- Vá até a máquina e verifique --":
                         st.error("⚠️ Como você sugeriu um preparador, é OBRIGATÓRIO verificar na máquina se o Programa está OK!")
                     else:
                         if setor == "AFC":
-                            st_final = tipo_afc
+                            st_final = tipo_setup
                             if troca_rebolo: st_final += " (C/ Rebolo)"
                         else:
-                            st_final = f"PREPARAÇÃO - {tipo_prep}"
-                            if tipo_prep == "HASTE" and troca_diametro: st_final += " (C/ Diâmetro)"
+                            st_final = f"PREPARAÇÃO - {tipo_setup}"
+                            if tipo_setup == "HASTE" and troca_diametro: st_final += " (C/ Diâmetro)"
                             if troca_rebolo: st_final += " (C/ Rebolo)"
                             
                         if prep_sugerido.strip(): 
@@ -1148,12 +1170,15 @@ def painel_controle_maquina(maq_id, setor):
                     
                 nome_input = st.text_input("Nome do Preparador:", value=sug_nome if sug_nome else "")
                 
-                st.markdown("💻 **Validação do Programa CNC**")
-                prog_status_espera = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
-
                 is_guia = "GUIA" in status_atual
                 is_seq = "SEQUÊNCIA" in status_atual
                 is_comum = not is_guia and not is_seq
+                
+                if not is_guia:
+                    st.markdown("💻 **Validação do Programa CNC**")
+                    prog_status_espera = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
+                else:
+                    prog_status_espera = "SIM (Programa OK)"
                 
                 st.markdown("📦 **Dados da Preparação**")
                 nova_ordem_input = ""
@@ -1217,7 +1242,7 @@ def painel_controle_maquina(maq_id, setor):
                 if btn_sugerir:
                     if not nome_input.strip():
                         st.error("⚠️ Informe um nome para sugerir!")
-                    elif prog_status_espera == "-- Vá até a máquina e verifique --":
+                    elif not is_guia and prog_status_espera == "-- Vá até a máquina e verifique --":
                         st.error("⚠️ É obrigatório verificar se o programa está OK antes de sugerir um preparador!")
                     else:
                         info_atual = obter_info_maquina(maq_id, setor)
