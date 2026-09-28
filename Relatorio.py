@@ -2829,108 +2829,128 @@ def tela_programador():
         st.success("✨ Nenhuma máquina em preparação aguardando programa no momento.")
         return
 
-    for i in range(0, len(lista_incidencias), 3):
-        cols = st.columns(3)
-        for j in range(3):
-            if i + j < len(lista_incidencias):
-                setor_m, maq_m, st_m = lista_incidencias[i + j]
-                
-                is_guia = "GUIA" in st_m.upper()
-                is_preparando = "PREPARANDO" in st_m.upper()
+    lista_afc = [item for item in lista_incidencias if item[0] == "AFC"]
+    lista_rtf = [item for item in lista_incidencias if item[0] == "RTF"]
 
-                preparador = "Sugerir / Aguardando..."
-                if "[Prep:" in st_m: preparador = st_m.split("[Prep:")[1].split("]")[0].strip()
-                elif "[Prep. Sugerido:" in st_m: preparador = st_m.split("[Prep. Sugerido:")[1].split("]")[0].strip()
-                elif "[PREP:" in st_m.upper(): preparador = st_m.upper().split("[PREP:")[1].split("]")[0].strip()
-
-                op_maq, item_maq = "", ""
-                if "[Ordem:" in st_m:
-                    try: op_maq = st_m.split("[Ordem:")[1].split("]")[0].strip()
-                    except: pass
-                if "[Novo Item:" in st_m:
-                    try: item_maq = st_m.split("[Novo Item:")[1].split("]")[0].strip()
-                    except: pass
-                elif "[Item Atual:" in st_m:
-                    try: item_maq = st_m.split("[Item Atual:")[1].split("]")[0].strip()
-                    except: pass
-
-                op_arm, item_arm = "", ""
-                if not df_arm.empty:
-                    gaveta_num = maq_m.split("-")[0]
-                    filtro_arm = "Afiadoras" if setor_m == "AFC" else "Retíficas"
-                    gaveta_row = df_arm[(df_arm['Posicao'] == str(gaveta_num)) & (df_arm['Armario'].str.contains(filtro_arm))]
-                    if not gaveta_row.empty and str(gaveta_row.iloc[0]['Status']).strip() != 'VAZIO':
-                        op_arm = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nan', '').strip()
-                        item_arm = str(gaveta_row.iloc[0].get('Item', '')).replace('.0', '').replace('nan', '').strip()
-
-                if is_guia:
-                    item_guia = item_maq if item_maq else obter_item_rodando_atual(f"{setor_m} {maq_m}")
-                    if not item_guia or item_guia == "-": item_guia = item_arm if item_arm else "-"
-                    final_item = item_guia
-                    label_item_txt = "Item Rodando (Atual)"
-                    final_op = op_maq if op_maq else (op_arm if op_arm else "Manter Atual")
-                else:
-                    final_op = op_maq if op_maq else (op_arm if op_arm else "Nenhuma")
-                    final_item = item_maq if item_maq else (item_arm if item_arm else "-")
-                    label_item_txt = "Item"
-
-                h_alvo = "Imediato"
-                if "AGENDADA PARA" in st_m.upper():
-                    try: h_alvo = st_m.upper().split('AGENDADA PARA')[1].strip()
-                    except: pass
-                elif "[AGENDADO:" in st_m.upper():
-                    try: h_alvo = st_m.upper().split('[AGENDADO:')[1].split(']')[0].strip()
-                    except: pass
-
-                is_prog_ok = "[Prog: OK" in st_m
-                hora_colocado = ""
-                if is_prog_ok and "-" in st_m.split("[Prog:")[1].split("]")[0]:
-                    try: hora_colocado = st_m.split("[Prog: OK - ")[1].split("]")[0].strip()
-                    except: pass
-
-                if is_preparando:
-                    bg_color, bd_color = "#F472B6", "#BE185D" 
-                elif is_prog_ok:
-                    bg_color, bd_color = "#D1FAE5", "#059669" 
-                else:
-                    bg_color, bd_color = "#FFEDD5", "#EA580C" 
-                
-                html = f"""
-                <div class='postit-prog' style='background-color: {bg_color}; padding: 15px; border-radius: 6px; box-shadow: 2px 4px 8px rgba(0,0,0,0.3); margin-bottom: 10px; min-height: 200px;'>
-                    <div style='margin: 0 0 10px 0; border-bottom: 2px solid {bd_color}; padding-bottom: 5px;'>
-                        <strong style='font-size: 16px;'>⚙️ {setor_m} {maq_m}</strong>
-                    </div>
-                    <div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>🧑‍🔧 Preparador:</strong> <span style='font-size: 14px;'>{preparador}</span></div>
-                    <div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>⏰ Previsão:</strong> <span style='font-size: 14px;'>{h_alvo}</span></div>
-                    <div style='background: rgba(255,255,255,0.6); padding: 8px; border-radius: 6px; margin: 8px 0;'>
-                        <div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>Ordem:</strong> <span style='font-size: 13px;'>{final_op}</span></div>
-                        <div style='margin: 0;'><strong style='font-size: 13px;'>{label_item_txt}:</strong> <span style='font-size: 13px;'>{final_item}</span></div>
-                    </div>
-                """
-                
-                if is_prog_ok:
-                    html += f"<div style='margin-top: 10px; color: #064E3B;'><strong style='font-size: 14px;'>✅ Programa em Máquina. Colocado às {hora_colocado}</strong></div>"
-                else:
-                    html += "<div style='margin-top: 10px; color: #991B1B;'><strong style='font-size: 14px;'>⚠️ Programa Pendente</strong></div>"
+    def render_grid_setor_prog(lista_setor, titulo_setor):
+        if not lista_setor: return
+        st.markdown(f"<h5 style='color: #2DD4BF; margin-top: 20px; border-bottom: 2px solid #27272A; padding-bottom: 8px;'>🏭 {titulo_setor}</h5>", unsafe_allow_html=True)
+        
+        for i in range(0, len(lista_setor), 3):
+            cols = st.columns(3)
+            for j in range(3):
+                if i + j < len(lista_setor):
+                    setor_m, maq_m, st_m = lista_setor[i + j]
                     
-                html += "</div>"
-                cols[j].markdown(html, unsafe_allow_html=True)
-                
-                if not is_prog_ok:
-                    if cols[j].button("💻 MARCAR PROGRAMA EM MÁQUINA", key=f"btn_prog_{maq_m}", use_container_width=True, type="primary"):
-                        hora_br = datetime.now(FUSO_BR).strftime("%H:%M")
-                        st_limpo = re.sub(r' \[Prog:.*?\]', '', st_m)
-                        st_final = f"{st_limpo} [Prog: OK - {hora_br}]"
-                        salvar_csv({"Setor": setor_m, "Maquina": f"{setor_m} {maq_m}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br}, ARQUIVO_DADOS)
-                        st.success(f"✅ Programa marcado na {maq_m} às {hora_br}!")
-                        time.sleep(1); st.rerun()
-                else:
-                    if cols[j].button("↩️ Desmarcar Programa", key=f"btn_desmarcar_{maq_m}", use_container_width=True):
-                        st_limpo = re.sub(r' \[Prog:.*?\]', '', st_m)
-                        hora_br = datetime.now(FUSO_BR).strftime("%H:%M")
-                        salvar_csv({"Setor": setor_m, "Maquina": f"{setor_m} {maq_m}", "Operador": st.session_state['operador'], "Status": st_limpo, "Hora": hora_br}, ARQUIVO_DADOS)
-                        st.warning(f"⚠️ Programa removido da {maq_m}!")
-                        time.sleep(1); st.rerun()
+                    is_guia = "GUIA" in st_m.upper()
+                    is_preparando = "PREPARANDO" in st_m.upper()
+                    
+                    if is_preparando:
+                        status_label_txt = "Preparação"
+                    else:
+                        status_label_txt = "Aguardando preparador"
+
+                    preparador = "Sugerir / Aguardando..."
+                    if "[Prep:" in st_m: preparador = st_m.split("[Prep:")[1].split("]")[0].strip()
+                    elif "[Prep. Sugerido:" in st_m: preparador = st_m.split("[Prep. Sugerido:")[1].split("]")[0].strip()
+                    elif "[PREP:" in st_m.upper(): preparador = st_m.upper().split("[PREP:")[1].split("]")[0].strip()
+
+                    op_maq, item_maq = "", ""
+                    if "[Ordem:" in st_m:
+                        try: op_maq = st_m.split("[Ordem:")[1].split("]")[0].strip()
+                        except: pass
+                    if "[Novo Item:" in st_m:
+                        try: item_maq = st_m.split("[Novo Item:")[1].split("]")[0].strip()
+                        except: pass
+                    elif "[Item Atual:" in st_m:
+                        try: item_maq = st_m.split("[Item Atual:")[1].split("]")[0].strip()
+                        except: pass
+
+                    op_arm, item_arm = "", ""
+                    if not df_arm.empty:
+                        gaveta_num = maq_m.split("-")[0]
+                        filtro_arm = "Afiadoras" if setor_m == "AFC" else "Retíficas"
+                        gaveta_row = df_arm[(df_arm['Posicao'] == str(gaveta_num)) & (df_arm['Armario'].str.contains(filtro_arm))]
+                        if not gaveta_row.empty and str(gaveta_row.iloc[0]['Status']).strip() != 'VAZIO':
+                            op_arm = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nan', '').strip()
+                            item_arm = str(gaveta_row.iloc[0].get('Item', '')).replace('.0', '').replace('nan', '').strip()
+
+                    if is_guia:
+                        item_guia = item_maq if item_maq else obter_item_rodando_atual(f"{setor_m} {maq_m}")
+                        if not item_guia or item_guia == "-": item_guia = item_arm if item_arm else "-"
+                        final_item = item_guia
+                        label_item_txt = "Item Rodando (Atual)"
+                        final_op = op_maq if op_maq else (op_arm if op_arm else "Manter Atual")
+                    else:
+                        final_op = op_maq if op_maq else (op_arm if op_arm else "Nenhuma")
+                        final_item = item_maq if item_maq else (item_arm if item_arm else "-")
+                        label_item_txt = "Item"
+
+                    h_alvo = ""
+                    if "AGENDADA PARA" in st_m.upper():
+                        try: h_alvo = st_m.upper().split('AGENDADA PARA')[1].strip()
+                        except: pass
+                    elif "[AGENDADO:" in st_m.upper():
+                        try: h_alvo = st_m.upper().split('[AGENDADO:')[1].split(']')[0].strip()
+                        except: pass
+
+                    if h_alvo:
+                        tempo_ou_status_html = f"<div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>⏰ Agendado para:</strong> <span style='font-size: 14px;'>{h_alvo}</span></div>"
+                    else:
+                        tempo_ou_status_html = f"<div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>📌 Status:</strong> <span style='font-size: 14px;'>{status_label_txt}</span></div>"
+
+                    is_prog_ok = "[Prog: OK" in st_m
+                    hora_colocado = ""
+                    if is_prog_ok and "-" in st_m.split("[Prog:")[1].split("]")[0]:
+                        try: hora_colocado = st_m.split("[Prog: OK - ")[1].split("]")[0].strip()
+                        except: pass
+
+                    if is_preparando:
+                        bg_color, bd_color = "#F472B6", "#BE185D" 
+                    elif is_prog_ok:
+                        bg_color, bd_color = "#D1FAE5", "#059669" 
+                    else:
+                        bg_color, bd_color = "#FFEDD5", "#EA580C" 
+                    
+                    html = f"""
+                    <div class='postit-prog' style='background-color: {bg_color}; padding: 15px; border-radius: 6px; box-shadow: 2px 4px 8px rgba(0,0,0,0.3); margin-bottom: 10px; min-height: 200px;'>
+                        <div style='margin: 0 0 10px 0; border-bottom: 2px solid {bd_color}; padding-bottom: 5px;'>
+                            <strong style='font-size: 16px;'>⚙️ {setor_m} {maq_m}</strong>
+                        </div>
+                        <div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>🧑‍🔧 Preparador:</strong> <span style='font-size: 14px;'>{preparador}</span></div>
+                        {tempo_ou_status_html}
+                        <div style='background: rgba(255,255,255,0.6); padding: 8px; border-radius: 6px; margin: 8px 0;'>
+                            <div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>Ordem:</strong> <span style='font-size: 13px;'>{final_op}</span></div>
+                            <div style='margin: 0;'><strong style='font-size: 13px;'>{label_item_txt}:</strong> <span style='font-size: 13px;'>{final_item}</span></div>
+                        </div>
+                    """
+                    
+                    if is_prog_ok:
+                        html += f"<div style='margin-top: 10px; color: #064E3B;'><strong style='font-size: 14px;'>✅ Programa em Máquina. Colocado às {hora_colocado}</strong></div>"
+                    else:
+                        html += "<div style='margin-top: 10px; color: #991B1B;'><strong style='font-size: 14px;'>⚠️ Programa Pendente</strong></div>"
+                        
+                    html += "</div>"
+                    cols[j].markdown(html, unsafe_allow_html=True)
+                    
+                    if not is_prog_ok:
+                        if cols[j].button("💻 MARCAR PROGRAMA EM MÁQUINA", key=f"btn_prog_{maq_m}", use_container_width=True, type="primary"):
+                            hora_br = datetime.now(FUSO_BR).strftime("%H:%M")
+                            st_limpo = re.sub(r' \[Prog:.*?\]', '', st_m)
+                            st_final = f"{st_limpo} [Prog: OK - {hora_br}]"
+                            salvar_csv({"Setor": setor_m, "Maquina": f"{setor_m} {maq_m}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br}, ARQUIVO_DADOS)
+                            st.success(f"✅ Programa marcado na {maq_m} às {hora_br}!")
+                            time.sleep(1); st.rerun()
+                    else:
+                        if cols[j].button("↩️ Desmarcar Programa", key=f"btn_desmarcar_{maq_m}", use_container_width=True):
+                            st_limpo = re.sub(r' \[Prog:.*?\]', '', st_m)
+                            hora_br = datetime.now(FUSO_BR).strftime("%H:%M")
+                            salvar_csv({"Setor": setor_m, "Maquina": f"{setor_m} {maq_m}", "Operador": st.session_state['operador'], "Status": st_limpo, "Hora": hora_br}, ARQUIVO_DADOS)
+                            st.warning(f"⚠️ Programa removido da {maq_m}!")
+                            time.sleep(1); st.rerun()
+
+    render_grid_setor_prog(lista_afc, "SETOR DE AFIAÇÃO (AFC)")
+    render_grid_setor_prog(lista_rtf, "SETOR DE RETÍFICA (RTF)")
 
 # --- ROTEADOR ---
 if st.session_state['tela_atual'] == 'login': tela_login()
