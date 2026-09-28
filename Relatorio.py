@@ -229,7 +229,6 @@ def processar_padrao(df_all, maquinas, prefixo_setor):
                     s_limpo = st_val.split("[")[0].strip().upper().replace("PREPARAÇÃO - ", "")
                     status_limpo = s_limpo if s_limpo else "SETUP"
                 else:
-                    # ATUALIZA O HORÁRIO SE HOUVER UM ADIAMENTO NO MEIO DO CICLO
                     if "[AGENDADO:" in st_val:
                         try: hora_prep = st_val.split("[AGENDADO:")[1].split("]")[0].strip()
                         except: pass
@@ -1385,6 +1384,7 @@ def tela_login():
         if st.button("ACESSAR SISTEMA", use_container_width=True, type="primary"):
             codigos_validos = {
                 "9999": ("GERAL", "GERÊNCIA", "adm"),
+                "7777": ("GERAL", "PROGRAMACAO", "programador"),
                 "1010": ("1° TURNO", "TECNICO", "preparador"), "2020": ("2° TURNO", "TECNICO", "preparador"), "3030": ("3° TURNO", "TECNICO", "preparador"),
                 "1123": ("1° TURNO", "AFC", "preparador"), "2123": ("2° TURNO", "AFC", "preparador"), "3123": ("3° TURNO", "AFC", "preparador"),
                 "1234": ("1° TURNO", "RTF", "preparador"), "2234": ("2° TURNO", "RTF", "preparador"), "3234": ("3° TURNO", "RTF", "preparador"),
@@ -1449,6 +1449,7 @@ def tela_menu():
     if perfil == 'adm': setor_txt = "Gerência"
     elif st.session_state['setor_usuario'] == 'TECNICO': setor_txt = "Técnico (Geral)"
     elif perfil == 'preset': setor_txt = "Pré-Set"
+    elif perfil == 'programador': setor_txt = "Programação CNC"
     else: setor_txt = 'Afiação' if st.session_state['setor_usuario']=='AFC' else 'Retífica'
     
     st.markdown(f"""
@@ -1461,6 +1462,7 @@ def tela_menu():
     
     if perfil == 'adm':
         if st.button("📊 VISÃO GERAL DE FÁBRICA", use_container_width=True, type="primary"): mudar_tela('visao_geral')
+        if st.button("💻 PAINEL DO PROGRAMADOR", use_container_width=True): mudar_tela('programador')
         if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True): mudar_tela('afc')
         if st.button("⚙️ ACESSAR MÓDULO RETÍFICA", use_container_width=True): mudar_tela('rtf')
         if st.button("🗄️ GERENCIAR ARMÁRIOS", use_container_width=True): mudar_tela('armarios')
@@ -1471,8 +1473,14 @@ def tela_menu():
         if st.button("✏️ GERENCIAR BANCO DE DADOS", use_container_width=True): mudar_tela('editar')
     elif perfil == 'preset':
         if st.button("📊 VISÃO GERAL DE FÁBRICA", use_container_width=True, type="primary"): mudar_tela('visao_geral')
+        if st.button("💻 PAINEL DO PROGRAMADOR", use_container_width=True): mudar_tela('programador')
         if st.button("🗄️ GERENCIAR ARMÁRIOS", use_container_width=True): mudar_tela('armarios')
         if st.button("🔍 PROGRAMAÇÃO DO SETOR", use_container_width=True): mudar_tela('checkup')
+    elif perfil == 'programador':
+        if st.button("📊 VISÃO GERAL DE FÁBRICA", use_container_width=True, type="primary"): mudar_tela('visao_geral')
+        if st.button("💻 PAINEL DO PROGRAMADOR", use_container_width=True, type="primary"): mudar_tela('programador')
+        if st.button("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", use_container_width=True): mudar_tela('checkup')
+        if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
     elif perfil == 'preparador':
         if st.button("📊 VISÃO GERAL DE FÁBRICA", use_container_width=True, type="primary"): mudar_tela('visao_geral')
         if st.session_state['setor_usuario'] in ['AFC', 'TECNICO']:
@@ -1576,7 +1584,7 @@ def tela_checkup():
     setor_atual = st.session_state['setor_usuario']
     turno_vigente_real = turno_atual_horario()
     
-    if setor_atual in ['TECNICO', 'GERAL', 'GERÊNCIA', 'PRESET'] or perfil == 'adm': 
+    if setor_atual in ['TECNICO', 'GERAL', 'GERÊNCIA', 'PRESET', 'PROGRAMACAO'] or perfil == 'adm': 
         setores_alvo = [("AFC", TODAS_AFC), ("RTF", TODAS_RTF)]
     else: 
         setores_alvo = [(setor_atual, TODAS_AFC if setor_atual == "AFC" else TODAS_RTF)]
@@ -1832,7 +1840,7 @@ def tela_checkup():
         st.markdown("#### ⏱️ Lançar Previsão de Parada por Fila")
         st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Selecione a fila e digite o horário (HH:MM) previsto para as máquinas pararem.</p>", unsafe_allow_html=True)
 
-        if setor_atual in ['TECNICO', 'GERAL', 'GERÊNCIA', 'PRESET'] or perfil == 'adm':
+        if setor_atual in ['TECNICO', 'GERAL', 'GERÊNCIA', 'PRESET', 'PROGRAMACAO'] or perfil == 'adm':
             c_s1, c_s2 = st.columns(2)
             if c_s1.button("Setor: AFIAÇÃO", use_container_width=True): st.session_state['setor_prev_sel'] = 'AFC'; st.session_state['fila_prev_sel'] = None; st.rerun()
             if c_s2.button("Setor: RETÍFICA", use_container_width=True): st.session_state['setor_prev_sel'] = 'RTF'; st.session_state['fila_prev_sel'] = None; st.rerun()
@@ -2763,20 +2771,130 @@ def tela_lirs():
         texto_relatorio += f"✅ VALIDADAS ({len(ok_rtf)}): {', '.join(ok_rtf) if ok_rtf else 'Nenhuma'}\n"
         texto_relatorio += f"🔴 PENDENTES ({len(pend_rtf)}): {', '.join(pend_rtf) if pend_rtf else 'Nenhuma'}\n"
         
-        st.text_area(label="Exportar Dados", value=texto_relatorio, height=250, label_visibility="collapsed")
+        st.code(texto_relatorio, language="text")
+
+def tela_programador():
+    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    st.markdown("#### 💻 Painel de Programação CNC")
+    st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Visualize as preparações e confirme o envio dos programas para as máquinas.</p>", unsafe_allow_html=True)
+    st.divider()
+
+    st.markdown("""
+    <style>
+        .postit-prog, .postit-prog div, .postit-prog span, .postit-prog strong, .postit-prog p, .postit-prog b {
+            color: #000000 !important;
+            -webkit-text-fill-color: #000000 !important;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+
+    status_dict = ler_status_atual()
+    lista_incidencias = []
+    
+    # Filtra apenas máquinas que estão em setup ou aguardando
+    for m in TODAS_AFC + TODAS_RTF:
+        prefixo = "AFC" if m in TODAS_AFC else "RTF"
+        st_val = status_dict.get(f"{prefixo} {m}", "PRODUZINDO")
+        
+        if any(x in st_val.upper() for x in ["PREPARAÇÃO", "PREPARANDO", "AGUARDANDO", "SEQUÊNCIA", "AGENDADA", "AGENDADO"]):
+            lista_incidencias.append((prefixo, m, st_val))
+
+    if not lista_incidencias:
+        st.success("✨ Nenhuma máquina em preparação aguardando programa no momento.")
+        return
+
+    # Renderiza em grid de 3 colunas
+    for i in range(0, len(lista_incidencias), 3):
+        cols = st.columns(3)
+        for j in range(3):
+            if i + j < len(lista_incidencias):
+                setor_m, maq_m, st_m = lista_incidencias[i + j]
+                
+                # Extrai Preparador
+                preparador = "Sugerir / Aguardando..."
+                if "[Prep:" in st_m: preparador = st_m.split("[Prep:")[1].split("]")[0].strip()
+                elif "[Prep. Sugerido:" in st_m: preparador = st_m.split("[Prep. Sugerido:")[1].split("]")[0].strip()
+                elif "[PREP:" in st_m.upper(): preparador = st_m.upper().split("[PREP:")[1].split("]")[0].strip()
+
+                # Extrai OP e Item
+                op_maq, item_maq = "-", "-"
+                if "[Ordem:" in st_m: op_maq = st_m.split("[Ordem:")[1].split("]")[0].strip()
+                if "[Novo Item:" in st_m: item_maq = st_m.split("[Novo Item:")[1].split("]")[0].strip()
+                elif "[Item Atual:" in st_m: item_maq = st_m.split("[Item Atual:")[1].split("]")[0].strip()
+
+                # Extrai Horário alvo se houver
+                h_alvo = "Imediato"
+                if "AGENDADA PARA" in st_m.upper():
+                    try: h_alvo = st_m.upper().split('AGENDADA PARA')[1].strip()
+                    except: pass
+                elif "[AGENDADO:" in st_m.upper():
+                    try: h_alvo = st_m.upper().split('[AGENDADO:')[1].split(']')[0].strip()
+                    except: pass
+
+                # Verifica se o programa já está OK (Apenas visual do sistema antigo ou deste)
+                is_prog_ok = "[Prog: OK" in st_m
+                hora_colocado = ""
+                if is_prog_ok and "-" in st_m.split("[Prog:")[1].split("]")[0]:
+                    try: hora_colocado = st_m.split("[Prog: OK - ")[1].split("]")[0].strip()
+                    except: pass
+
+                # Cores do Post-it
+                bg_color = "#D1FAE5" if is_prog_ok else "#FEF9C3" # Verde claro se OK, Amarelo claro se pendente
+                bd_color = "#059669" if is_prog_ok else "#CA8A04"
+                
+                html = f"""
+                <div class='postit-prog' style='background-color: {bg_color}; padding: 15px; border-radius: 6px; box-shadow: 2px 4px 8px rgba(0,0,0,0.3); margin-bottom: 10px; min-height: 200px;'>
+                    <div style='margin: 0 0 10px 0; border-bottom: 2px solid {bd_color}; padding-bottom: 5px;'>
+                        <strong style='font-size: 16px;'>⚙️ {setor_m} {maq_m}</strong>
+                    </div>
+                    <div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>🧑‍🔧 Preparador:</strong> <span style='font-size: 14px;'>{preparador}</span></div>
+                    <div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>⏰ Previsão:</strong> <span style='font-size: 14px;'>{h_alvo}</span></div>
+                    <div style='background: rgba(255,255,255,0.6); padding: 8px; border-radius: 6px; margin: 8px 0;'>
+                        <div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>Ordem:</strong> <span style='font-size: 13px;'>{op_maq}</span></div>
+                        <div style='margin: 0;'><strong style='font-size: 13px;'>Item:</strong> <span style='font-size: 13px;'>{item_maq}</span></div>
+                    </div>
+                """
+                
+                if is_prog_ok:
+                    html += f"<div style='margin-top: 10px; color: #064E3B;'><strong style='font-size: 14px;'>✅ Programa em Máquina. Colocado às {hora_colocado}</strong></div>"
+                else:
+                    html += "<div style='margin-top: 10px; color: #991B1B;'><strong style='font-size: 14px;'>⚠️ Programa Pendente</strong></div>"
+                    
+                html += "</div>"
+                cols[j].markdown(html, unsafe_allow_html=True)
+                
+                # Botões de Ação
+                if not is_prog_ok:
+                    if cols[j].button("💻 MARCAR PROGRAMA EM MÁQUINA", key=f"btn_prog_{maq_m}", use_container_width=True, type="primary"):
+                        hora_br = datetime.now(FUSO_BR).strftime("%H:%M")
+                        st_limpo = re.sub(r' \[Prog:.*?\]', '', st_m)
+                        st_final = f"{st_limpo} [Prog: OK - {hora_br}]"
+                        
+                        salvar_csv({"Setor": setor_m, "Maquina": f"{setor_m} {maq_m}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br}, ARQUIVO_DADOS)
+                        st.success(f"✅ Programa marcado na {maq_m} às {hora_br}!")
+                        time.sleep(1); st.rerun()
+                else:
+                    if cols[j].button("↩️ Desmarcar Programa", key=f"btn_desmarcar_{maq_m}", use_container_width=True):
+                        st_limpo = re.sub(r' \[Prog:.*?\]', '', st_m)
+                        hora_br = datetime.now(FUSO_BR).strftime("%H:%M")
+                        
+                        salvar_csv({"Setor": setor_m, "Maquina": f"{setor_m} {maq_m}", "Operador": st.session_state['operador'], "Status": st_limpo, "Hora": hora_br}, ARQUIVO_DADOS)
+                        st.warning(f"⚠️ Programa removido da {maq_m}!")
+                        time.sleep(1); st.rerun()
 
 # --- ROTEADOR ---
 if st.session_state['tela_atual'] == 'login': tela_login()
+elif st.session_state['tela_atual'] == 'hub_relatorios': tela_hub_relatorios()
 elif st.session_state['tela_atual'] == 'menu': tela_menu()
 elif st.session_state['tela_atual'] == 'visao_geral': tela_visao_geral()
 elif st.session_state['tela_atual'] == 'checkup': tela_checkup()
-elif st.session_state['tela_atual'] == 'hub_relatorios': tela_hub_relatorios()
-elif st.session_state['tela_atual'] == 'historico': tela_historico()
 elif st.session_state['tela_atual'] == 'minhas_incidencias': tela_minhas_incidencias()
 elif st.session_state['tela_atual'] == 'afc': tela_afc()
 elif st.session_state['tela_atual'] == 'rtf': tela_rtf()
 elif st.session_state['tela_atual'] == 'equipe': tela_equipe()
 elif st.session_state['tela_atual'] == 'editar': tela_editar()
+elif st.session_state['tela_atual'] == 'historico': tela_historico()
 elif st.session_state['tela_atual'] == 'relatorio': tela_relatorio()
 elif st.session_state['tela_atual'] == 'armarios': tela_armarios()
+elif st.session_state['tela_atual'] == 'programador': tela_programador()
 elif st.session_state['tela_atual'] == 'lirs': tela_lirs()
