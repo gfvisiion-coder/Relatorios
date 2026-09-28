@@ -705,9 +705,11 @@ def exibir_alertas_preparador():
     
     status_dict = ler_status_atual()
     agora_dt = datetime.now(FUSO_BR)
-    alertas = []
+    alertas_tempo = []
+    alertas_prog = []
     
     for maq, st_val in status_dict.items():
+        # Lógica 1: Alertas de Tempo (Preparações Próximas ou Atrasadas)
         if f"[PREP: {nome_usuario}]" in st_val.upper() or f"[PREP. SUGERIDO: {nome_usuario}]" in st_val.upper():
             hora_alvo = ""
             if "AGENDADA PARA" in st_val.upper():
@@ -725,24 +727,43 @@ def exibir_alertas_preparador():
                 delta_mins = int((h_alvo_dt - agora_dt).total_seconds() / 60)
                 
                 if -120 <= delta_mins <= 30:
-                    alertas.append({'maquina': maq, 'hora': hora_alvo, 'delta': delta_mins})
-    
-    if alertas:
-        html_alertas = "<div class='alerta-pisca'>"
-        html_alertas += "<h4 style='margin-top:0; color:#fca5a5;'>⏰ ATENÇÃO: SUAS PREPARAÇÕES PRÓXIMAS / ATRASADAS</h4>"
-        
-        for alerta in sorted(alertas, key=lambda x: x['delta']):
-            chave_toast = f"toast_prep_{alerta['maquina']}_{alerta['hora']}"
-            if chave_toast not in st.session_state:
-                st.session_state[chave_toast] = True
-                msg = f"Sua preparação na {alerta['maquina']} será às {alerta['hora']}!" if alerta['delta'] > 0 else f"A máquina {alerta['maquina']} está ATRASADA ({alerta['hora']})!"
-                st.toast(msg, icon="⏰")
+                    alertas_tempo.append({'maquina': maq, 'hora': hora_alvo, 'delta': delta_mins})
 
-            if alerta['delta'] > 0: tempo_txt = f"falta(m) {alerta['delta']} min"
-            elif alerta['delta'] == 0: tempo_txt = "é agora!"
-            else: tempo_txt = f"atrasada há {abs(alerta['delta'])} min"
-            
-            html_alertas += f"<p style='color:#fee2e2; margin-bottom:5px; font-size:15px;'>• Máquina <b>{alerta['maquina']}</b> (Agendada para <b>{alerta['hora']}</b>) — <i>{tempo_txt}</i></p>"
+        # Lógica 2: Alerta de Programa Validado na Máquina pelo Programador
+        is_sugerido = f"[PREP. SUGERIDO: {nome_usuario}]" in st_val.upper()
+        is_aguardando = "AGUARDANDO" in st_val.upper() or "AGENDADO" in st_val.upper() or "AGENDADA" in st_val.upper()
+        is_prog_ok = "[PROG: OK" in st_val.upper()
+        
+        if is_sugerido and is_aguardando and is_prog_ok:
+            alertas_prog.append(maq)
+    
+    if alertas_tempo or alertas_prog:
+        html_alertas = "<div class='alerta-pisca'>"
+        
+        if alertas_tempo:
+            html_alertas += "<h4 style='margin-top:0; color:#fca5a5;'>⏰ ATENÇÃO: SUAS PREPARAÇÕES PRÓXIMAS / ATRASADAS</h4>"
+            for alerta in sorted(alertas_tempo, key=lambda x: x['delta']):
+                chave_toast = f"toast_prep_{alerta['maquina']}_{alerta['hora']}"
+                if chave_toast not in st.session_state:
+                    st.session_state[chave_toast] = True
+                    msg = f"Sua preparação na {alerta['maquina']} será às {alerta['hora']}!" if alerta['delta'] > 0 else f"A máquina {alerta['maquina']} está ATRASADA ({alerta['hora']})!"
+                    st.toast(msg, icon="⏰")
+
+                if alerta['delta'] > 0: tempo_txt = f"falta(m) {alerta['delta']} min"
+                elif alerta['delta'] == 0: tempo_txt = "é agora!"
+                else: tempo_txt = f"atrasada há {abs(alerta['delta'])} min"
+                
+                html_alertas += f"<p style='color:#fee2e2; margin-bottom:5px; font-size:15px;'>• Máquina <b>{alerta['maquina']}</b> (Agendada para <b>{alerta['hora']}</b>) — <i>{tempo_txt}</i></p>"
+                
+        if alertas_prog:
+            if alertas_tempo: html_alertas += "<hr style='border-color: #ef4444; margin: 10px 0;'>"
+            html_alertas += "<h4 style='margin-top:0; color:#86efac;'>💻 PROGRAMA LIBERADO</h4>"
+            for maq in alertas_prog:
+                chave_toast_prog = f"toast_prog_ok_{maq}"
+                if chave_toast_prog not in st.session_state:
+                    st.session_state[chave_toast_prog] = True
+                    st.toast(f"O programa da {maq} já foi enviado para a máquina!", icon="💻")
+                html_alertas += f"<p style='color:#dcfce7; margin-bottom:5px; font-size:15px;'>• <b>{maq}:</b> Programa validado! O setup está liberado para iniciar.</p>"
             
         html_alertas += "</div>"
         st.markdown(html_alertas, unsafe_allow_html=True)
@@ -2804,15 +2825,6 @@ def tela_programador():
     st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Visualize as preparações e confirme o envio dos programas para as máquinas.</p>", unsafe_allow_html=True)
     st.divider()
 
-    st.markdown("""
-    <style>
-        .postit-prog, .postit-prog div, .postit-prog span, .postit-prog strong, .postit-prog p, .postit-prog b {
-            color: #000000 !important;
-            -webkit-text-fill-color: #000000 !important;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-
     status_dict = ler_status_atual()
     lista_incidencias = []
     
@@ -2842,11 +2854,22 @@ def tela_programador():
                 if i + j < len(lista_setor):
                     setor_m, maq_m, st_m = lista_setor[i + j]
                     
+                    is_seq = "SEQUÊNCIA" in st_m.upper() or "SEQUENCIA" in st_m.upper()
+                    is_prep = "PREPARAÇÃO" in st_m.upper() or "PREPARACAO" in st_m.upper() or "PREPARANDO" in st_m.upper()
                     is_guia = "GUIA" in st_m.upper()
                     is_preparando = "PREPARANDO" in st_m.upper()
                     
+                    # Definição do Tipo de Setup
+                    tipo_setup = "Outro"
+                    if is_seq:
+                        tipo_setup = "Sequência"
+                    elif is_prep:
+                        if "HASTE" in st_m.upper(): tipo_setup = "Preparação - HASTE"
+                        elif is_guia: tipo_setup = "Preparação - GUIA"
+                        else: tipo_setup = "Preparação"
+                    
                     if is_preparando:
-                        status_label_txt = "Preparação"
+                        status_label_txt = "Em Preparação (Executando)"
                     else:
                         status_label_txt = "Aguardando preparador"
 
@@ -2895,9 +2918,9 @@ def tela_programador():
                         except: pass
 
                     if h_alvo:
-                        tempo_ou_status_html = f"<div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>⏰ Agendado para:</strong> <span style='font-size: 14px;'>{h_alvo}</span></div>"
+                        tempo_ou_status_html = f"<div style='margin: 0 0 4px 0;'><strong style='font-size: 14px; color: #A1A1AA;'>⏰ Agendado para:</strong> <span style='font-size: 14px; color: #E4E4E7;'>{h_alvo}</span></div>"
                     else:
-                        tempo_ou_status_html = f"<div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>📌 Status:</strong> <span style='font-size: 14px;'>{status_label_txt}</span></div>"
+                        tempo_ou_status_html = f"<div style='margin: 0 0 4px 0;'><strong style='font-size: 14px; color: #A1A1AA;'>📌 Status:</strong> <span style='font-size: 14px; color: #E4E4E7;'>{status_label_txt}</span></div>"
 
                     is_prog_ok = "[Prog: OK" in st_m
                     hora_colocado = ""
@@ -2905,30 +2928,32 @@ def tela_programador():
                         try: hora_colocado = st_m.split("[Prog: OK - ")[1].split("]")[0].strip()
                         except: pass
 
+                    # Cores profissionais (Dark mode compatíveis)
                     if is_preparando:
-                        bg_color, bd_color = "#F472B6", "#BE185D" 
+                        bg_color, bd_color = "#18181B", "#3B82F6" 
                     elif is_prog_ok:
-                        bg_color, bd_color = "#D1FAE5", "#059669" 
+                        bg_color, bd_color = "#18181B", "#10B981" 
                     else:
-                        bg_color, bd_color = "#FFEDD5", "#EA580C" 
+                        bg_color, bd_color = "#18181B", "#F59E0B" 
                     
                     html = f"""
-                    <div class='postit-prog' style='background-color: {bg_color}; padding: 15px; border-radius: 6px; box-shadow: 2px 4px 8px rgba(0,0,0,0.3); margin-bottom: 10px; min-height: 200px;'>
-                        <div style='margin: 0 0 10px 0; border-bottom: 2px solid {bd_color}; padding-bottom: 5px;'>
-                            <strong style='font-size: 16px;'>⚙️ {setor_m} {maq_m}</strong>
+                    <div class='postit-prog' style='background-color: {bg_color}; padding: 15px; border-radius: 8px; border: 1px solid #27272A; border-top: 4px solid {bd_color}; margin-bottom: 10px; min-height: 220px;'>
+                        <div style='margin: 0 0 10px 0; border-bottom: 1px solid #27272A; padding-bottom: 5px;'>
+                            <strong style='font-size: 16px; color: #F4F4F5;'>⚙️ {setor_m} {maq_m}</strong>
                         </div>
-                        <div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>🧑‍🔧 Preparador:</strong> <span style='font-size: 14px;'>{preparador}</span></div>
+                        <div style='margin: 0 0 4px 0;'><strong style='font-size: 14px; color: #A1A1AA;'>📋 Setup:</strong> <span style='font-size: 14px; color: #E4E4E7;'>{tipo_setup}</span></div>
+                        <div style='margin: 0 0 4px 0;'><strong style='font-size: 14px; color: #A1A1AA;'>🧑‍🔧 Preparador:</strong> <span style='font-size: 14px; color: #E4E4E7;'>{preparador}</span></div>
                         {tempo_ou_status_html}
-                        <div style='background: rgba(255,255,255,0.6); padding: 8px; border-radius: 6px; margin: 8px 0;'>
-                            <div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>Ordem:</strong> <span style='font-size: 13px;'>{final_op}</span></div>
-                            <div style='margin: 0;'><strong style='font-size: 13px;'>{label_item_txt}:</strong> <span style='font-size: 13px;'>{final_item}</span></div>
+                        <div style='background: #27272A; padding: 10px; border-radius: 6px; margin: 10px 0; border: 1px solid #3F3F46;'>
+                            <div style='margin: 0 0 2px 0;'><strong style='font-size: 13px; color: #A1A1AA;'>Ordem:</strong> <span style='font-size: 13px; color: #F4F4F5;'>{final_op}</span></div>
+                            <div style='margin: 0;'><strong style='font-size: 13px; color: #A1A1AA;'>{label_item_txt}:</strong> <span style='font-size: 13px; color: #F4F4F5;'>{final_item}</span></div>
                         </div>
                     """
                     
                     if is_prog_ok:
-                        html += f"<div style='margin-top: 10px; color: #064E3B;'><strong style='font-size: 14px;'>✅ Programa em Máquina. Colocado às {hora_colocado}</strong></div>"
+                        html += f"<div style='margin-top: 10px; color: #34D399;'><strong style='font-size: 14px;'>✅ Programa OK ({hora_colocado})</strong></div>"
                     else:
-                        html += "<div style='margin-top: 10px; color: #991B1B;'><strong style='font-size: 14px;'>⚠️ Programa Pendente</strong></div>"
+                        html += "<div style='margin-top: 10px; color: #FBBF24;'><strong style='font-size: 14px;'>⚠️ Aguardando Programa</strong></div>"
                         
                     html += "</div>"
                     cols[j].markdown(html, unsafe_allow_html=True)
