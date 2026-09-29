@@ -1231,25 +1231,30 @@ def painel_controle_maquina(maq_id, setor):
                 
                 is_guia = (setor != "AFC" and tipo_setup == "GUIA") or "GUIA" in st_atual.upper()
                 
-                if is_guia:
-                    prog_status_prep = "SIM (Programa OK)"
-                elif "[PROG: OK" in st_atual.upper():
-                    st.markdown("💻 **Validação do Programa CNC**")
-                    st.success("✅ Programa já enviado para a máquina pelo Programador!")
-                    prog_status_prep = "SIM (Programa OK)"
-                else:
-                    st.markdown("💻 **Validação do Programa CNC**")
-                    prog_status_prep = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
-                
                 op_pre, item_pre = "", ""
                 if "[Ordem:" in st_atual: op_pre = st_atual.split("[Ordem:")[1].split("]")[0].strip()
                 if "[Item Atual:" in st_atual: item_pre = st_atual.split("[Item Atual:")[1].split("]")[0].strip()
                 elif "[Novo Item:" in st_atual: item_pre = st_atual.split("[Novo Item:")[1].split("]")[0].strip()
                 elif "[Item:" in st_atual: item_pre = st_atual.split("[Item:")[1].split("]")[0].strip()
+
+                if not is_guia:
+                    if "[PROG: OK" in st_atual.upper():
+                        st.markdown("💻 **Validação do Programa CNC**")
+                        st.success("✅ Programa já enviado para a máquina pelo Programador!")
+                        prog_status_prep = "SIM (Programa OK)"
+                    else:
+                        st.markdown("💻 **Validação do Programa CNC**")
+                        prog_status_prep = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
+                    
+                    st.markdown("📦 **Dados do Item**")
+                    ordem_atual = st.text_input("Ordem Atual (OP):", value=op_pre, placeholder="Ex: 987654")
+                    item_atual = st.text_input("Item Atual (Na Máquina):", value=item_pre, placeholder="Ex: 313324")
+                else:
+                    prog_status_prep = "SIM (Programa OK)"
+                    ordem_atual = op_pre
+                    item_atual = item_pre
+                    st.info("ℹ️ Setup de GUIA: O Programa, a OP e o Item da haste atual serão mantidos automaticamente.")
                 
-                st.markdown("📦 **Dados do Item**")
-                ordem_atual = st.text_input("Ordem Atual (OP):", value=op_pre, placeholder="Ex: 987654")
-                item_atual = st.text_input("Item Atual (Na Máquina):", value=item_pre, placeholder="Ex: 313324")
                 st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
                 
                 if st.form_submit_button("💾 Salvar Registro", type="primary"):
@@ -1278,7 +1283,7 @@ def painel_controle_maquina(maq_id, setor):
                         item_limpo = item_atual.strip().upper().replace(".0", "").lstrip("0")
                         if ordem_limpa: st_final += f" [Ordem: {ordem_limpa}]"
                         if item_limpo: st_final += f" [Item Atual: {item_limpo}]"
-                        if ordem_limpa: dar_baixa_armario(ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
+                        
                             
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
@@ -1347,12 +1352,38 @@ def painel_controle_maquina(maq_id, setor):
 
                 if bloquear_inicio: st.warning(msg_bloqueio)
                 
-                c1, c2, c3 = st.columns(3)
-                btn_sugerir = c1.form_submit_button("💡 Apenas Sugerir")
-                btn_iniciar = c2.form_submit_button("🚀 INICIAR", type="primary", disabled=bloquear_inicio)
-                btn_alterar = c3.form_submit_button("⚠️ Alterar Status")
+                is_afc_seq = (setor == "AFC" and is_seq)
+
+                if is_afc_seq:
+                    c1, c2, c3, c4 = st.columns(4)
+                    btn_sugerir = c1.form_submit_button("💡 Sugerir")
+                    btn_rebolo_adiantado = c2.form_submit_button("🛞 Rebolo Adiant.")
+                    btn_iniciar = c3.form_submit_button("🚀 INICIAR", type="primary", disabled=bloquear_inicio)
+                    btn_alterar = c4.form_submit_button("⚠️ Alterar")
+                else:
+                    c1, c2, c3 = st.columns(3)
+                    btn_sugerir = c1.form_submit_button("💡 Apenas Sugerir")
+                    btn_rebolo_adiantado = False
+                    btn_iniciar = c2.form_submit_button("🚀 INICIAR", type="primary", disabled=bloquear_inicio)
+                    btn_alterar = c3.form_submit_button("⚠️ Alterar Status")
                 
                 if btn_alterar: st.session_state[flow_key] = "mudanca_status"; st.rerun()
+
+                if btn_rebolo_adiantado:
+                    info_atual = obter_info_maquina(maq_id, setor)
+                    if info_atual:
+                        raw_st = str(info_atual['Status'])
+                        if "[Rebolo Adiantado]" not in raw_st:
+                            raw_st += " [Rebolo Adiantado]"
+                            hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                            salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": raw_st, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                            st.session_state['maq_ativa'] = None
+                            del st.session_state[flow_key]
+                            st.success("✅ Troca de rebolo adiantada! A máquina continua na fila aguardando a sequência.")
+                            time.sleep(1.5)
+                            st.rerun()
+                        else:
+                            st.warning("⚠️ Troca de rebolo já registrada para este agendamento.")
                 if btn_adiar:
                     if novo_horario_adiar.strip():
                         info_atual = obter_info_maquina(maq_id, setor)
