@@ -2638,6 +2638,16 @@ def tela_armarios():
         if st.session_state.get('perfil') in ['preset', 'adm']:
             st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Máquinas agendadas ou em andamento que necessitam de troca de rebolo.</p>", unsafe_allow_html=True)
 
+            # CARREGAR BANCO DE REBOLOS (EXCEL)
+            df_rebolos = pd.DataFrame()
+            if os.path.exists(ARQUIVO_REBOLOS):
+                try:
+                    df_rebolos = pd.read_excel(ARQUIVO_REBOLOS, sheet_name='Banco De Rebolos', engine='openpyxl')
+                    df_rebolos.columns = [unicodedata.normalize('NFKD', str(c).upper()).encode('ASCII', 'ignore').decode('ASCII').replace(" ", "").replace("\n", "").strip() for c in df_rebolos.columns]
+                    if 'ITEM' in df_rebolos.columns:
+                        df_rebolos['ITEM_BUSCA'] = df_rebolos['ITEM'].astype(str).str.upper().apply(lambda x: re.sub(r'\.0$', '', x.strip()).lstrip("0"))
+                except: pass
+
             status_dict = ler_status_atual()
             alertas_rebolo = []
             
@@ -2668,18 +2678,35 @@ def tela_armarios():
                         elif "[Item Atual:" in st_val: item_alvo = st_val.split("[Item Atual:")[1].split("]")[0].strip()
                         elif "[Item:" in st_val: item_alvo = st_val.split("[Item:")[1].split("]")[0].strip()
 
-                    alertas_rebolo.append((maq, hora_alvo, st_limpo, item_alvo, rebolo_gaveta))
+                    # Buscar Rebolo no Banco (Excel) com base no item
+                    reb1_db, reb2_db = "-", "-"
+                    if item_alvo and not df_rebolos.empty:
+                        item_busca = item_alvo.upper()
+                        match = df_rebolos[df_rebolos['ITEM_BUSCA'] == item_busca]
+                        if match.empty: match = df_rebolos[df_rebolos['ITEM_BUSCA'].str.contains(item_busca, regex=False, na=False)]
+                        if not match.empty:
+                            reb1_db = str(match.iloc[0].get('REBOLO', match.iloc[0].get('REBOLO1', ''))).strip()
+                            reb2_db = str(match.iloc[0].get('REBOLO2', '')).strip()
+                            if reb1_db.lower() in ['nan', 'none', '']: reb1_db = "-"
+                            if reb2_db.lower() in ['nan', 'none', '']: reb2_db = "-"
+
+                    alertas_rebolo.append((maq, hora_alvo, st_limpo, item_alvo, rebolo_gaveta, reb1_db, reb2_db))
                     
             if alertas_rebolo:
-                for maq, hora, st_limpo, item_alvo, rebolo_gaveta in alertas_rebolo:
+                for maq, hora, st_limpo, item_alvo, rebolo_gaveta, reb1_db, reb2_db in alertas_rebolo:
                     h_txt = f"⏰ Agendado para as {hora}" if hora else "🔴 Em Andamento / Imediato"
                     
-                    reb_txt = rebolo_gaveta if rebolo_gaveta else "Não preenchido no sistema."
+                    reb_txt = rebolo_gaveta if rebolo_gaveta else "Não preenchido na gaveta."
                     
                     if item_alvo:
-                        info_reb = f"""<div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'><p style='margin: 0; font-size: 13px; color: #A1A1AA;'>📦 Item na Gaveta: <b style='color: #F4F4F5;'>{item_alvo}</b></p><p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🔄 Rebolo Cadastrado: <b style='color: #2DD4BF;'>{reb_txt}</b></p></div>"""
+                        info_reb = f"""
+                        <div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'>
+                            <p style='margin: 0; font-size: 13px; color: #A1A1AA;'>📦 Item na Gaveta/Máquina: <b style='color: #F4F4F5;'>{item_alvo}</b></p>
+                            <p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🛞 Rebolo(s) Padrão (Excel): <b style='color: #38BDF8;'>{reb1_db} {f' / {reb2_db}' if reb2_db != '-' else ''}</b></p>
+                            <p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🔄 Rebolo Cadastrado (Armário): <b style='color: #2DD4BF;'>{reb_txt}</b></p>
+                        </div>"""
                     else:
-                        info_reb = f"""<div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'><p style='margin: 0; font-size: 13px; color: #ef4444;'>⚠️ Gaveta vazia e item não informado.</p></div>"""
+                        info_reb = f"""<div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'><p style='margin: 0; font-size: 13px; color: #ef4444;'>⚠️ Gaveta vazia e item não informado na máquina.</p></div>"""
 
                     st.markdown(f"""<div style='background-color: #422006; padding: 15px; border-radius: 8px; border-left: 5px solid #f59e0b; margin-bottom: 10px;'><h5 style='margin-top:0; margin-bottom:5px; color: #fbbf24;'>⚙️ Máquina {maq} irá trocar o rebolo</h5><p style='color: #fef3c7; margin-bottom:0; font-size:14px;'>{h_txt} <br><span style='font-size:13px; color:#d97706;'>Status Atual: {st_limpo}</span></p>{info_reb}</div>""", unsafe_allow_html=True)
             else: st.success("✅ Nenhuma máquina com troca de rebolo prevista no momento.")
