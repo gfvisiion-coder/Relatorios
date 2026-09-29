@@ -1035,15 +1035,97 @@ def painel_controle_maquina(maq_id, setor):
         st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
         
         if is_setup_ativo and st.session_state[flow_key] == "pergunta":
+            is_troca_adiantada = "TROCA DE REBOLO ADIANTADA" in status_atual.upper()
+            
             with st.form(f"form_fast_track_{maq_id}"):
-                st.markdown(f"<p style='text-align: center; font-weight: 600;'>O setup desta máquina foi finalizado?</p>", unsafe_allow_html=True)
-                obs_fast = st.text_input("Observação / Justificativa (Opcional):", placeholder="Ex: Demora por falta de ferramenta...")
-                
-                c1, c2, c3 = st.columns(3)
-                btn_sim = c1.form_submit_button("✅ Sim (Produzir)")
-                btn_assumir = c2.form_submit_button("🔄 Assumir")
-                btn_alt = c3.form_submit_button("⚠️ Alterar")
-                
+                if is_troca_adiantada:
+                    st.markdown(f"<p style='text-align: center; font-weight: 600;'>A troca de rebolo adiantada foi concluída?</p>", unsafe_allow_html=True)
+                    obs_fast = st.text_input("Observação (Opcional):", placeholder="Ex: Rebolo pronto...")
+                    
+                    c1, c2, c3 = st.columns(3)
+                    btn_concluir = c1.form_submit_button("✅ Concluir Troca")
+                    btn_assumir = c2.form_submit_button("🔄 Assumir")
+                    btn_alt = c3.form_submit_button("⚠️ Alterar")
+                    
+                    if btn_concluir:
+                        from datetime import datetime, timedelta
+                        
+                        hora_atual = datetime.now(FUSO_BR)
+                        hora_br_str = hora_atual.strftime("%H:%M")
+                        
+                        info_atual = obter_info_maquina(maq_id, setor)
+                        st_atual_raw = str(info_atual['Status']) if info_atual else ""
+                        hora_inicio_str = str(info_atual['Hora']) if info_atual else hora_br_str
+                        
+                        # 1. Calcula os minutos gastos na troca de rebolo
+                        minutos_decorridos = 0
+                        try:
+                            t_inicio = datetime.strptime(hora_inicio_str, "%H:%M")
+                            t_fim = datetime.strptime(hora_br_str, "%H:%M")
+                            if t_fim < t_inicio: t_fim += timedelta(days=1) # Tratamento para virada de meia-noite
+                            minutos_decorridos = int((t_fim - t_inicio).total_seconds() / 60)
+                        except:
+                            pass
+                        
+                        # 2. Gera registro fantasma para o relatório entender que a prep fechou e contar os minutos
+                        st_fechamento = "PRODUZINDO [Troca de Rebolo Concluída]"
+                        if obs_fast.strip(): st_fechamento += f" [Obs: {obs_fast.strip()}]"
+                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_fechamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                        
+                        # 3. Devolve a máquina para a fila atualizando o horário agendado (somando o tempo de troca)
+                        h_alvo = ""
+                        if "[AGENDADO:" in st_atual_raw:
+                            try: 
+                                h_alvo = st_atual_raw.split("[AGENDADO:")[1].split("]")[0].strip()
+                                t_alvo = datetime.strptime(h_alvo, "%H:%M")
+                                t_alvo_novo = t_alvo + timedelta(minutes=minutos_decorridos)
+                                h_alvo = t_alvo_novo.strftime("%H:%M")
+                            except: pass
+                        
+                        tags_prod = extrair_tags_producao(st_atual_raw)
+                        st_volta = f"AGUARDANDO PREPARADOR - SEQUÊNCIA"
+                        if h_alvo: st_volta += f" [AGENDADO:{h_alvo}]"
+                        st_volta += f" {tags_prod}"
+                        
+                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_volta.strip(), "Hora": hora_br_str}, ARQUIVO_DADOS)
+                        
+                        st.session_state['maq_ativa'] = None
+                        del st.session_state[flow_key]
+                        st.success(f"✅ Troca concluída em {minutos_decorridos} min! Novo agendamento: {h_alvo if h_alvo else '--'}")
+                        time.sleep(2.0); st.rerun()
+                        
+                        # 1. Gera registro fantasma para o relatório entender que a prep fechou e contar os minutos
+                        st_fechamento = "PRODUZINDO [Troca de Rebolo Concluída]"
+                        if obs_fast.strip(): st_fechamento += f" [Obs: {obs_fast.strip()}]"
+                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_fechamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
+                        
+                        # 2. Devolve a máquina para a fila aguardando a sequência real, com o mesmo horário
+                        h_alvo = ""
+                        if "[AGENDADO:" in st_atual_raw:
+                            try: h_alvo = st_atual_raw.split("[AGENDADO:")[1].split("]")[0].strip()
+                            except: pass
+                        
+                        tags_prod = extrair_tags_producao(st_atual_raw)
+                        st_volta = f"AGUARDANDO PREPARADOR - SEQUÊNCIA"
+                        if h_alvo: st_volta += f" [AGENDADO:{h_alvo}]"
+                        st_volta += f" {tags_prod}"
+                        
+                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_volta.strip(), "Hora": hora_br_str}, ARQUIVO_DADOS)
+                        
+                        st.session_state['maq_ativa'] = None
+                        del st.session_state[flow_key]
+                        st.success("✅ Tempo da troca registrado! A máquina voltou para a fila aguardando a sequência.")
+                        time.sleep(1.5); st.rerun()
+
+                else:
+                    st.markdown(f"<p style='text-align: center; font-weight: 600;'>O setup desta máquina foi finalizado?</p>", unsafe_allow_html=True)
+                    obs_fast = st.text_input("Observação / Justificativa (Opcional):", placeholder="Ex: Demora por falta de ferramenta...")
+                    
+                    c1, c2, c3 = st.columns(3)
+                    btn_sim = c1.form_submit_button("✅ Sim (Produzir)")
+                    btn_assumir = c2.form_submit_button("🔄 Assumir")
+                    btn_alt = c3.form_submit_button("⚠️ Alterar")
+                    
                 if btn_sim:
                     hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                     info_atual = obter_info_maquina(maq_id, setor)
@@ -1353,21 +1435,49 @@ def painel_controle_maquina(maq_id, setor):
                 if bloquear_inicio: st.warning(msg_bloqueio)
                 
                 is_afc_seq = (setor == "AFC" and is_seq)
-
+                
                 if is_afc_seq:
                     c1, c2, c3, c4 = st.columns(4)
                     btn_sugerir = c1.form_submit_button("💡 Sugerir")
-                    btn_rebolo_adiantado = c2.form_submit_button("Adiantamento de Rebolo.")
-                    btn_iniciar = c3.form_submit_button("🚀 INICIAR", type="primary", disabled=bloquear_inicio)
+                    btn_iniciar = c2.form_submit_button("🚀 INICIAR", type="primary", disabled=bloquear_inicio)
+                    btn_rebolo_adiantado = c3.form_submit_button("🛞 Trocar Rebolo")
                     btn_alterar = c4.form_submit_button("⚠️ Alterar")
                 else:
                     c1, c2, c3 = st.columns(3)
                     btn_sugerir = c1.form_submit_button("💡 Apenas Sugerir")
-                    btn_rebolo_adiantado = False
                     btn_iniciar = c2.form_submit_button("🚀 INICIAR", type="primary", disabled=bloquear_inicio)
+                    btn_rebolo_adiantado = False
                     btn_alterar = c3.form_submit_button("⚠️ Alterar Status")
                 
                 if btn_alterar: st.session_state[flow_key] = "mudanca_status"; st.rerun()
+
+                if btn_rebolo_adiantado:
+                    nome_final = nome_input if nome_input.strip() else st.session_state['operador']
+                    hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                    info_atual = obter_info_maquina(maq_id, setor)
+                    tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
+                    
+                    tags_prod = re.sub(r' \[Ordem:.*?\]', '', tags_prod)
+                    tags_prod = re.sub(r' \[Novo Item:.*?\]', '', tags_prod)
+                    
+                    h_alvo = ""
+                    st_atual_raw = str(info_atual['Status']) if info_atual else ""
+                    if "AGENDADA PARA" in st_atual_raw.upper():
+                        try: h_alvo = st_atual_raw.upper().split('AGENDADA PARA')[1].strip().split(" ")[0]
+                        except: pass
+                    elif "[AGENDADO:" in st_atual_raw.upper():
+                        try: h_alvo = st_atual_raw.upper().split('[AGENDADO:')[1].split(']')[0].strip()
+                        except: pass
+                        
+                    st_andamento = f"PREPARANDO - TROCA DE REBOLO ADIANTADA [Prep: {nome_final.strip().upper()}]"
+                    if h_alvo: st_andamento += f" [AGENDADO:{h_alvo}]"
+                    st_andamento += f" {tags_prod}"
+                    
+                    salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_andamento.strip(), "Hora": hora_br_str}, ARQUIVO_DADOS)
+                    st.session_state['maq_ativa'] = None
+                    del st.session_state[flow_key]
+                    st.success("✅ Troca de rebolo iniciada! O tempo já está contando.")
+                    time.sleep(1.5); st.rerun()
 
                 if btn_rebolo_adiantado:
                     info_atual = obter_info_maquina(maq_id, setor)
