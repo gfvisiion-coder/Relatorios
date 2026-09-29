@@ -1357,7 +1357,7 @@ def painel_controle_maquina(maq_id, setor):
                 if is_afc_seq:
                     c1, c2, c3, c4 = st.columns(4)
                     btn_sugerir = c1.form_submit_button("💡 Sugerir")
-                    btn_rebolo_adiantado = c2.form_submit_button("🛞 Rebolo Adiant.")
+                    btn_rebolo_adiantado = c2.form_submit_button("Adiantamento de Rebolo.")
                     btn_iniciar = c3.form_submit_button("🚀 INICIAR", type="primary", disabled=bloquear_inicio)
                     btn_alterar = c4.form_submit_button("⚠️ Alterar")
                 else:
