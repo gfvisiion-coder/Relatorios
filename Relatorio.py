@@ -3067,6 +3067,7 @@ def tela_programador():
                     elif "[Prep. Sugerido:" in st_m: preparador = st_m.split("[Prep. Sugerido:")[1].split("]")[0].strip()
                     elif "[PREP:" in st_m.upper(): preparador = st_m.upper().split("[PREP:")[1].split("]")[0].strip()
 
+                    # 1. Extrai o que está salvo na máquina
                     op_maq, item_maq = "", ""
                     if "[Ordem:" in st_m:
                         try: op_maq = st_m.split("[Ordem:")[1].split("]")[0].strip()
@@ -3078,6 +3079,7 @@ def tela_programador():
                         try: item_maq = st_m.split("[Item Atual:")[1].split("]")[0].strip()
                         except: pass
 
+                    # 2. Extrai o que está cadastrado no Armário pelo Pré-Set
                     op_arm, item_arm = "", ""
                     if not df_arm.empty:
                         gaveta_num = maq_m.split("-")[0]
@@ -3087,15 +3089,16 @@ def tela_programador():
                             op_arm = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nan', '').strip()
                             item_arm = str(gaveta_row.iloc[0].get('Item', '')).replace('.0', '').replace('nan', '').strip()
 
+                    # 3. PRIORIDADE: Pré-Set (Armário) primeiro, máquina como fallback
                     if is_guia:
                         item_guia = item_maq if item_maq else obter_item_rodando_atual(f"{setor_m} {maq_m}")
                         if not item_guia or item_guia == "-": item_guia = item_arm if item_arm else "-"
                         final_item = item_guia
                         label_item_txt = "Item Rodando (Atual)"
-                        final_op = op_maq if op_maq else (op_arm if op_arm else "Manter Atual")
+                        final_op = op_arm if op_arm else (op_maq if op_maq else "Manter Atual")
                     else:
-                        final_op = op_maq if op_maq else (op_arm if op_arm else "Nenhuma")
-                        final_item = item_maq if item_maq else (item_arm if item_arm else "-")
+                        final_op = op_arm if op_arm else (op_maq if op_maq else "Nenhuma")
+                        final_item = item_arm if item_arm else (item_maq if item_maq else "-")
                         label_item_txt = "Item"
 
                     h_alvo = ""
