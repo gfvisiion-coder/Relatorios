@@ -1048,7 +1048,8 @@ def painel_controle_maquina(maq_id, setor):
                     btn_alt = c3.form_submit_button("⚠️ Alterar")
                     
                     if btn_concluir:
-                        from datetime import datetime, timedelta
+                        # IMPORTANTE: Apenas importamos o timedelta para não dar conflito com o datetime global!
+                        from datetime import timedelta  
                         
                         hora_atual = datetime.now(FUSO_BR)
                         hora_br_str = hora_atual.strftime("%H:%M")
@@ -1093,29 +1094,6 @@ def painel_controle_maquina(maq_id, setor):
                         del st.session_state[flow_key]
                         st.success(f"✅ Troca concluída em {minutos_decorridos} min! Novo agendamento: {h_alvo if h_alvo else '--'}")
                         time.sleep(2.0); st.rerun()
-                        
-                        # 1. Gera registro fantasma para o relatório entender que a prep fechou e contar os minutos
-                        st_fechamento = "PRODUZINDO [Troca de Rebolo Concluída]"
-                        if obs_fast.strip(): st_fechamento += f" [Obs: {obs_fast.strip()}]"
-                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_fechamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
-                        
-                        # 2. Devolve a máquina para a fila aguardando a sequência real, com o mesmo horário
-                        h_alvo = ""
-                        if "[AGENDADO:" in st_atual_raw:
-                            try: h_alvo = st_atual_raw.split("[AGENDADO:")[1].split("]")[0].strip()
-                            except: pass
-                        
-                        tags_prod = extrair_tags_producao(st_atual_raw)
-                        st_volta = f"AGUARDANDO PREPARADOR - SEQUÊNCIA"
-                        if h_alvo: st_volta += f" [AGENDADO:{h_alvo}]"
-                        st_volta += f" {tags_prod}"
-                        
-                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_volta.strip(), "Hora": hora_br_str}, ARQUIVO_DADOS)
-                        
-                        st.session_state['maq_ativa'] = None
-                        del st.session_state[flow_key]
-                        st.success("✅ Tempo da troca registrado! A máquina voltou para a fila aguardando a sequência.")
-                        time.sleep(1.5); st.rerun()
 
                 else:
                     st.markdown(f"<p style='text-align: center; font-weight: 600;'>O setup desta máquina foi finalizado?</p>", unsafe_allow_html=True)
