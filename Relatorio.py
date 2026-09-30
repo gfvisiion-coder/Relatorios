@@ -559,7 +559,7 @@ def verificar_virada_turno():
         
         is_setup = st_upper.startswith("PREPARAÇÃO") or st_upper.startswith("PREPARACAO") or st_upper.startswith("PREPARANDO") or st_upper.startswith("SEQUÊNCIA") or st_upper.startswith("SEQUENCIA")
         
-        # CORREÇÃO: Se tiver agendamento futuro, NÃO aplica o corte de turno forçado para AGUARDANDO PREPARADOR
+        # Se tiver agendamento futuro, NÃO aplica o corte de turno forçado para AGUARDANDO PREPARADOR
         tem_agendamento_futuro = "[AGENDADO:" in st_upper or "AGENDADA PARA" in st_upper
         
         if is_setup and not tem_agendamento_futuro:
@@ -700,7 +700,6 @@ def exibir_alertas_preset():
                             maq_num_only = maq_id_full.split(" ")[1]  # Ex: "38-881" ou "38-596"
                             gaveta_num = maq_num_only.split("-")[0]   # Ex: "38"
                             
-                            # Filtra o armário correto com base no setor
                             filtro_armario = "Afiadoras" if setor_maq == "AFC" else "Retíficas"
                             
                             gaveta_row = df_arm[
@@ -902,6 +901,7 @@ def mudar_tela(nome_tela):
     st.session_state['lirs_maq_ativa'] = None
     st.rerun()
 
+# --- CORREÇÃO PRINCIPAL: LER STATUS ATUAL DENTRO DA JANELA DE TEMPO ---
 def ler_status_atual():
     checar_e_auto_encerrar()
     verificar_virada_turno()
@@ -926,7 +926,10 @@ def ler_status_atual():
                 
             if hora_alvo:
                 try:
-                    h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M").replace(year=agora_br_dt.year, month=agora_br_dt.month, day=agora_br_dt.day, tzinfo=FUSO_BR)
+                    h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M").replace(
+                        year=agora_br_dt.year, month=agora_br_dt.month, day=agora_br_dt.day, tzinfo=FUSO_BR
+                    )
+                    
                     if h_alvo_dt < agora_br_dt and (agora_br_dt - h_alvo_dt).total_seconds() > 12 * 3600: 
                         h_alvo_dt += timedelta(days=1)
                     elif agora_br_dt < h_alvo_dt and (h_alvo_dt - agora_br_dt).total_seconds() > 12 * 3600: 
@@ -934,16 +937,15 @@ def ler_status_atual():
                         
                     if agora_br_dt >= h_alvo_dt:
                         tipo_agendado = st_raw.split(" AGENDADA PARA")[0] if "AGENDADA PARA" in st_raw else st_raw.split(" [AGENDADO:")[0]
-                        if "AGUARDANDO PREPARADOR" not in tipo_agendado.upper():
-                            st_base = f"AGUARDANDO PREPARADOR - {tipo_agendado.strip()}"
-                        else:
-                            st_base = tipo_agendado.strip()
-                            
+                        tipo_agendado = tipo_agendado.replace("AGUARDANDO PREPARADOR - ", "").strip()
+                        
+                        st_base = f"AGUARDANDO PREPARADOR - {tipo_agendado}"
                         sug = f" [Prep. Sugerido: {st_raw.split('[Prep. Sugerido:')[1].split(']')[0].strip()}]" if "[Prep. Sugerido:" in st_raw else ""
                         tags = extrair_tags_producao(st_raw)
                         status_calculado[maq] = f"{st_base}{sug} {tags}".strip()
                     else:
-                        status_calculado[maq] = st_raw
+                        st_limpo = st_raw.replace("AGUARDANDO PREPARADOR - ", "").strip()
+                        status_calculado[maq] = st_limpo
                 except:
                     status_calculado[maq] = st_raw
             else:
@@ -1095,7 +1097,7 @@ def painel_controle_maquina(maq_id, setor):
                             except: pass
                         
                         tags_prod = extrair_tags_producao(st_atual_raw)
-                        st_volta = f"AGUARDANDO PREPARADOR - SEQUÊNCIA"
+                        st_volta = f"SEQUÊNCIA"
                         if h_alvo: st_volta += f" [AGENDADO:{h_alvo}]"
                         st_volta += f" {tags_prod}"
                         
@@ -1349,7 +1351,7 @@ def painel_controle_maquina(maq_id, setor):
                             detalhe_setup += f" [Prog: {val_prog}]"
                             
                         if is_agendado and hora_relatorio.strip(): 
-                            st_final = f"AGUARDANDO PREPARADOR - {detalhe_setup} [AGENDADO:{hora_relatorio.strip()}]"
+                            st_final = f"{detalhe_setup} [AGENDADO:{hora_relatorio.strip()}]"
                         else: 
                             st_final = f"AGUARDANDO PREPARADOR - {detalhe_setup}"
                         
@@ -1538,7 +1540,6 @@ def painel_controle_maquina(maq_id, setor):
                         st_andamento = f"PREPARANDO [Prep: {nome_final.strip().upper()}] {tags_prod}".strip()
                         nova_ordem_limpa = nova_ordem_input.strip().upper().replace(".0", "").lstrip("0")
 
-                        # SOMENTE DÁ BAIXA NO ARMÁRIO SE NÃO FOR GUIA
                         if not is_guia:
                             if is_comum:
                                 item_buscado = buscar_item_por_ordem(nova_ordem_limpa)
@@ -1549,7 +1550,6 @@ def painel_controle_maquina(maq_id, setor):
                                 st_andamento += f" [Ordem: {nova_ordem_limpa}]"
                                 dar_baixa_armario(nova_ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
                         else:
-                            # SE FOR GUIA: PRESERVA A ORDEM ATUAL E NÃO REMOVE DO ARMÁRIO
                             if nova_ordem_limpa:
                                 st_andamento += f" [Ordem: {nova_ordem_limpa}]"
                             
@@ -2391,7 +2391,7 @@ def tela_armarios():
         
         st.markdown(f"""
         <div style='background: #18181B; padding: 15px; border-radius: 10px; border-left: 4px solid #14B8A6; margin-bottom: 20px;'>
-            <h4 style='margin:0; color: #2DD4BF;'>⚙️️ Gerenciar: {arm_sel} - MÁQUINA {pos_sel}</h4>
+            <h4 style='margin:0; color: #2DD4BF;'>⚙ Gerenciar: {arm_sel} - MÁQUINA {pos_sel}</h4>
         </div>
         """, unsafe_allow_html=True)
         
@@ -2788,7 +2788,7 @@ def tela_armarios():
             st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode editar as gavetas em lote.")
 
 def tela_lirs():
-    if st.button("⬅️️ Voltar à Central"): 
+    if st.button("⬅ Voltar à Central"): 
         st.session_state['lirs_maq_ativa'] = None
         st.session_state['celula_selecionada'] = None
         mudar_tela('hub_relatorios')
