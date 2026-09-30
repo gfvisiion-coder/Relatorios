@@ -559,7 +559,6 @@ def verificar_virada_turno():
         
         is_setup = st_upper.startswith("PREPARAÇÃO") or st_upper.startswith("PREPARACAO") or st_upper.startswith("PREPARANDO") or st_upper.startswith("SEQUÊNCIA") or st_upper.startswith("SEQUENCIA")
         
-        # Se tiver agendamento futuro, NÃO aplica o corte de turno forçado para AGUARDANDO PREPARADOR
         tem_agendamento_futuro = "[AGENDADO:" in st_upper or "AGENDADA PARA" in st_upper
         
         if is_setup and not tem_agendamento_futuro:
@@ -696,9 +695,9 @@ def exibir_alertas_preset():
                         delta_mins = int((h_alvo_dt - agora_dt).total_seconds() / 60)
                         
                         if -120 <= delta_mins <= 180:
-                            setor_maq = maq_id_full.split(" ")[0]     # "AFC" ou "RTF"
-                            maq_num_only = maq_id_full.split(" ")[1]  # Ex: "38-881" ou "38-596"
-                            gaveta_num = maq_num_only.split("-")[0]   # Ex: "38"
+                            setor_maq = maq_id_full.split(" ")[0]
+                            maq_num_only = maq_id_full.split(" ")[1]
+                            gaveta_num = maq_num_only.split("-")[0]
                             
                             filtro_armario = "Afiadoras" if setor_maq == "AFC" else "Retíficas"
                             
@@ -901,7 +900,6 @@ def mudar_tela(nome_tela):
     st.session_state['lirs_maq_ativa'] = None
     st.rerun()
 
-# --- CORREÇÃO PRINCIPAL: LER STATUS ATUAL DENTRO DA JANELA DE TEMPO ---
 def ler_status_atual():
     checar_e_auto_encerrar()
     verificar_virada_turno()
@@ -1230,7 +1228,7 @@ def painel_controle_maquina(maq_id, setor):
                 
                 if st.form_submit_button("🚀 INICIAR PRODUÇÃO", type="primary"):
                     if not ordem.strip() or not item.strip():
-                        st.error("⚠ A Ordem e o Item são obrigatórios!")
+                        st.error("⚠️ A Ordem e o Item são obrigatórios!")
                     else:
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                         item_limpo = item.strip().upper().replace(".0", "").lstrip("0")
@@ -1356,9 +1354,9 @@ def painel_controle_maquina(maq_id, setor):
                             st_final = f"AGUARDANDO PREPARADOR - {detalhe_setup}"
                         
                         ordem_limpa = ordem_atual.strip().upper().replace(".0", "").lstrip("0")
-                        item_limpo = item_atual.strip().upper().replace(".0", "").lstrip("0")
+                        item_limpa = item_atual.strip().upper().replace(".0", "").lstrip("0")
                         if ordem_limpa: st_final += f" [Ordem: {ordem_limpa}]"
-                        if item_limpo: st_final += f" [Item Atual: {item_limpo}]"
+                        if item_limpa: st_final += f" [Item Atual: {item_limpa}]"
                         
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
@@ -1398,7 +1396,7 @@ def painel_controle_maquina(maq_id, setor):
                     if op_armario:
                         st.success(f"📦 OP {op_armario} puxada automaticamente do armário! (Item: {item_armario})")
                     else:
-                        st.info("ℹ O Item da peça será puxado automaticamente do armário baseado nesta OP.")
+                        st.info("ℹ️ O Item da peça será puxado automaticamente do armário baseado nesta OP.")
                 elif is_seq:
                     nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", value=op_armario, placeholder="Ex: 987654")
                     if op_armario:
@@ -1924,15 +1922,15 @@ def tela_checkup():
                                 op_arm = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nan', '').strip()
                                 item_arm = str(gaveta_row.iloc[0].get('Item', '')).replace('.0', '').replace('nan', '').strip()
 
+                        # --- CORREÇÃO DE PRIORIDADE: ARMÁRIO TEM PRIORIDADE MÁXIMA ---
                         if is_guia:
-                            item_guia = item_maq if item_maq else obter_item_rodando_atual(f"{setor_m} {maq_m}")
-                            if not item_guia or item_guia == "-": item_guia = item_arm if item_arm else "-"
-                            final_item = item_guia
+                            item_guia = item_arm if item_arm else (item_maq if item_maq else obter_item_rodando_atual(f"{setor_m} {maq_m}"))
+                            final_item = item_guia if item_guia else "-"
                             label_item_txt = "Item Rodando (Atual)"
-                            final_op = op_maq if op_maq else (op_arm if op_arm else "Manter Atual")
+                            final_op = op_arm if op_arm else (op_maq if op_maq else "Manter Atual")
                         else:
-                            final_op = op_maq if op_maq else (op_arm if op_arm else "Nenhuma")
-                            final_item = item_maq if item_maq else (item_arm if item_arm else "-")
+                            final_op = op_arm if op_arm else (op_maq if op_maq else "Nenhuma")
+                            final_item = item_arm if item_arm else (item_maq if item_maq else "-")
                             label_item_txt = "Item"
 
                         reb1, reb2 = "-", "-"
@@ -2275,7 +2273,7 @@ def tela_equipe():
         if not df_eq.empty: st.dataframe(df_eq, use_container_width=True, hide_index=True)
 
 def tela_editar():
-    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    if st.button("⬅️️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### ✏️ Correção de Apontamentos")
     perfil = st.session_state['perfil']
     setor_usuario = st.session_state['setor_usuario']
@@ -3078,10 +3076,10 @@ def tela_programador():
                             op_arm = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nan', '').strip()
                             item_arm = str(gaveta_row.iloc[0].get('Item', '')).replace('.0', '').replace('nan', '').strip()
 
+                    # --- CORREÇÃO DE PRIORIDADE: ARMÁRIO TEM PRIORIDADE MÁXIMA ---
                     if is_guia:
-                        item_guia = item_maq if item_maq else obter_item_rodando_atual(f"{setor_m} {maq_m}")
-                        if not item_guia or item_guia == "-": item_guia = item_arm if item_arm else "-"
-                        final_item = item_guia
+                        item_guia = item_arm if item_arm else (item_maq if item_maq else obter_item_rodando_atual(f"{setor_m} {maq_m}"))
+                        final_item = item_guia if item_guia else "-"
                         label_item_txt = "Item Rodando (Atual)"
                         final_op = op_arm if op_arm else (op_maq if op_maq else "Manter Atual")
                     else:
