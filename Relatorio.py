@@ -981,7 +981,7 @@ def painel_controle_maquina(maq_id, setor):
             tipo_atual = get_tipo_cnc(maq_id)
             col_t.markdown(f"<h4 style='color: #2DD4BF !important; margin:0;'>⚙️ MÁQUINA: {maq_id} <span style='font-size:13px; color:#A1A1AA; font-weight:normal;'>({tipo_atual})</span></h4>", unsafe_allow_html=True)
         else:
-            col_t.markdown(f"<h4 style='color: #2DD4BF !important; margin:0;'>⚙️️ MÁQUINA: {maq_id}</h4>", unsafe_allow_html=True)
+            col_t.markdown(f"<h4 style='color: #2DD4BF !important; margin:0;'>⚙ MÁQUINA: {maq_id}</h4>", unsafe_allow_html=True)
             
         if col_f.button("✕", key=f"fechar_{maq_id}"):
             st.session_state['maq_ativa'] = None
@@ -1332,7 +1332,7 @@ def painel_controle_maquina(maq_id, setor):
                     if not hora_relatorio.strip():
                         st.error("⚠ O campo de horário é obrigatório!")
                     elif prep_sugerido.strip() and not is_guia and prog_status_prep == "-- Vá até a máquina e verifique --":
-                        st.error("⚠️️ Como você sugeriu um preparador, é OBRIGATÓRIO verificar na máquina se o Programa está OK!")
+                        st.error("⚠ Como você sugeriu um preparador, é OBRIGATÓRIO verificar na máquina se o Programa está OK!")
                     else:
                         if setor == "AFC":
                             detalhe_setup = tipo_setup
@@ -2880,7 +2880,7 @@ def tela_lirs():
                         
                         st.markdown("""
                         <div style='background-color: #18181B; padding: 12px; border-radius: 8px; border: 1px solid #27272A; margin-bottom: 10px; margin-top: 15px;'>
-                            <b style='color: #2DD4BF; font-size: 15px;'>⚖️️ R - Reconciliação</b><br>
+                            <b style='color: #2DD4BF; font-size: 15px;'>⚖ R - Reconciliação</b><br>
                             <span style='font-size: 12px; color: #A1A1AA;'>Contagem física coerente com a OP e garantia total de ausência de peças de outros lotes.</span>
                         </div>
                         """, unsafe_allow_html=True)
