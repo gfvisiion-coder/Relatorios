@@ -24,132 +24,80 @@ TODAS_RTF = ["5-903", "8-086", "10-817", "12-962", "14-971", "16-183", "19-926",
              "30-786", "32-918", "34-842", "36-854", "38-881", "40-912", "42-885", "4-425", "6-6J1", "17-6J1", "3-426"]
 
 # --- DESIGN SYSTEM ---
-# --- DESIGN SYSTEM: NEODENT / ENTERPRISE LIGHT ---
 CSS_APP = """
 <style>
-    @import url('https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600;700&display=swap');
-
-    /* Fundo geral da aplicação */
-    .stApp {
-        background-color: #F4F5F7 !important;
-        font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, sans-serif !important;
+    .stApp { background-color: #09090B !important; }
+    h1, h2, h3, h4, h5, p, div[data-testid="stMarkdownContainer"] > p { 
+        color: #F4F4F5 !important; 
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important; 
     }
-
-    /* Ocultar elementos desnecessários do Streamlit */
-    header, footer, #MainMenu { visibility: hidden; }
-    .block-container { padding: 0.8rem 1rem !important; max-width: 100% !important; }
-
-    /* Textos gerais */
-    h1, h2, h3, h4, h5, h6, p, label, div[data-testid="stMarkdownContainer"] > p {
-        color: #333333 !important;
-        font-family: 'Segoe UI', sans-serif !important;
+    label { color: #E4E4E7 !important; font-size: 12px !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 0.5px; }
+    .block-container { padding: 0.6rem 0.5rem !important; max-width: 100% !important; }
+    
+    button[kind="secondary"] { 
+        background-color: #18181B !important; color: #2DD4BF !important; 
+        border: 1px solid #3F3F46 !important; border-radius: 8px !important; 
+        font-weight: 600 !important; height: 46px !important; font-size: 13px !important;
+        width: 100% !important; margin-bottom: 6px !important; transition: all 0.2s ease-in-out;
     }
-
-    label {
-        font-size: 11px !important;
-        font-weight: 700 !important;
-        text-transform: uppercase;
-        color: #555555 !important;
-        letter-spacing: 0.3px;
+    button[kind="secondary"]:hover { border-color: #14B8A6 !important; background-color: #27272A !important; color: #5EEAD4 !important; }
+    
+    div[data-testid="stFormSubmitButton"] > button, button[kind="primary"] { 
+        background: linear-gradient(135deg, #0D9488 0%, #0F766E 100%) !important; 
+        color: white !important; border: none !important; border-radius: 8px !important; 
+        height: 46px !important; font-size: 13px !important; font-weight: 700 !important; 
+        width: 100% !important; box-shadow: 0 4px 12px rgba(13, 148, 136, 0.3);
     }
-
-    /* Containers e Cards no estilo dos painéis de formulário */
+    div[data-testid="stFormSubmitButton"] > button:hover { background: linear-gradient(135deg, #0F766E 100%, #115E59 100%) !important; }
+    
+    div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, div[data-baseweb="textarea"] > div { 
+        background-color: #27272A !important; border: 1px solid #52525B !important; 
+        border-radius: 8px !important; min-height: 42px !important; 
+    }
+    
+    input, select, textarea { color: #FF4444 !important; font-size: 15px !important; font-weight: 600 !important; }
+    
     div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"] {
-        background-color: #FFFFFF !important;
-        border: 1px solid #E0E0E0 !important;
-        border-radius: 4px !important;
-        padding: 12px !important;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.05) !important;
+        background-color: #121214; border: 1px solid #27272A; border-radius: 12px;
+        padding: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.4);
     }
-
-    /* Botões de Ação Primária (Estilo do botão 'Filtrar' e 'Salvar' púrpura) */
-    div[data-testid="stFormSubmitButton"] > button, button[kind="primary"] {
-        background-color: #702167 !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        border-radius: 3px !important;
-        height: 38px !important;
-        font-size: 13px !important;
-        font-weight: 600 !important;
-        width: 100% !important;
-        transition: background-color 0.2s ease;
+    
+    div[data-testid="stButton"] > button {
+        height: 60px !important;
+        padding: 5px !important;
+        border-radius: 8px !important;
+        font-size: 12px !important;
+        line-height: 1.2 !important;
+        white-space: pre-wrap !important;
     }
-    div[data-testid="stFormSubmitButton"] > button:hover, button[kind="primary"]:hover {
-        background-color: #581851 !important;
-        color: #FFFFFF !important;
-    }
-
-    /* Botões Secundários (Estilo do botão cinza 'Limpar filtros' / 'Cancelar') */
-    button[kind="secondary"], div[data-testid="stButton"] > button {
-        background-color: #B5B5B5 !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        border-radius: 3px !important;
-        font-weight: 600 !important;
-        height: 38px !important;
-        font-size: 13px !important;
-        width: 100% !important;
-        transition: background-color 0.2s ease;
-    }
-    button[kind="secondary"]:hover, div[data-testid="stButton"] > button:hover {
-        background-color: #9E9E9E !important;
-        color: #FFFFFF !important;
-        border: none !important;
-    }
-
-    /* Campos de Entrada / Inputs / Selects */
-    div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, div[data-baseweb="textarea"] > div {
-        background-color: #FFFFFF !important;
-        border: 1px solid #CCCCCC !important;
-        border-radius: 3px !important;
-        min-height: 36px !important;
-    }
-    div[data-baseweb="input"] > div:focus-within, div[data-baseweb="select"] > div:focus-within {
-        border-color: #702167 !important;
-        box-shadow: 0 0 0 1px #702167 !important;
-    }
-
-    input, select, textarea {
-        color: #333333 !important;
-        font-size: 13px !important;
-        font-weight: 400 !important;
-    }
-
-    /* Listas e Tabs com seleção Púrpura */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 2px;
-        background-color: #EAEAEA;
-        padding: 4px;
-        border-radius: 4px;
-    }
-
-    .stTabs [data-baseweb="tab"] {
-        height: 36px;
-        background-color: transparent;
-        border-radius: 3px;
-        color: #555555 !important;
-        font-weight: 600;
-        font-size: 12px;
-    }
-
-    .stTabs [aria-selected="true"] {
-        background-color: #702167 !important;
-        color: #FFFFFF !important;
-    }
-
-    /* Tabelas e Dataframes */
-    div[data-testid="stDataFrame"] {
-        border: 1px solid #E0E0E0 !important;
-        background-color: #FFFFFF !important;
-        border-radius: 4px !important;
-    }
-
-    /* Alertas e Badges de Estado */
+    
     div[data-testid="stToast"] {
-        background-color: #FFFFFF !important;
-        border-left: 4px solid #702167 !important;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.1) !important;
+        background-color: #450a0a !important;
+        border: 1px solid #ef4444 !important;
+        border-radius: 8px !important;
+        padding: 15px !important;
     }
+    div[data-testid="stToast"] div[data-testid="stMarkdownContainer"] > p {
+        color: #ff6b6b !important;
+        font-weight: 800 !important;
+        font-size: 16px !important;
+    }
+    
+    @keyframes pulse-red {
+        0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+        70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+        100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+    }
+    .alerta-pisca {
+        animation: pulse-red 2s infinite;
+        background-color: #450a0a !important;
+        border: 2px solid #ef4444 !important;
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+    
+    header { visibility: hidden; }
 </style>
 """
 st.markdown(CSS_APP, unsafe_allow_html=True)
