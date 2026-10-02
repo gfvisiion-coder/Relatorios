@@ -723,7 +723,7 @@ def exibir_alertas_preset():
     if alertas_urgentes:
         html_alertas = "<div class='alerta-pisca'>"
         html_alertas += "<h4 style='margin-top:0; color:#fca5a5;'>🚨 ALERTA DE GAVETA VAZIA / PREPARAÇÃO IMINENTE</h4>"
-        for alerta in sorted(alertas_urgentes, key=x: x['delta']):
+        for alerta in sorted(alertas_urgentes, key=lambda x: x['delta']):
             if alerta['delta'] > 0:
                 tempo_txt = f"falta(m) {alerta['delta']} min para a parada"
             elif alerta['delta'] == 0:
@@ -854,7 +854,7 @@ def get_status_icon(status_str):
     elif "AGENDADO" in status_str or "AGENDADA" in status_str: return "🔵"
     elif "SEQUÊNCIA" in status_str: return "🟣"
     elif "PREPARAÇÃO" in status_str or "PREPARANDO" in status_str: return "🟡"
-    elif "MANUTENÇÃO" in status_str: return "🛠️️"
+    elif "MANUTENÇÃO" in status_str: return "🛠️"
     elif "PARADA" in status_str: return "🔴"
     else: return "🟢"
 
@@ -1331,7 +1331,7 @@ def painel_controle_maquina(maq_id, setor):
                 
                 if st.form_submit_button("💾 Salvar Registro", type="primary"):
                     if not hora_relatorio.strip():
-                        st.error("⚠️️ O campo de horário é obrigatório!")
+                        st.error("⚠️ O campo de horário é obrigatório!")
                     elif prep_sugerido.strip() and not is_guia and prog_status_prep == "-- Vá até a máquina e verifique --":
                         st.error("⚠️ Como você sugeriu um preparador, é OBRIGATÓRIO verificar na máquina se o Programa está OK!")
                     else:
@@ -1396,7 +1396,7 @@ def painel_controle_maquina(maq_id, setor):
                     if op_armario:
                         st.success(f"📦 OP {op_armario} puxada automaticamente do armário! (Item: {item_armario})")
                     else:
-                        st.info("ℹ️️ O Item da peça será puxado automaticamente do armário baseado nesta OP.")
+                        st.info("ℹ️ O Item da peça será puxado automaticamente do armário baseado nesta OP.")
                 elif is_seq:
                     nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", value=op_armario, placeholder="Ex: 987654")
                     if op_armario:
@@ -1470,22 +1470,14 @@ def painel_controle_maquina(maq_id, setor):
                     st.success("✅ Troca de rebolo iniciada! O tempo já está contando.")
                     time.sleep(1.5); st.rerun()
 
-                # --- LÓGICA DE ADIAR CORRIGIDA ---
                 if btn_adiar:
                     if novo_horario_adiar.strip():
                         info_atual = obter_info_maquina(maq_id, setor)
                         if info_atual:
                             raw_st = str(info_atual['Status'])
-                            
-                            # 1. Remove o prefixo AGUARDANDO PREPARADOR se ele estiver presente
-                            raw_st = re.sub(r'^AGUARDANDO PREPARADOR\s*-\s*', '', raw_st, flags=re.IGNORECASE).strip()
-                            
-                            # 2. Remove tags antigas de agendamento
                             raw_st = re.sub(r'AGENDADA PARA \d{2}:\d{2}', '', raw_st, flags=re.IGNORECASE)
                             raw_st = re.sub(r'\[AGENDADO:\d{2}:\d{2}\]', '', raw_st, flags=re.IGNORECASE)
                             raw_st = raw_st.strip()
-                            
-                            # 3. Adiciona a nova tag com o novo horário
                             raw_st += f" [AGENDADO:{novo_horario_adiar.strip()}]"
                             
                             salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": raw_st, "Hora": novo_horario_adiar.strip()}, ARQUIVO_DADOS)
@@ -1930,6 +1922,7 @@ def tela_checkup():
                                 op_arm = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nan', '').strip()
                                 item_arm = str(gaveta_row.iloc[0].get('Item', '')).replace('.0', '').replace('nan', '').strip()
 
+                        # --- CORREÇÃO DE PRIORIDADE: ARMÁRIO TEM PRIORIDADE MÁXIMA ---
                         if is_guia:
                             item_guia = item_arm if item_arm else (item_maq if item_maq else obter_item_rodando_atual(f"{setor_m} {maq_m}"))
                             final_item = item_guia if item_guia else "-"
@@ -2158,7 +2151,7 @@ def tela_minhas_incidencias():
         painel_controle_maquina(st.session_state['maq_ativa'], st.session_state['setor_ativo'])
         st.divider()
 
-    if not minhas_maquinas: st.info("ℹ️️ Você não possui nenhuma máquina em preparação no momento.")
+    if not minhas_maquinas: st.info("ℹ️ Você não possui nenhuma máquina em preparação no momento.")
     else:
         for setor_m, maq_m, st_m in minhas_maquinas:
             icone = get_status_icon(st_m)
@@ -2280,7 +2273,7 @@ def tela_equipe():
         if not df_eq.empty: st.dataframe(df_eq, use_container_width=True, hide_index=True)
 
 def tela_editar():
-    if st.button("⬅ Voltar ao Menu"): mudar_tela('menu')
+    if st.button("⬅️️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### ✏️ Correção de Apontamentos")
     perfil = st.session_state['perfil']
     setor_usuario = st.session_state['setor_usuario']
@@ -2326,7 +2319,7 @@ def tela_editar():
     else: st.info("Nenhum apontamento encontrado no sistema.")
 
 def tela_historico():
-    if st.button("⬅️️ Voltar ao Menu"): mudar_tela('menu')
+    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
     st.markdown("#### 📊 Histórico e Exportações")
     aba1, aba2 = st.tabs(["📝 Relatórios Textuais", "📥 Banco de Eventos (Planilha)"])
     with aba1:
@@ -2702,7 +2695,7 @@ def tela_armarios():
                             <p style='margin: 4px 0 0 0; font-size: 13px; color: #A1A1AA;'>🔄 Rebolo Cadastrado (Armário): <b style='color: #2DD4BF;'>{reb_txt}</b></p>
                         </div>"""
                     else:
-                        info_reb = f"""<div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'><p style='margin: 0; font-size: 13px; color: #ef4444;'>⚠️️ Gaveta vazia e item não informado na máquina.</p></div>"""
+                        info_reb = f"""<div style='background-color: #27272A; padding: 10px; border-radius: 6px; margin-top: 10px; border: 1px solid #3F3F46;'><p style='margin: 0; font-size: 13px; color: #ef4444;'>⚠️ Gaveta vazia e item não informado na máquina.</p></div>"""
 
                     st.markdown(f"""<div style='background-color: #422006; padding: 15px; border-radius: 8px; border-left: 5px solid #f59e0b; margin-bottom: 10px;'><h5 style='margin-top:0; margin-bottom:5px; color: #fbbf24;'>⚙️ Máquina {maq} irá trocar o rebolo</h5><p style='color: #fef3c7; margin-bottom:0; font-size:14px;'>{h_txt} <br><span style='font-size:13px; color:#d97706;'>Status Atual: {st_limpo}</span></p>{info_reb}</div>""", unsafe_allow_html=True)
             else: st.success("✅ Nenhuma máquina com troca de rebolo prevista no momento.")
@@ -2753,7 +2746,7 @@ def tela_armarios():
             st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode registrar devoluções.")
 
     with aba6:
-        st.markdown("#### ✏️️ Edição de Armários em Lote")
+        st.markdown("#### ✏️ Edição de Armários em Lote")
         st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Edite as gavetas diretamente na tabela, simulando um Excel. Ótimo para correções rápidas.</p>", unsafe_allow_html=True)
         if st.session_state['perfil'] in ['preset', 'adm']:
             df_arm_edit = df_arm.fillna("").copy()
@@ -2790,7 +2783,7 @@ def tela_armarios():
                 st.success("✅ Armários atualizados em lote com sucesso!")
                 time.sleep(0.5); st.rerun()
         else:
-            st.info("ℹ️️ Apenas o perfil do Pré-Set e Administração pode editar as gavetas em lote.")
+            st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode editar as gavetas em lote.")
 
 def tela_lirs():
     if st.button("⬅ Voltar à Central"): 
@@ -3083,6 +3076,7 @@ def tela_programador():
                             op_arm = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nan', '').strip()
                             item_arm = str(gaveta_row.iloc[0].get('Item', '')).replace('.0', '').replace('nan', '').strip()
 
+                    # --- CORREÇÃO DE PRIORIDADE: ARMÁRIO TEM PRIORIDADE MÁXIMA ---
                     if is_guia:
                         item_guia = item_arm if item_arm else (item_maq if item_maq else obter_item_rodando_atual(f"{setor_m} {maq_m}"))
                         final_item = item_guia if item_guia else "-"
