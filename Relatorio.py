@@ -1,15 +1,271 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timezone, timedelta, time as dtime
+import re
 import os
 import time
-import re
+from datetime import datetime, timezone, timedelta, time as dtime
+import requests
+import math
 import unicodedata
 import extra_streamlit_components as stx
 
-# --- CONFIGURAÇÃO BASE DO APP ---
+# Configuração do Streamlit deve ocorrer antes de qualquer outro comando st.*.
 st.set_page_config(page_title="Relatorio - Setor Afiação", page_icon="📱", layout="centered", initial_sidebar_state="collapsed")
 
+
+# ==========================================
+# 🚀 INTEGRAÇÃO COM BANCO DE DADOS TURSO
+# ==========================================
+# O app usa o Turso como fonte oficial dos dados. Os arquivos CSV antigos
+# continuam sendo reconhecidos pelo código abaixo, mas agora são apenas nomes
+# lógicos de tabelas no banco. O Excel de rebolos continua sendo um arquivo
+# estático de leitura.
+try:
+    TURSO_URL = st.secrets.get("TURSO_DATABASE_URL", os.getenv("TURSO_DATABASE_URL", ""))
+    TURSO_TOKEN = st.secrets.get("TURSO_AUTH_TOKEN", os.getenv("TURSO_AUTH_TOKEN", ""))
+except Exception:
+    TURSO_URL = os.getenv("TURSO_DATABASE_URL", "")
+    TURSO_TOKEN = os.getenv("TURSO_AUTH_TOKEN", "")
+
+if not TURSO_URL or not TURSO_TOKEN:
+    st.error("⚠️ TURSO_DATABASE_URL e TURSO_AUTH_TOKEN não foram configurados nos Secrets.")
+    st.stop()
+
+TURSO_URL = str(TURSO_URL).strip()
+if TURSO_URL.startswith("libsql://"):
+    TURSO_HTTP_URL = "https://" + TURSO_URL[len("libsql://"):]
+elif TURSO_URL.startswith("https://"):
+    TURSO_HTTP_URL = TURSO_URL
+else:
+    TURSO_HTTP_URL = "https://" + TURSO_URL
+TURSO_HTTP_URL = TURSO_HTTP_URL.rstrip("/")
+TURSO_PIPELINE_URL = TURSO_HTTP_URL + "/v3/pipeline"
+
+_TURSO_HEADERS = {
+    "Authorization": f"Bearer {TURSO_TOKEN}",
+    "Content-Type": "application/json",
+}
+
+
+def _turso_value(value):
+    """Converte um valor Python para o formato de argumentos do protocolo Turso."""
+    if value is None or (isinstance(value, float) and not math.isfinite(value)):
+        return {"type": "null"}
+    if isinstance(value, bool):
+        return {"type": "integer", "value": "1" if value else "0"}
+    if isinstance(value, int):
+        return {"type": "integer", "value": str(value)}
+    if isinstance(value, float):
+        return {"type": "float", "value": value}
+    if isinstance(value, bytes):
+        import base64
+        return {"type": "blob", "base64": base64.b64encode(value).decode("ascii")}
+    return {"type": "text", "value": str(value)}
+
+
+def _turso_decode(value):
+    if value is None:
+        return None
+    typ = value.get("type")
+    if typ == "null":
+        return None
+    if typ == "integer":
+        try:
+            return int(value.get("value", 0))
+        except Exception:
+            return 0
+    if typ == "float":
+        return value.get("value")
+    if typ == "blob":
+        import base64
+        try:
+            return base64.b64decode(value.get("base64", ""))
+        except Exception:
+            return None
+    return value.get("value")
+
+
+def turso_request(sql, args=None, want_rows=True, timeout=30):
+    """Executa uma instrução SQL diretamente na API HTTP do Turso."""
+    stmt = {"sql": sql, "want_rows": want_rows}
+    if args:
+        stmt["args"] = [_turso_value(v) for v in args]
+
+    payload = {
+        "baton": None,
+        "requests": [
+            {"type": "execute", "stmt": stmt},
+            {"type": "close"},
+        ],
+    }
+
+    try:
+        resp = requests.post(TURSO_PIPELINE_URL, headers=_TURSO_HEADERS, json=payload, timeout=timeout)
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Não foi possível acessar o Turso: {exc}") from exc
+
+    if resp.status_code != 200:
+        raise RuntimeError(f"Turso HTTP {resp.status_code}: {resp.text[:1000]}")
+
+    try:
+        data = resp.json()
+    except Exception as exc:
+        raise RuntimeError(f"Resposta inválida do Turso: {resp.text[:1000]}") from exc
+
+    results = data.get("results", [])
+    if not results:
+        raise RuntimeError(f"O Turso não retornou resultado: {data}")
+
+    first = results[0]
+    if first.get("type") == "error":
+        err = first.get("error", {})
+        raise RuntimeError(f"Erro SQL Turso: {err.get('message', err)}")
+
+    result = first.get("response", {}).get("result", {})
+    return result
+
+
+def _quote_identifier(name):
+    return '"' + str(name).replace('"', '""') + '"'
+
+
+def _sql_type(series):
+    if pd.api.types.is_bool_dtype(series):
+        return "INTEGER"
+    if pd.api.types.is_integer_dtype(series):
+        return "INTEGER"
+    if pd.api.types.is_float_dtype(series):
+        return "REAL"
+    if pd.api.types.is_datetime64_any_dtype(series):
+        return "TEXT"
+    return "TEXT"
+
+
+def tabela_existe(nome_tabela):
+    try:
+        result = turso_request(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+            [nome_tabela],
+            True,
+        )
+        return bool(result.get("rows"))
+    except Exception:
+        return False
+
+
+def criar_tabela_dataframe(df, nome_tabela):
+    colunas = list(df.columns)
+    if not colunas:
+        return
+    definicoes = ", ".join(
+        f"{_quote_identifier(col)} {_sql_type(df[col])}" for col in colunas
+    )
+    sql = f"CREATE TABLE IF NOT EXISTS {_quote_identifier(nome_tabela)} ({definicoes})"
+    turso_request(sql, want_rows=False)
+
+
+def inserir_dataframe(df, nome_tabela):
+    if df.empty:
+        return
+
+    colunas = list(df.columns)
+    nomes = ", ".join(_quote_identifier(c) for c in colunas)
+    placeholders = ", ".join("?" for _ in colunas)
+    sql = f"INSERT INTO {_quote_identifier(nome_tabela)} ({nomes}) VALUES ({placeholders})"
+
+    # Mantém o tamanho dos requests sob controle mesmo quando há bastante histórico.
+    rows = []
+    for _, row in df.iterrows():
+        vals = []
+        for value in row.tolist():
+            if pd.isna(value):
+                vals.append(None)
+            elif isinstance(value, pd.Timestamp):
+                vals.append(value.isoformat())
+            else:
+                vals.append(value.item() if hasattr(value, "item") else value)
+        rows.append(vals)
+
+    for inicio in range(0, len(rows), 100):
+        lote = rows[inicio:inicio + 100]
+        requests_pipeline = []
+        for vals in lote:
+            requests_pipeline.append({
+                "type": "execute",
+                "stmt": {
+                    "sql": sql,
+                    "args": [_turso_value(v) for v in vals],
+                    "want_rows": False,
+                },
+            })
+        requests_pipeline.append({"type": "close"})
+        payload = {"baton": None, "requests": requests_pipeline}
+        try:
+            resp = requests.post(TURSO_PIPELINE_URL, headers=_TURSO_HEADERS, json=payload, timeout=60)
+            if resp.status_code != 200:
+                raise RuntimeError(f"Turso HTTP {resp.status_code}: {resp.text[:1000]}")
+            data = resp.json()
+            for result in data.get("results", []):
+                if result.get("type") == "error":
+                    err = result.get("error", {})
+                    raise RuntimeError(f"Erro SQL Turso: {err.get('message', err)}")
+        except requests.RequestException as exc:
+            raise RuntimeError(f"Não foi possível gravar no Turso: {exc}") from exc
+
+
+def carregar_tabela(nome_tabela, colunas_padrao=None, **kwargs):
+    """Substitui pd.read_csv para as tabelas persistentes do app."""
+    colunas_padrao = colunas_padrao or []
+    try:
+        result = turso_request(f"SELECT * FROM {_quote_identifier(nome_tabela)}", want_rows=True)
+        cols = [c.get("name") for c in result.get("cols", [])]
+        rows = [[_turso_decode(v) for v in row] for row in result.get("rows", [])]
+        df = pd.DataFrame(rows, columns=cols)
+        if kwargs.get("dtype") is not None and not df.empty:
+            dtype = kwargs.get("dtype")
+            try:
+                if isinstance(dtype, dict):
+                    for col, typ in dtype.items():
+                        if col in df.columns:
+                            df[col] = df[col].astype(typ)
+                else:
+                    df = df.astype(dtype)
+            except Exception:
+                pass
+        if df.empty and colunas_padrao:
+            df = pd.DataFrame(columns=colunas_padrao)
+        return df
+    except Exception as exc:
+        # Tabela inexistente é tratada como vazia; demais erros também não derrubam
+        # as telas que já tratavam arquivos ausentes com try/except.
+        if not tabela_existe(nome_tabela):
+            return pd.DataFrame(columns=colunas_padrao)
+        raise exc
+
+
+def salvar_tabela(df, nome_tabela, modo="replace"):
+    """Substitui DataFrame.to_csv para as tabelas persistentes."""
+    df = df.copy()
+    if modo not in ("replace", "append"):
+        modo = "replace"
+
+    if modo == "replace":
+        turso_request(f"DROP TABLE IF EXISTS {_quote_identifier(nome_tabela)}", want_rows=False)
+        criar_tabela_dataframe(df, nome_tabela)
+        inserir_dataframe(df, nome_tabela)
+    else:
+        if not tabela_existe(nome_tabela):
+            criar_tabela_dataframe(df, nome_tabela)
+        inserir_dataframe(df, nome_tabela)
+
+
+def remover_tabela(nome_tabela):
+    turso_request(f"DROP TABLE IF EXISTS {_quote_identifier(nome_tabela)}", want_rows=False)
+
+# (Mantenha o restante das suas variáveis globais aqui, como FUSO_BR, TODAS_AFC, etc)
+# Obs: O ARQUIVO_REBOLOS (Excel) pode continuar igual, pois planilhas estáticas de leitura ficam no código fonte.
+
+# --- CONFIGURAÇÃO BASE DO APP ---
 FUSO_BR = timezone(timedelta(hours=-3))
 
 # --- LISTA GLOBAL DE MÁQUINAS ---
@@ -124,6 +380,66 @@ ARQUIVO_ALERTAS = "alertas_preset.csv"
 ARQUIVO_CNC = "banco_cnc.csv"
 ARQUIVO_FECHAMENTO = "ultimo_fechamento.csv"
 ARQUIVO_REBOLOS = "rebolos.xlsx"
+
+
+# --- CAMADA DE COMPATIBILIDADE ---
+# O código original continua usando read_csv/to_csv/exists/remove. Estes wrappers
+# redirecionam somente os antigos CSVs para o Turso e deixam o Excel intacto.
+TABELAS_TURSO = {
+    ARQUIVO_DADOS, ARQUIVO_EQUIPE, ARQUIVO_HISTORICO,
+    ARQUIVO_HISTORICO_EVENTOS, ARQUIVO_ARMARIOS, ARQUIVO_ALERTAS,
+    ARQUIVO_CNC, ARQUIVO_FECHAMENTO, "historico_devolucoes.csv"
+}
+
+_original_pd_read_csv = pd.read_csv
+_original_df_to_csv = pd.DataFrame.to_csv
+_original_exists = os.path.exists
+_original_remove = os.remove
+
+
+def _nome_tabela_caminho(path):
+    try:
+        nome = os.fspath(path)
+        return nome if nome in TABELAS_TURSO else None
+    except Exception:
+        return None
+
+
+def _read_csv_persistente(filepath, *args, **kwargs):
+    tabela = _nome_tabela_caminho(filepath)
+    if tabela:
+        colunas = kwargs.pop("names", None) or []
+        return carregar_tabela(tabela, colunas_padrao=colunas, **kwargs)
+    return _original_pd_read_csv(filepath, *args, **kwargs)
+
+
+def _to_csv_persistente(self, path_or_buf=None, *args, **kwargs):
+    tabela = _nome_tabela_caminho(path_or_buf) if path_or_buf is not None else None
+    if tabela:
+        salvar_tabela(self, tabela, modo="replace")
+        return None
+    return _original_df_to_csv(self, path_or_buf, *args, **kwargs)
+
+
+def _exists_persistente(path):
+    tabela = _nome_tabela_caminho(path)
+    if tabela:
+        return tabela_existe(tabela)
+    return _original_exists(path)
+
+
+def _remove_persistente(path, *args, **kwargs):
+    tabela = _nome_tabela_caminho(path)
+    if tabela:
+        remover_tabela(tabela)
+        return
+    return _original_remove(path, *args, **kwargs)
+
+
+pd.read_csv = _read_csv_persistente
+pd.DataFrame.to_csv = _to_csv_persistente
+os.path.exists = _exists_persistente
+os.remove = _remove_persistente
 
 # --- FUNÇÕES UTILITÁRIAS ---
 def turno_atual_horario():
