@@ -8,6 +8,8 @@ import requests
 import math
 import unicodedata
 import uuid
+import threading
+from requests.adapters import HTTPAdapter
 import extra_streamlit_components as stx
 
 # Configuração do Streamlit deve ocorrer antes de qualquer outro comando st.*.
@@ -46,6 +48,34 @@ _TURSO_HEADERS = {
     "Authorization": f"Bearer {TURSO_TOKEN}",
     "Content-Type": "application/json",
 }
+
+@st.cache_resource(show_spinner=False)
+def _http_session():
+    sess = requests.Session()
+    adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20, max_retries=0)
+    sess.mount("https://", adapter)
+    sess.mount("http://", adapter)
+    sess.headers.update(_TURSO_HEADERS)
+    return sess
+
+
+def _post_turso(payload, timeout=30):
+    try:
+        return _http_session().post(TURSO_PIPELINE_URL, json=payload, timeout=(5, timeout))
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Não foi possível acessar o Turso: {exc}") from exc
+
+
+@st.cache_resource(show_spinner=False)
+def _runtime_db_cache():
+    return {
+        "lock": threading.RLock(),
+        "exists": {},
+        "tables": {},
+        "latest": None,
+        "estado_ok": False,
+        "index_ok": set(),
+    }
 
 
 def _turso_value(value):
@@ -100,10 +130,7 @@ def turso_request(sql, args=None, want_rows=True, timeout=30):
         ],
     }
 
-    try:
-        resp = requests.post(TURSO_PIPELINE_URL, headers=_TURSO_HEADERS, json=payload, timeout=timeout)
-    except requests.RequestException as exc:
-        raise RuntimeError(f"Não foi possível acessar o Turso: {exc}") from exc
+    resp = _post_turso(payload, timeout=timeout)
 
     if resp.status_code != 200:
         raise RuntimeError(f"Turso HTTP {resp.status_code}: {resp.text[:1000]}")
@@ -142,129 +169,239 @@ def _sql_type(series):
     return "TEXT"
 
 
-@st.cache_data(ttl=30.0, show_spinner=False)
 def tabela_existe(nome_tabela):
-    """Consulta existência com cache curto. Erro de rede é propagado para não parecer 'tabela vazia'."""
-    result = turso_request(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-        [nome_tabela],
-        True,
-    )
-    return bool(result.get("rows"))
+    cache = _runtime_db_cache()
+    agora = time.monotonic()
+    with cache["lock"]:
+        item = cache["exists"].get(nome_tabela)
+        if item and agora - item[0] < 300:
+            return item[1]
+    result = turso_request("SELECT 1 FROM sqlite_master WHERE type='table' AND name=? LIMIT 1", [nome_tabela], True)
+    existe = bool(result.get("rows"))
+    with cache["lock"]:
+        cache["exists"][nome_tabela] = (agora, existe)
+    return existe
 
 
-def _invalidar_cache_turso():
-    """Sempre chame depois de qualquer escrita para não exibir dado antigo."""
-    try:
-        tabela_existe.clear()
-    except Exception:
-        pass
-    try:
-        _carregar_tabela_bruta.clear()
-    except Exception:
-        pass
-    try:
-        _carregar_ultimos_apontamentos.clear()
-    except Exception:
-        pass
+def _marcar_tabela_existe(nome_tabela, existe=True):
+    cache = _runtime_db_cache()
+    with cache["lock"]:
+        cache["exists"][nome_tabela] = (time.monotonic(), bool(existe))
+
+
+def _invalidar_cache_turso(nome_tabela=None, invalidar_existencia=False):
+    cache = _runtime_db_cache()
+    with cache["lock"]:
+        if nome_tabela is None:
+            cache["tables"].clear()
+            cache["latest"] = None
+            if invalidar_existencia:
+                cache["exists"].clear()
+            return
+        cache["tables"].pop(nome_tabela, None)
+        if nome_tabela == globals().get("ARQUIVO_DADOS", "banco_operacao.csv"):
+            cache["latest"] = None
+        if invalidar_existencia:
+            cache["exists"].pop(nome_tabela, None)
+
+
+def _table_ttl(nome_tabela):
+    return {
+        "banco_cnc.csv": 120.0,
+        "ultimo_fechamento.csv": 60.0,
+        "historico_relatorios.csv": 30.0,
+        "historico_eventos.csv": 30.0,
+        "banco_equipe.csv": 10.0,
+        "banco_armarios.csv": 5.0,
+        "alertas_preset.csv": 3.0,
+        "historico_devolucoes.csv": 10.0,
+        "banco_operacao.csv": 3.0,
+    }.get(str(nome_tabela), 10.0)
 
 
 def criar_tabela_dataframe(df, nome_tabela):
     colunas = list(df.columns)
     if not colunas:
         return
-    definicoes = ", ".join(
-        f"{_quote_identifier(col)} {_sql_type(df[col])}" for col in colunas
-    )
-    sql = f"CREATE TABLE IF NOT EXISTS {_quote_identifier(nome_tabela)} ({definicoes})"
-    turso_request(sql, want_rows=False)
-    _invalidar_cache_turso()
+    definicoes = ", ".join(f"{_quote_identifier(col)} {_sql_type(df[col])}" for col in colunas)
+    turso_request(f"CREATE TABLE IF NOT EXISTS {_quote_identifier(nome_tabela)} ({definicoes})", want_rows=False)
+    _marcar_tabela_existe(nome_tabela, True)
+    _invalidar_cache_turso(nome_tabela)
+    if nome_tabela == globals().get("ARQUIVO_DADOS", "banco_operacao.csv"):
+        cache = _runtime_db_cache()
+        with cache["lock"]:
+            cache["index_ok"].discard(nome_tabela)
+        _garantir_indice_operacao()
+
+
+def _garantir_indice_operacao():
+    nome = globals().get("ARQUIVO_DADOS", "banco_operacao.csv")
+    if not tabela_existe(nome):
+        return
+    cache = _runtime_db_cache()
+    with cache["lock"]:
+        if nome in cache["index_ok"]:
+            return
+    try:
+        turso_request(f'CREATE INDEX IF NOT EXISTS "idx_operacao_maquina" ON {_quote_identifier(nome)} ("Maquina")', want_rows=False)
+        with cache["lock"]:
+            cache["index_ok"].add(nome)
+    except Exception:
+        pass
+
+
+def _garantir_estado_maquinas():
+    cache = _runtime_db_cache()
+    with cache["lock"]:
+        if cache["estado_ok"]:
+            return
+    estado = "__estado_maquinas"
+    turso_request(
+        f'''CREATE TABLE IF NOT EXISTS {_quote_identifier(estado)} (
+            "Setor" TEXT,
+            "Maquina" TEXT PRIMARY KEY,
+            "Operador" TEXT,
+            "Status" TEXT,
+            "Hora" TEXT
+        )''', want_rows=False)
+    probe = turso_request(f"SELECT 1 FROM {_quote_identifier(estado)} LIMIT 1", want_rows=True)
+    if not probe.get("rows"):
+        dados = globals().get("ARQUIVO_DADOS", "banco_operacao.csv")
+        if tabela_existe(dados):
+            try:
+                turso_request(
+                    f'''INSERT OR REPLACE INTO {_quote_identifier(estado)}
+                        ("Setor", "Maquina", "Operador", "Status", "Hora")
+                        SELECT t."Setor", t."Maquina", t."Operador", t."Status", t."Hora"
+                        FROM {_quote_identifier(dados)} AS t
+                        INNER JOIN (
+                            SELECT "Maquina", MAX(rowid) AS rid
+                            FROM {_quote_identifier(dados)}
+                            GROUP BY "Maquina"
+                        ) AS x ON x.rid = t.rowid''', want_rows=False, timeout=60)
+            except Exception:
+                pass
+    _garantir_indice_operacao()
+    with cache["lock"]:
+        cache["estado_ok"] = True
+        cache["latest"] = None
+
+
+def _estado_upsert_stmt(vals):
+    estado = "__estado_maquinas"
+    sql = f'''INSERT INTO {_quote_identifier(estado)}
+        ("Setor", "Maquina", "Operador", "Status", "Hora")
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT("Maquina") DO UPDATE SET
+            "Setor"=excluded."Setor",
+            "Operador"=excluded."Operador",
+            "Status"=excluded."Status",
+            "Hora"=excluded."Hora"'''
+    return {"type": "execute", "stmt": {"sql": sql, "args": [_turso_value(v) for v in vals], "want_rows": False}}
 
 
 def inserir_dataframe(df, nome_tabela):
     if df.empty:
         return
-
+    if not tabela_existe(nome_tabela):
+        criar_tabela_dataframe(df, nome_tabela)
     colunas = list(df.columns)
     nomes = ", ".join(_quote_identifier(c) for c in colunas)
     placeholders = ", ".join("?" for _ in colunas)
     sql = f"INSERT INTO {_quote_identifier(nome_tabela)} ({nomes}) VALUES ({placeholders})"
-
     rows = []
-    for _, row in df.iterrows():
+    for row in df.itertuples(index=False, name=None):
         vals = []
-        for value in row.tolist():
-            if pd.isna(value):
-                vals.append(None)
-            elif isinstance(value, pd.Timestamp):
-                vals.append(value.isoformat())
-            else:
-                vals.append(value.item() if hasattr(value, "item") else value)
+        for value in row:
+            if pd.isna(value): vals.append(None)
+            elif isinstance(value, pd.Timestamp): vals.append(value.isoformat())
+            else: vals.append(value.item() if hasattr(value, "item") else value)
         rows.append(vals)
-
-    # Lotes mantêm o request pequeno e evitam timeout com históricos maiores.
-    for inicio in range(0, len(rows), 100):
-        lote = rows[inicio:inicio + 100]
+    eh_operacao = nome_tabela == globals().get("ARQUIVO_DADOS", "banco_operacao.csv")
+    if eh_operacao:
+        _garantir_estado_maquinas()
+    lote_tam = 50 if eh_operacao else 100
+    for inicio in range(0, len(rows), lote_tam):
+        lote = rows[inicio:inicio + lote_tam]
         requests_pipeline = []
         for vals in lote:
-            requests_pipeline.append({
-                "type": "execute",
-                "stmt": {
-                    "sql": sql,
-                    "args": [_turso_value(v) for v in vals],
-                    "want_rows": False,
-                },
-            })
+            requests_pipeline.append({"type": "execute", "stmt": {"sql": sql, "args": [_turso_value(v) for v in vals], "want_rows": False}})
+            if eh_operacao:
+                row_map = dict(zip(colunas, vals))
+                requests_pipeline.append(_estado_upsert_stmt([row_map.get("Setor"), row_map.get("Maquina"), row_map.get("Operador"), row_map.get("Status"), row_map.get("Hora")]))
         requests_pipeline.append({"type": "close"})
         payload = {"baton": None, "requests": requests_pipeline}
-        try:
-            resp = requests.post(TURSO_PIPELINE_URL, headers=_TURSO_HEADERS, json=payload, timeout=60)
-            if resp.status_code != 200:
-                raise RuntimeError(f"Turso HTTP {resp.status_code}: {resp.text[:1000]}")
-            data = resp.json()
-            for result in data.get("results", []):
-                if result.get("type") == "error":
-                    err = result.get("error", {})
-                    raise RuntimeError(f"Erro SQL Turso: {err.get('message', err)}")
-        except requests.RequestException as exc:
-            raise RuntimeError(f"Não foi possível gravar no Turso: {exc}") from exc
-
-    _invalidar_cache_turso()
+        resp = _post_turso(payload, timeout=60)
+        if resp.status_code != 200:
+            raise RuntimeError(f"Turso HTTP {resp.status_code}: {resp.text[:1000]}")
+        data = resp.json()
+        for result in data.get("results", []):
+            if result.get("type") == "error":
+                err = result.get("error", {})
+                raise RuntimeError(f"Erro SQL Turso: {err.get('message', err)}")
+    _invalidar_cache_turso(nome_tabela)
 
 
-@st.cache_data(ttl=10.0, show_spinner=False)
 def _carregar_tabela_bruta(nome_tabela):
+    cache = _runtime_db_cache()
+    agora = time.monotonic()
+    ttl = _table_ttl(nome_tabela)
+    with cache["lock"]:
+        item = cache["tables"].get(nome_tabela)
+        if item and agora - item[0] < ttl:
+            return item[1].copy()
     result = turso_request(f"SELECT * FROM {_quote_identifier(nome_tabela)}", want_rows=True)
     cols = [c.get("name") for c in result.get("cols", [])]
     rows = [[_turso_decode(v) for v in row] for row in result.get("rows", [])]
-    return pd.DataFrame(rows, columns=cols)
+    df = pd.DataFrame(rows, columns=cols)
+    with cache["lock"]:
+        cache["tables"][nome_tabela] = (agora, df)
+    return df.copy()
 
 
-@st.cache_data(ttl=5.0, show_spinner=False)
 def _carregar_ultimos_apontamentos():
-    """Busca só a linha mais recente de cada máquina no Turso.
-
-    As telas operacionais precisam do estado atual, não do histórico inteiro.
-    Isso reduz muito o volume transferido em cada clique.
-    """
-    tabela = _quote_identifier(ARQUIVO_DADOS)
-    sql = f"""
-        SELECT t.*
-        FROM {tabela} AS t
-        WHERE t.rowid = (
-            SELECT MAX(t2.rowid)
-            FROM {tabela} AS t2
-            WHERE t2."Maquina" = t."Maquina"
-        )
-        ORDER BY t."Maquina"
-    """
-    try:
-        result = turso_request(sql, want_rows=True)
-    except Exception:
-        return pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
+    _garantir_estado_maquinas()
+    cache = _runtime_db_cache()
+    agora = time.monotonic()
+    with cache["lock"]:
+        item = cache.get("latest")
+        if item and agora - item[0] < 2.0:
+            return item[1].copy()
+    estado = "__estado_maquinas"
+    result = turso_request(f'SELECT "Setor", "Maquina", "Operador", "Status", "Hora" FROM {_quote_identifier(estado)}', want_rows=True)
     cols = [c.get("name") for c in result.get("cols", [])]
     rows = [[_turso_decode(v) for v in row] for row in result.get("rows", [])]
-    return pd.DataFrame(rows, columns=cols)
+    df = pd.DataFrame(rows, columns=cols)
+    if df.empty:
+        df = pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
+    with cache["lock"]:
+        cache["latest"] = (agora, df)
+    return df.copy()
+
+
+def _reconstruir_estado_maquinas():
+    cache = _runtime_db_cache()
+    estado = "__estado_maquinas"
+    dados = globals().get("ARQUIVO_DADOS", "banco_operacao.csv")
+    try:
+        _garantir_estado_maquinas()
+        turso_request(f"DELETE FROM {_quote_identifier(estado)}", want_rows=False)
+        if tabela_existe(dados):
+            turso_request(
+                f'''INSERT OR REPLACE INTO {_quote_identifier(estado)}
+                    ("Setor", "Maquina", "Operador", "Status", "Hora")
+                    SELECT t."Setor", t."Maquina", t."Operador", t."Status", t."Hora"
+                    FROM {_quote_identifier(dados)} AS t
+                    INNER JOIN (
+                        SELECT "Maquina", MAX(rowid) AS rid
+                        FROM {_quote_identifier(dados)}
+                        GROUP BY "Maquina"
+                    ) AS x ON x.rid = t.rowid''', want_rows=False, timeout=60)
+    finally:
+        with cache["lock"]:
+            cache["latest"] = None
+            cache["index_ok"].discard(dados)
+        _garantir_indice_operacao()
 
 
 def carregar_tabela(nome_tabela, colunas_padrao=None, **kwargs):
@@ -301,10 +438,7 @@ def _turso_batch_atomico(steps, timeout=30):
             {"type": "close"},
         ],
     }
-    try:
-        resp = requests.post(TURSO_PIPELINE_URL, headers=_TURSO_HEADERS, json=payload, timeout=timeout)
-    except requests.RequestException as exc:
-        raise RuntimeError(f"Não foi possível acessar o Turso: {exc}") from exc
+    resp = _post_turso(payload, timeout=timeout)
 
     if resp.status_code != 200:
         raise RuntimeError(f"Turso HTTP {resp.status_code}: {resp.text[:1000]}")
@@ -356,7 +490,6 @@ def salvar_tabela(df, nome_tabela, modo="replace"):
         if not tabela_existe(nome_tabela):
             criar_tabela_dataframe(df, nome_tabela)
         inserir_dataframe(df, nome_tabela)
-        _invalidar_cache_turso()
         return
 
     colunas = list(df.columns)
@@ -411,13 +544,26 @@ def salvar_tabela(df, nome_tabela, modo="replace"):
             pass
         raise
     finally:
-        _invalidar_cache_turso()
+        _marcar_tabela_existe(nome_tabela, True)
+        _invalidar_cache_turso(nome_tabela)
+        if nome_tabela == globals().get("ARQUIVO_DADOS", "banco_operacao.csv"):
+            _reconstruir_estado_maquinas()
 
 
 def remover_tabela(nome_tabela):
     """Remove a tabela solicitada; use apenas em ações explícitas de exclusão."""
     turso_request(f"DROP TABLE IF EXISTS {_quote_identifier(nome_tabela)}", want_rows=False)
-    _invalidar_cache_turso()
+    _marcar_tabela_existe(nome_tabela, False)
+    _invalidar_cache_turso(nome_tabela)
+    if nome_tabela == globals().get("ARQUIVO_DADOS", "banco_operacao.csv"):
+        cache = _runtime_db_cache()
+        with cache["lock"]:
+            cache["latest"] = None
+            cache["index_ok"].discard(nome_tabela)
+        try:
+            turso_request('DELETE FROM "__estado_maquinas"', want_rows=False)
+        except Exception:
+            pass
 
 # (Mantenha o restante das suas variáveis globais aqui, como FUSO_BR, TODAS_AFC, etc)
 # Obs: O ARQUIVO_REBOLOS (Excel) pode continuar igual, pois planilhas estáticas de leitura ficam no código fonte.
@@ -518,15 +664,12 @@ st.markdown(CSS_APP, unsafe_allow_html=True)
 # --- GERENCIADOR DE COOKIES E ARQUIVOS ---
 cookie_manager = stx.CookieManager()
 
-if 'cookie_sync' not in st.session_state:
-    st.session_state['cookie_sync'] = False
-
-cookies_salvos = cookie_manager.get_all()
-
-if not cookies_salvos and not st.session_state['cookie_sync']:
-    # Não força um segundo rerun. O componente de cookies já participa
-    # do ciclo normal do Streamlit e o rerun extra causava o efeito de "piscar".
-    st.session_state['cookie_sync'] = True
+cookies_salvos = {}
+if not st.session_state.get('operador') and not st.session_state.get('logout_realizado', False):
+    try:
+        cookies_salvos = cookie_manager.get_all() or {}
+    except Exception:
+        cookies_salvos = {}
 
 ARQUIVO_DADOS = "banco_operacao.csv"
 ARQUIVO_EQUIPE = "banco_equipe.csv"
@@ -684,19 +827,31 @@ def get_turno_logico(dt=None):
         return d.strftime("%d/%m/%Y"), "3° TURNO"
 
 def obter_item_rodando_atual(maq_full):
-    if not os.path.exists(ARQUIVO_DADOS): return "-"
     try:
-        df = pd.read_csv(ARQUIVO_DADOS)
-        df_maq = df[df['Maquina'] == maq_full]
-        for idx in reversed(df_maq.index):
-            st_hist = str(df_maq.loc[idx, 'Status'])
-            if "[Item:" in st_hist:
-                return st_hist.split("[Item:")[1].split("]")[0].strip()
-            elif "[Item Atual:" in st_hist:
-                return st_hist.split("[Item Atual:")[1].split("]")[0].strip()
-            elif "[Novo Item:" in st_hist:
-                return st_hist.split("[Novo Item:")[1].split("]")[0].strip()
-    except: pass
+        df = _carregar_ultimos_apontamentos()
+        row = df[df['Maquina'] == maq_full]
+        if not row.empty:
+            st_hist = str(row.iloc[-1]['Status'])
+            for marcador in ["[Item:", "[Item Atual:", "[Novo Item:"]:
+                if marcador in st_hist:
+                    return st_hist.split(marcador)[1].split("]")[0].strip()
+    except Exception:
+        pass
+    try:
+        tabela = _quote_identifier(globals().get("ARQUIVO_DADOS", "banco_operacao.csv"))
+        result = turso_request(
+            f'''SELECT "Status" FROM {tabela}
+                WHERE "Maquina"=?
+                  AND ("Status" LIKE '%[Item:%' OR "Status" LIKE '%[Item Atual:%' OR "Status" LIKE '%[Novo Item:%')
+                ORDER BY rowid DESC LIMIT 1''', [maq_full], True)
+        rows = result.get("rows", [])
+        if rows:
+            st_hist = str(_turso_decode(rows[0][0]))
+            for marcador in ["[Item:", "[Item Atual:", "[Novo Item:"]:
+                if marcador in st_hist:
+                    return st_hist.split(marcador)[1].split("]")[0].strip()
+    except Exception:
+        pass
     return "-"
 
 def processar_padrao(df_all, maquinas, prefixo_setor):
@@ -1064,20 +1219,32 @@ def registrar_queda_energia(setor):
 
 def restaurar_queda_energia(setor):
     lista_maquinas = TODAS_AFC if setor == "AFC" else TODAS_RTF
-    if not os.path.exists(ARQUIVO_DADOS): return
-    df = pd.read_csv(ARQUIVO_DADOS)
+    df_atual = _carregar_ultimos_apontamentos().copy()
+    if df_atual.empty:
+        return
     hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
     novas_linhas = []
+    tabela = _quote_identifier(ARQUIVO_DADOS)
     for maq_id in lista_maquinas:
         maq_full = f"{setor} {maq_id}"
-        df_maq = df[df['Maquina'] == maq_full]
-        if not df_maq.empty:
-            st_atual = str(df_maq.iloc[-1]['Status'])
-            if "Queda de Energia" in st_atual:
-                df_maq_valido = df_maq[~df_maq['Status'].str.contains("Queda de Energia", na=False)]
-                st_recuperado = str(df_maq_valido.iloc[-1]['Status']) if not df_maq_valido.empty else "PRODUZINDO"
-                st_restaurado = f"{st_recuperado} [Energia Restaurada]"
-                novas_linhas.append({"Setor": setor, "Maquina": maq_full, "Operador": st.session_state.get('operador', 'SISTEMA'), "Status": st_restaurado, "Hora": hora_br_str})
+        atual = df_atual[df_atual['Maquina'] == maq_full]
+        if atual.empty:
+            continue
+        st_atual = str(atual.iloc[-1]['Status'])
+        if "Queda de Energia" not in st_atual:
+            continue
+        st_recuperado = "PRODUZINDO"
+        try:
+            result = turso_request(
+                f'''SELECT "Status" FROM {tabela}
+                    WHERE "Maquina"=? AND "Status" NOT LIKE '%Queda de Energia%'
+                    ORDER BY rowid DESC LIMIT 1''', [maq_full], True)
+            rows = result.get("rows", [])
+            if rows:
+                st_recuperado = str(_turso_decode(rows[0][0]))
+        except Exception:
+            pass
+        novas_linhas.append({"Setor": setor, "Maquina": maq_full, "Operador": st.session_state.get('operador', 'SISTEMA'), "Status": f"{st_recuperado} [Energia Restaurada]", "Hora": hora_br_str})
     if novas_linhas:
         salvar_tabela(pd.DataFrame(novas_linhas), ARQUIVO_DADOS, modo="append")
 
@@ -1139,7 +1306,7 @@ def exibir_alertas_preset():
     alertas_urgentes = []
     if os.path.exists(ARQUIVO_DADOS) and os.path.exists(ARQUIVO_ARMARIOS):
         try:
-            df_dados = pd.read_csv(ARQUIVO_DADOS).drop_duplicates(subset=['Maquina'], keep='last')
+            df_dados = _carregar_ultimos_apontamentos().copy()
             df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Posicao': str, 'Status': str, 'Armario': str})
             
             for _, row in df_dados.iterrows():
@@ -1386,14 +1553,13 @@ def definir_estados(valores):
     for chave, valor in valores.items():
         st.session_state[chave] = valor
 
-def executar_manutencao_periodica(intervalo_segundos=20):
-    """Evita repetir as checagens pesadas várias vezes no mesmo clique/rerun."""
-    agora = time.monotonic()
-    ultima = st.session_state.get('_ultima_manutencao_turso', 0.0)
-    if agora - ultima < intervalo_segundos:
+def executar_manutencao_periodica():
+    # O turno é calculado localmente; só acessamos o banco quando a chave de turno muda.
+    # Isso elimina checagens periódicas durante a navegação normal.
+    chave_turno = get_turno_logico()
+    if st.session_state.get('_manutencao_turno_chave') == chave_turno:
         return
-    # Marca antes de executar para evitar chamadas duplicadas no mesmo rerun.
-    st.session_state['_ultima_manutencao_turso'] = agora
+    st.session_state['_manutencao_turno_chave'] = chave_turno
     checar_e_auto_encerrar()
     verificar_virada_turno()
 
