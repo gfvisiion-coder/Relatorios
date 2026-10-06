@@ -142,7 +142,7 @@ def _sql_type(series):
     return "TEXT"
 
 
-@st.cache_data(ttl=1.0, show_spinner=False)
+@st.cache_data(ttl=30.0, show_spinner=False)
 def tabela_existe(nome_tabela):
     """Consulta existência com cache curto. Erro de rede é propagado para não parecer 'tabela vazia'."""
     result = turso_request(
@@ -161,6 +161,10 @@ def _invalidar_cache_turso():
         pass
     try:
         _carregar_tabela_bruta.clear()
+    except Exception:
+        pass
+    try:
+        _carregar_ultimos_apontamentos.clear()
     except Exception:
         pass
 
@@ -228,9 +232,36 @@ def inserir_dataframe(df, nome_tabela):
     _invalidar_cache_turso()
 
 
-@st.cache_data(ttl=1.0, show_spinner=False)
+@st.cache_data(ttl=10.0, show_spinner=False)
 def _carregar_tabela_bruta(nome_tabela):
     result = turso_request(f"SELECT * FROM {_quote_identifier(nome_tabela)}", want_rows=True)
+    cols = [c.get("name") for c in result.get("cols", [])]
+    rows = [[_turso_decode(v) for v in row] for row in result.get("rows", [])]
+    return pd.DataFrame(rows, columns=cols)
+
+
+@st.cache_data(ttl=5.0, show_spinner=False)
+def _carregar_ultimos_apontamentos():
+    """Busca só a linha mais recente de cada máquina no Turso.
+
+    As telas operacionais precisam do estado atual, não do histórico inteiro.
+    Isso reduz muito o volume transferido em cada clique.
+    """
+    tabela = _quote_identifier(ARQUIVO_DADOS)
+    sql = f"""
+        SELECT t.*
+        FROM {tabela} AS t
+        WHERE t.rowid = (
+            SELECT MAX(t2.rowid)
+            FROM {tabela} AS t2
+            WHERE t2."Maquina" = t."Maquina"
+        )
+        ORDER BY t."Maquina"
+    """
+    try:
+        result = turso_request(sql, want_rows=True)
+    except Exception:
+        return pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
     cols = [c.get("name") for c in result.get("cols", [])]
     rows = [[_turso_decode(v) for v in row] for row in result.get("rows", [])]
     return pd.DataFrame(rows, columns=cols)
@@ -932,15 +963,15 @@ def executar_fechamento_silencioso(data_alvo, turno_alvo):
     texto_padrao, texto_tempos = gerar_textos_fechamento(data_alvo, df_completo)
     
     novo_hist = pd.DataFrame([{"Data": data_alvo, "Turno": turno_alvo, "Relatorio_Padrao": texto_padrao, "Relatorio_Tempos": texto_tempos}])
-    if os.path.exists(ARQUIVO_HISTORICO): pd.concat([pd.read_csv(ARQUIVO_HISTORICO), novo_hist], ignore_index=True).to_csv(ARQUIVO_HISTORICO, index=False)
-    else: novo_hist.to_csv(ARQUIVO_HISTORICO, index=False)
+    # Histórico é append-only: não baixa e regrava tudo a cada fechamento.
+    salvar_tabela(novo_hist, ARQUIVO_HISTORICO, modo="append")
     
     if not df_completo.empty:
         df_eventos = df_completo.copy()
         df_eventos['Data_Registro'] = data_alvo
         df_eventos['Turno_Registro'] = turno_alvo
-        if os.path.exists(ARQUIVO_HISTORICO_EVENTOS): pd.concat([pd.read_csv(ARQUIVO_HISTORICO_EVENTOS), df_eventos], ignore_index=True).to_csv(ARQUIVO_HISTORICO_EVENTOS, index=False)
-        else: df_eventos.to_csv(ARQUIVO_HISTORICO_EVENTOS, index=False)
+        # Eventos também são append-only.
+        salvar_tabela(df_eventos, ARQUIVO_HISTORICO_EVENTOS, modo="append")
     
     df_novo = []
     for maq in df_completo['Maquina'].unique():
@@ -986,15 +1017,14 @@ def checar_e_auto_encerrar():
         pd.DataFrame([{"Data": curr_d, "Turno": curr_t}]).to_csv(ARQUIVO_FECHAMENTO, index=False)
 
 def verificar_virada_turno():
-    if not os.path.exists(ARQUIVO_DADOS): return
-    df = pd.read_csv(ARQUIVO_DADOS)
-    if df.empty: return
+    df = _carregar_ultimos_apontamentos().copy()
+    if df.empty:
+        return
     turno_real = turno_atual_horario()
     hora_corte = "06:20" if turno_real == "1° TURNO" else ("14:20" if turno_real == "2° TURNO" else "22:20")
     novas_linhas = []
-    for maq in df['Maquina'].unique():
-        df_maq = df[df['Maquina'] == maq]
-        ultimo_registro = df_maq.iloc[-1]
+    for _, ultimo_registro in df.iterrows():
+        maq = ultimo_registro['Maquina']
         st_atual = str(ultimo_registro['Status'])
         st_upper = st_atual.upper()
         hora_registro = str(ultimo_registro['Hora'])
@@ -1015,12 +1045,12 @@ def verificar_virada_turno():
                     novo_st = f"AGUARDANDO PREPARADOR - {st_tipo_limpo} [Corte de Turno] {tags}".strip()
                     novas_linhas.append({"Setor": ultimo_registro['Setor'], "Maquina": maq, "Operador": "SISTEMA", "Status": novo_st, "Hora": hora_corte})
     if novas_linhas:
-        df = pd.concat([df, pd.DataFrame(novas_linhas)], ignore_index=True)
-        df.to_csv(ARQUIVO_DADOS, index=False)
+        # Apenas acrescenta os novos eventos; não regrava todo o histórico.
+        salvar_tabela(pd.DataFrame(novas_linhas), ARQUIVO_DADOS, modo="append")
 
 def registrar_queda_energia(setor):
     lista_maquinas = TODAS_AFC if setor == "AFC" else TODAS_RTF
-    df = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
+    df = _carregar_ultimos_apontamentos().copy()
     hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
     novas_linhas = []
     for maq_id in lista_maquinas:
@@ -1030,8 +1060,7 @@ def registrar_queda_energia(setor):
         if "Queda de Energia" not in st_atual:
             novas_linhas.append({"Setor": setor, "Maquina": maq_full, "Operador": st.session_state.get('operador', 'SISTEMA'), "Status": "PARADA - Motivo: Queda de Energia", "Hora": hora_br_str})
     if novas_linhas:
-        df = pd.concat([df, pd.DataFrame(novas_linhas)], ignore_index=True)
-        df.to_csv(ARQUIVO_DADOS, index=False)
+        salvar_tabela(pd.DataFrame(novas_linhas), ARQUIVO_DADOS, modo="append")
 
 def restaurar_queda_energia(setor):
     lista_maquinas = TODAS_AFC if setor == "AFC" else TODAS_RTF
@@ -1050,8 +1079,7 @@ def restaurar_queda_energia(setor):
                 st_restaurado = f"{st_recuperado} [Energia Restaurada]"
                 novas_linhas.append({"Setor": setor, "Maquina": maq_full, "Operador": st.session_state.get('operador', 'SISTEMA'), "Status": st_restaurado, "Hora": hora_br_str})
     if novas_linhas:
-        df = pd.concat([df, pd.DataFrame(novas_linhas)], ignore_index=True)
-        df.to_csv(ARQUIVO_DADOS, index=False)
+        salvar_tabela(pd.DataFrame(novas_linhas), ARQUIVO_DADOS, modo="append")
 
 def inicializar_armarios():
     precisa_criar = False
@@ -1358,17 +1386,30 @@ def definir_estados(valores):
     for chave, valor in valores.items():
         st.session_state[chave] = valor
 
-def ler_status_atual():
+def executar_manutencao_periodica(intervalo_segundos=20):
+    """Evita repetir as checagens pesadas várias vezes no mesmo clique/rerun."""
+    agora = time.monotonic()
+    ultima = st.session_state.get('_ultima_manutencao_turso', 0.0)
+    if agora - ultima < intervalo_segundos:
+        return
+    # Marca antes de executar para evitar chamadas duplicadas no mesmo rerun.
+    st.session_state['_ultima_manutencao_turso'] = agora
     checar_e_auto_encerrar()
     verificar_virada_turno()
-    if not os.path.exists(ARQUIVO_DADOS): return {}
+
+
+def ler_status_atual():
+    executar_manutencao_periodica()
     try:
-        df = pd.read_csv(ARQUIVO_DADOS)
+        df = _carregar_ultimos_apontamentos().copy()
+    except Exception:
+        return {}
+    if df.empty:
+        return {}
+    try:
         status_calculado = {}
         agora_br_dt = datetime.now(FUSO_BR)
-        df_ultimo = df.drop_duplicates(subset=['Maquina'], keep='last')
-        
-        for _, row in df_ultimo.iterrows():
+        for _, row in df.iterrows():
             maq = row['Maquina']
             st_raw = str(row['Status']).replace(" [Energia Restaurada]", "") 
             
@@ -1411,22 +1452,28 @@ def ler_status_atual():
     except: return {}
 
 def obter_info_maquina(maq_id, setor):
-    if not os.path.exists(ARQUIVO_DADOS): return None
     try:
-        df = pd.read_csv(ARQUIVO_DADOS)
+        # Reaproveita os últimos apontamentos, sem baixar o histórico inteiro.
+        df = _carregar_ultimos_apontamentos()
+        if df.empty:
+            return None
         maq_full = f"{setor} {maq_id}"
         df_maq = df[df['Maquina'] == maq_full]
-        if not df_maq.empty: return df_maq.iloc[-1].to_dict()
-    except: pass
+        if not df_maq.empty:
+            return df_maq.iloc[-1].to_dict()
+    except Exception:
+        pass
     return None
 
 def salvar_csv(dados, arquivo):
+    """Grava UMA linha com INSERT direto no Turso.
+
+    Antes esta função baixava a tabela inteira, adicionava uma linha e enviava
+    tudo novamente. Isso ficava progressivamente mais lento conforme o histórico
+    crescia.
+    """
     df_novo = pd.DataFrame([dados])
-    if os.path.exists(arquivo):
-        df_existente = pd.read_csv(arquivo)
-        df_existente = pd.concat([df_existente, df_novo], ignore_index=True)
-        df_existente.to_csv(arquivo, index=False)
-    else: df_novo.to_csv(arquivo, index=False)
+    salvar_tabela(df_novo, arquivo, modo="append")
 
 def ordenar_maquinas(lista_maquinas):
     def natural_sort_key(s): return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
