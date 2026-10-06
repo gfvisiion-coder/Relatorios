@@ -9,6 +9,10 @@ import math
 import unicodedata
 import uuid
 import threading
+import json
+import base64
+import hmac
+import hashlib
 from requests.adapters import HTTPAdapter
 import extra_streamlit_components as stx
 
@@ -33,6 +37,14 @@ except Exception:
 if not TURSO_URL or not TURSO_TOKEN:
     st.error("⚠️ TURSO_DATABASE_URL e TURSO_AUTH_TOKEN não foram configurados nos Secrets.")
     st.stop()
+
+# Segredo usado para assinar o cookie de login automático.
+# Se LOGIN_COOKIE_SECRET não existir nos Secrets, usamos o token do Turso
+# apenas como chave interna do servidor (ele nunca é enviado ao navegador).
+try:
+    LOGIN_COOKIE_SECRET = str(st.secrets.get("LOGIN_COOKIE_SECRET", TURSO_TOKEN))
+except Exception:
+    LOGIN_COOKIE_SECRET = str(os.getenv("LOGIN_COOKIE_SECRET", TURSO_TOKEN))
 
 TURSO_URL = str(TURSO_URL).strip()
 if TURSO_URL.startswith("libsql://"):
@@ -662,14 +674,53 @@ CSS_APP = """
 st.markdown(CSS_APP, unsafe_allow_html=True)
 
 # --- GERENCIADOR DE COOKIES E ARQUIVOS ---
-cookie_manager = stx.CookieManager()
+# IMPORTANTE: CookieManager é um componente do navegador. Na primeira renderização
+# ele pode devolver {} e, assim que o navegador responde, o próprio componente
+# provoca um rerun. Usamos apenas UMA instância/getAll para evitar corrida e flicker.
+cookie_manager = stx.CookieManager(key="cookie_manager_principal")
+try:
+    cookies_salvos = cookie_manager.cookies or {}
+except Exception:
+    cookies_salvos = {}
 
-cookies_salvos = {}
-if not st.session_state.get('operador') and not st.session_state.get('logout_realizado', False):
+COOKIE_LOGIN = "relatorio_afiacao_auto_login_v2"
+
+def _b64url_encode(data: bytes) -> str:
+    return base64.urlsafe_b64encode(data).decode("ascii").rstrip("=")
+
+def _b64url_decode(data: str) -> bytes:
+    padding = "=" * (-len(data) % 4)
+    return base64.urlsafe_b64decode((data + padding).encode("ascii"))
+
+def gerar_token_login(nome, turno, setor, perfil, dias=365):
+    payload = {
+        "nome": str(nome),
+        "turno": str(turno),
+        "setor": str(setor),
+        "perfil": str(perfil),
+        "exp": int(time.time()) + int(dias * 86400),
+    }
+    raw = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    assinatura = hmac.new(LOGIN_COOKIE_SECRET.encode("utf-8"), raw, hashlib.sha256).digest()
+    return f"{_b64url_encode(raw)}.{_b64url_encode(assinatura)}"
+
+def validar_token_login(token):
     try:
-        cookies_salvos = cookie_manager.get_all() or {}
+        parte_payload, parte_assinatura = str(token).split(".", 1)
+        raw = _b64url_decode(parte_payload)
+        assinatura_recebida = _b64url_decode(parte_assinatura)
+        assinatura_esperada = hmac.new(LOGIN_COOKIE_SECRET.encode("utf-8"), raw, hashlib.sha256).digest()
+        if not hmac.compare_digest(assinatura_recebida, assinatura_esperada):
+            return None
+        payload = json.loads(raw.decode("utf-8"))
+        if int(payload.get("exp", 0)) < int(time.time()):
+            return None
+        campos = ["nome", "turno", "setor", "perfil"]
+        if not all(payload.get(c) for c in campos):
+            return None
+        return payload
     except Exception:
-        cookies_salvos = {}
+        return None
 
 ARQUIVO_DADOS = "banco_operacao.csv"
 ARQUIVO_EQUIPE = "banco_equipe.csv"
@@ -1518,15 +1569,16 @@ if 'setor_prev_sel' not in st.session_state: st.session_state['setor_prev_sel'] 
 if 'lirs_setor' not in st.session_state: st.session_state['lirs_setor'] = 'AFC'
 if 'lirs_maq_ativa' not in st.session_state: st.session_state['lirs_maq_ativa'] = None
 
-# Login automático somente quando o usuário escolheu "Salvar acesso".
-# O código de acesso NÃO é salvo; guardamos apenas o perfil já validado.
+# Login automático por UM cookie assinado.
+# O navegador só guarda um token validado; o código de acesso não é salvo.
 if not st.session_state['operador'] and not st.session_state['logout_realizado']:
-    acesso_salvo = str(cookies_salvos.get("salvar_acesso", "0")) == "1"
-    if acesso_salvo and cookies_salvos.get("user_logado"):
-        st.session_state['operador'] = cookies_salvos["user_logado"]
-        st.session_state['turno'] = cookies_salvos.get("user_turno", "")
-        st.session_state['setor_usuario'] = cookies_salvos.get("user_setor", "")
-        st.session_state['perfil'] = cookies_salvos.get("user_perfil", "")
+    token_cookie = cookies_salvos.get(COOKIE_LOGIN)
+    acesso = validar_token_login(token_cookie) if token_cookie else None
+    if acesso:
+        st.session_state['operador'] = acesso["nome"]
+        st.session_state['turno'] = acesso["turno"]
+        st.session_state['setor_usuario'] = acesso["setor"]
+        st.session_state['perfil'] = acesso["perfil"]
         st.session_state['tela_atual'] = 'menu'
 
 def mudar_tela(nome_tela, forcar_rerun=False):
@@ -2284,26 +2336,27 @@ def tela_login():
                 st.session_state['operador'] = nome_formatado
                 
                 # Persistência opcional do login.
-                # Não salvamos o código digitado; somente o acesso depois de validado.
+                # Usamos UM único cookie assinado para evitar corrida entre vários
+                # componentes CookieManager e tornar o auto-login confiável.
                 if salvar_acesso:
                     expiracao = datetime.now() + timedelta(days=365)
-                    cookie_manager.set("salvar_acesso", "1", key="set_salvar_acesso", expires_at=expiracao)
-                    cookie_manager.set("user_logado", nome_formatado, key="set_logado", expires_at=expiracao)
-                    cookie_manager.set("user_turno", turno_val, key="set_turno", expires_at=expiracao)
-                    cookie_manager.set("user_setor", setor_val, key="set_setor", expires_at=expiracao)
-                    cookie_manager.set("user_perfil", perfil_val, key="set_perfil", expires_at=expiracao)
+                    token_login = gerar_token_login(nome_formatado, turno_val, setor_val, perfil_val, dias=365)
+                    cookie_manager.set(
+                        COOKIE_LOGIN,
+                        token_login,
+                        key="set_auto_login_v2",
+                        path="/",
+                        expires_at=expiracao,
+                        same_site="lax",
+                    )
+                    # O CookieManager grava no navegador pelo componente JS.
+                    # Esta pequena espera acontece SOMENTE no login e evita que o
+                    # rerun interrompa a gravação antes de o browser receber o cookie.
+                    time.sleep(0.35)
                 else:
-                    # Se havia um acesso salvo anteriormente neste navegador, remove.
                     try:
-                        for nome_cookie, chave in [
-                            ("salvar_acesso", "del_salvar_login"),
-                            ("user_logado", "del_login_user"),
-                            ("user_turno", "del_login_turno"),
-                            ("user_setor", "del_login_setor"),
-                            ("user_perfil", "del_login_perfil"),
-                        ]:
-                            if cookie_manager.get(nome_cookie):
-                                cookie_manager.delete(nome_cookie, key=chave)
+                        if COOKIE_LOGIN in cookies_salvos:
+                            cookie_manager.delete(COOKIE_LOGIN, key="del_auto_login_v2")
                     except Exception:
                         pass
 
@@ -2396,12 +2449,21 @@ def tela_menu():
         st.session_state['logout_realizado'] = True
         st.session_state['operador'], st.session_state['turno'], st.session_state['setor_usuario'], st.session_state['perfil'] = '', '', '', ''
         try:
-            if cookie_manager.get("salvar_acesso"): cookie_manager.delete("salvar_acesso", key="del_salvar_acesso")
-            if cookie_manager.get("user_logado"): cookie_manager.delete("user_logado", key="del_logado")
-            if cookie_manager.get("user_turno"): cookie_manager.delete("user_turno", key="del_turno")
-            if cookie_manager.get("user_setor"): cookie_manager.delete("user_setor", key="del_setor")
-            if cookie_manager.get("user_perfil"): cookie_manager.delete("user_perfil", key="del_perfil")
-        except: pass 
+            # Remove o cookie novo de auto-login.
+            if COOKIE_LOGIN in (cookie_manager.cookies or {}):
+                cookie_manager.delete(COOKIE_LOGIN, key="del_auto_login_logout")
+            # Limpa também cookies da versão anterior, caso ainda existam.
+            for nome_cookie, chave in [
+                ("salvar_acesso", "del_salvar_acesso_antigo"),
+                ("user_logado", "del_logado_antigo"),
+                ("user_turno", "del_turno_antigo"),
+                ("user_setor", "del_setor_antigo"),
+                ("user_perfil", "del_perfil_antigo"),
+            ]:
+                if nome_cookie in (cookie_manager.cookies or {}):
+                    cookie_manager.delete(nome_cookie, key=chave)
+        except Exception:
+            pass
         mudar_tela('login', forcar_rerun=True)
 
 def tela_visao_geral():
