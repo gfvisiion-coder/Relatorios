@@ -1518,8 +1518,11 @@ if 'setor_prev_sel' not in st.session_state: st.session_state['setor_prev_sel'] 
 if 'lirs_setor' not in st.session_state: st.session_state['lirs_setor'] = 'AFC'
 if 'lirs_maq_ativa' not in st.session_state: st.session_state['lirs_maq_ativa'] = None
 
+# Login automático somente quando o usuário escolheu "Salvar acesso".
+# O código de acesso NÃO é salvo; guardamos apenas o perfil já validado.
 if not st.session_state['operador'] and not st.session_state['logout_realizado']:
-    if cookies_salvos and "user_logado" in cookies_salvos:
+    acesso_salvo = str(cookies_salvos.get("salvar_acesso", "0")) == "1"
+    if acesso_salvo and cookies_salvos.get("user_logado"):
         st.session_state['operador'] = cookies_salvos["user_logado"]
         st.session_state['turno'] = cookies_salvos.get("user_turno", "")
         st.session_state['setor_usuario'] = cookies_salvos.get("user_setor", "")
@@ -2249,6 +2252,12 @@ def tela_login():
     with st.container():
         cod = st.text_input("Digite seu codigo de Acesso:", type="password", placeholder="Digite aqui...")
         nome = st.text_input("Nome do Colaborador / RE:", placeholder="Digite seu nome...")
+        salvar_acesso = st.checkbox(
+            "💾 Salvar acesso neste dispositivo",
+            value=False,
+            help="Quando marcado, este navegador entrará automaticamente nas próximas vezes. Não use em computador compartilhado."
+        )
+        st.caption("🔒 O código de acesso não é armazenado. O app salva apenas o acesso já validado neste navegador.")
         st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
         if st.button("ACESSAR SISTEMA", use_container_width=True, type="primary"):
             codigos_validos = {
@@ -2274,11 +2283,29 @@ def tela_login():
                 st.session_state['perfil'] = perfil_val
                 st.session_state['operador'] = nome_formatado
                 
-                expiracao = datetime.now() + timedelta(days=30)
-                cookie_manager.set("user_logado", nome_formatado, key="set_logado", expires_at=expiracao)
-                cookie_manager.set("user_turno", turno_val, key="set_turno", expires_at=expiracao)
-                cookie_manager.set("user_setor", setor_val, key="set_setor", expires_at=expiracao)
-                cookie_manager.set("user_perfil", perfil_val, key="set_perfil", expires_at=expiracao)
+                # Persistência opcional do login.
+                # Não salvamos o código digitado; somente o acesso depois de validado.
+                if salvar_acesso:
+                    expiracao = datetime.now() + timedelta(days=365)
+                    cookie_manager.set("salvar_acesso", "1", key="set_salvar_acesso", expires_at=expiracao)
+                    cookie_manager.set("user_logado", nome_formatado, key="set_logado", expires_at=expiracao)
+                    cookie_manager.set("user_turno", turno_val, key="set_turno", expires_at=expiracao)
+                    cookie_manager.set("user_setor", setor_val, key="set_setor", expires_at=expiracao)
+                    cookie_manager.set("user_perfil", perfil_val, key="set_perfil", expires_at=expiracao)
+                else:
+                    # Se havia um acesso salvo anteriormente neste navegador, remove.
+                    try:
+                        for nome_cookie, chave in [
+                            ("salvar_acesso", "del_salvar_login"),
+                            ("user_logado", "del_login_user"),
+                            ("user_turno", "del_login_turno"),
+                            ("user_setor", "del_login_setor"),
+                            ("user_perfil", "del_login_perfil"),
+                        ]:
+                            if cookie_manager.get(nome_cookie):
+                                cookie_manager.delete(nome_cookie, key=chave)
+                    except Exception:
+                        pass
 
                 mudar_tela('menu', forcar_rerun=True)
             else: st.error("⚠️ Credenciais inválidas.")
@@ -2369,6 +2396,7 @@ def tela_menu():
         st.session_state['logout_realizado'] = True
         st.session_state['operador'], st.session_state['turno'], st.session_state['setor_usuario'], st.session_state['perfil'] = '', '', '', ''
         try:
+            if cookie_manager.get("salvar_acesso"): cookie_manager.delete("salvar_acesso", key="del_salvar_acesso")
             if cookie_manager.get("user_logado"): cookie_manager.delete("user_logado", key="del_logado")
             if cookie_manager.get("user_turno"): cookie_manager.delete("user_turno", key="del_turno")
             if cookie_manager.get("user_setor"): cookie_manager.delete("user_setor", key="del_setor")
