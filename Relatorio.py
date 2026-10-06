@@ -7,6 +7,7 @@ from datetime import datetime, timezone, timedelta, time as dtime
 import requests
 import math
 import unicodedata
+import uuid
 import extra_streamlit_components as stx
 
 # Configuração do Streamlit deve ocorrer antes de qualquer outro comando st.*.
@@ -141,16 +142,27 @@ def _sql_type(series):
     return "TEXT"
 
 
+@st.cache_data(ttl=1.0, show_spinner=False)
 def tabela_existe(nome_tabela):
+    """Consulta existência com cache curto. Erro de rede é propagado para não parecer 'tabela vazia'."""
+    result = turso_request(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
+        [nome_tabela],
+        True,
+    )
+    return bool(result.get("rows"))
+
+
+def _invalidar_cache_turso():
+    """Sempre chame depois de qualquer escrita para não exibir dado antigo."""
     try:
-        result = turso_request(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name=?",
-            [nome_tabela],
-            True,
-        )
-        return bool(result.get("rows"))
+        tabela_existe.clear()
     except Exception:
-        return False
+        pass
+    try:
+        _carregar_tabela_bruta.clear()
+    except Exception:
+        pass
 
 
 def criar_tabela_dataframe(df, nome_tabela):
@@ -162,6 +174,7 @@ def criar_tabela_dataframe(df, nome_tabela):
     )
     sql = f"CREATE TABLE IF NOT EXISTS {_quote_identifier(nome_tabela)} ({definicoes})"
     turso_request(sql, want_rows=False)
+    _invalidar_cache_turso()
 
 
 def inserir_dataframe(df, nome_tabela):
@@ -173,7 +186,6 @@ def inserir_dataframe(df, nome_tabela):
     placeholders = ", ".join("?" for _ in colunas)
     sql = f"INSERT INTO {_quote_identifier(nome_tabela)} ({nomes}) VALUES ({placeholders})"
 
-    # Mantém o tamanho dos requests sob controle mesmo quando há bastante histórico.
     rows = []
     for _, row in df.iterrows():
         vals = []
@@ -186,6 +198,7 @@ def inserir_dataframe(df, nome_tabela):
                 vals.append(value.item() if hasattr(value, "item") else value)
         rows.append(vals)
 
+    # Lotes mantêm o request pequeno e evitam timeout com históricos maiores.
     for inicio in range(0, len(rows), 100):
         lote = rows[inicio:inicio + 100]
         requests_pipeline = []
@@ -212,15 +225,22 @@ def inserir_dataframe(df, nome_tabela):
         except requests.RequestException as exc:
             raise RuntimeError(f"Não foi possível gravar no Turso: {exc}") from exc
 
+    _invalidar_cache_turso()
+
+
+@st.cache_data(ttl=1.0, show_spinner=False)
+def _carregar_tabela_bruta(nome_tabela):
+    result = turso_request(f"SELECT * FROM {_quote_identifier(nome_tabela)}", want_rows=True)
+    cols = [c.get("name") for c in result.get("cols", [])]
+    rows = [[_turso_decode(v) for v in row] for row in result.get("rows", [])]
+    return pd.DataFrame(rows, columns=cols)
+
 
 def carregar_tabela(nome_tabela, colunas_padrao=None, **kwargs):
     """Substitui pd.read_csv para as tabelas persistentes do app."""
     colunas_padrao = colunas_padrao or []
     try:
-        result = turso_request(f"SELECT * FROM {_quote_identifier(nome_tabela)}", want_rows=True)
-        cols = [c.get("name") for c in result.get("cols", [])]
-        rows = [[_turso_decode(v) for v in row] for row in result.get("rows", [])]
-        df = pd.DataFrame(rows, columns=cols)
+        df = _carregar_tabela_bruta(nome_tabela).copy()
         if kwargs.get("dtype") is not None and not df.empty:
             dtype = kwargs.get("dtype")
             try:
@@ -236,31 +256,137 @@ def carregar_tabela(nome_tabela, colunas_padrao=None, **kwargs):
             df = pd.DataFrame(columns=colunas_padrao)
         return df
     except Exception as exc:
-        # Tabela inexistente é tratada como vazia; demais erros também não derrubam
-        # as telas que já tratavam arquivos ausentes com try/except.
         if not tabela_existe(nome_tabela):
             return pd.DataFrame(columns=colunas_padrao)
         raise exc
 
 
+def _turso_batch_atomico(steps, timeout=30):
+    """Executa um batch Hrana no mesmo stream e reporta erro de qualquer etapa."""
+    payload = {
+        "baton": None,
+        "requests": [
+            {"type": "batch", "batch": {"steps": steps}},
+            {"type": "close"},
+        ],
+    }
+    try:
+        resp = requests.post(TURSO_PIPELINE_URL, headers=_TURSO_HEADERS, json=payload, timeout=timeout)
+    except requests.RequestException as exc:
+        raise RuntimeError(f"Não foi possível acessar o Turso: {exc}") from exc
+
+    if resp.status_code != 200:
+        raise RuntimeError(f"Turso HTTP {resp.status_code}: {resp.text[:1000]}")
+
+    data = resp.json()
+    results = data.get("results", [])
+    if not results:
+        raise RuntimeError(f"O Turso não retornou resultado: {data}")
+
+    first = results[0]
+    if first.get("type") == "error":
+        err = first.get("error", {})
+        raise RuntimeError(f"Erro Turso: {err.get('message', err)}")
+
+    batch_result = first.get("response", {}).get("result", {})
+    step_errors = batch_result.get("step_errors", []) or []
+    erros = [e for e in step_errors if e]
+    if erros:
+        msg = erros[0].get("message", erros[0]) if isinstance(erros[0], dict) else erros[0]
+        raise RuntimeError(f"Erro SQL Turso em transação: {msg}")
+
+
+def _stmt_batch(sql, args=None, condition=None):
+    step = {
+        "stmt": {
+            "sql": sql,
+            "args": [_turso_value(v) for v in (args or [])],
+            "want_rows": False,
+        }
+    }
+    if condition is not None:
+        step["condition"] = condition
+    return step
+
+
 def salvar_tabela(df, nome_tabela, modo="replace"):
-    """Substitui DataFrame.to_csv para as tabelas persistentes."""
+    """
+    Persistência segura.
+
+    No modo replace, os dados novos são montados primeiro em uma tabela temporária.
+    Só depois ocorre a troca dentro de uma transação. Se internet/inserção falhar,
+    a tabela antiga continua intacta.
+    """
     df = df.copy()
     if modo not in ("replace", "append"):
         modo = "replace"
 
-    if modo == "replace":
-        turso_request(f"DROP TABLE IF EXISTS {_quote_identifier(nome_tabela)}", want_rows=False)
-        criar_tabela_dataframe(df, nome_tabela)
-        inserir_dataframe(df, nome_tabela)
-    else:
+    if modo == "append":
         if not tabela_existe(nome_tabela):
             criar_tabela_dataframe(df, nome_tabela)
         inserir_dataframe(df, nome_tabela)
+        _invalidar_cache_turso()
+        return
+
+    colunas = list(df.columns)
+    if not colunas:
+        raise RuntimeError(f"Recusei substituir {nome_tabela}: DataFrame sem colunas.")
+
+    # Carrega tudo na temporária sem tocar na tabela oficial.
+    tmp = f"__tmp_{re.sub(r'[^0-9A-Za-z_]+', '_', str(nome_tabela))}_{uuid.uuid4().hex[:10]}"
+    try:
+        definicoes = ", ".join(
+            f"{_quote_identifier(col)} {_sql_type(df[col])}" for col in colunas
+        )
+        turso_request(f"CREATE TABLE {_quote_identifier(tmp)} ({definicoes})", want_rows=False)
+        if not df.empty:
+            inserir_dataframe(df, tmp)
+
+        # A troca é atômica: DROP e RENAME ficam dentro da mesma transação.
+        steps = [
+            _stmt_batch("BEGIN IMMEDIATE"),
+            _stmt_batch(
+                f"DROP TABLE IF EXISTS {_quote_identifier(nome_tabela)}",
+                condition={"type": "ok", "step": 0},
+            ),
+            _stmt_batch(
+                f"ALTER TABLE {_quote_identifier(tmp)} RENAME TO {_quote_identifier(nome_tabela)}",
+                condition={"type": "ok", "step": 1},
+            ),
+            _stmt_batch(
+                "COMMIT",
+                condition={"type": "ok", "step": 2},
+            ),
+            # Se qualquer etapa da troca falhar, desfaz a transação.
+            _stmt_batch(
+                "ROLLBACK",
+                condition={
+                    "type": "or",
+                    "conds": [
+                        {"type": "error", "step": 0},
+                        {"type": "error", "step": 1},
+                        {"type": "error", "step": 2},
+                        {"type": "error", "step": 3},
+                    ],
+                },
+            ),
+        ]
+        _turso_batch_atomico(steps)
+    except Exception:
+        # Tenta limpar apenas a temporária. A oficial não é tocada antes da troca atômica.
+        try:
+            turso_request(f"DROP TABLE IF EXISTS {_quote_identifier(tmp)}", want_rows=False)
+        except Exception:
+            pass
+        raise
+    finally:
+        _invalidar_cache_turso()
 
 
 def remover_tabela(nome_tabela):
+    """Remove a tabela solicitada; use apenas em ações explícitas de exclusão."""
     turso_request(f"DROP TABLE IF EXISTS {_quote_identifier(nome_tabela)}", want_rows=False)
+    _invalidar_cache_turso()
 
 # (Mantenha o restante das suas variáveis globais aqui, como FUSO_BR, TODAS_AFC, etc)
 # Obs: O ARQUIVO_REBOLOS (Excel) pode continuar igual, pois planilhas estáticas de leitura ficam no código fonte.
@@ -367,9 +493,9 @@ if 'cookie_sync' not in st.session_state:
 cookies_salvos = cookie_manager.get_all()
 
 if not cookies_salvos and not st.session_state['cookie_sync']:
+    # Não força um segundo rerun. O componente de cookies já participa
+    # do ciclo normal do Streamlit e o rerun extra causava o efeito de "piscar".
     st.session_state['cookie_sync'] = True
-
-    st.rerun()
 
 ARQUIVO_DADOS = "banco_operacao.csv"
 ARQUIVO_EQUIPE = "banco_equipe.csv"
@@ -1205,7 +1331,9 @@ if not st.session_state['operador'] and not st.session_state['logout_realizado']
         st.session_state['perfil'] = cookies_salvos.get("user_perfil", "")
         st.session_state['tela_atual'] = 'menu'
 
-def mudar_tela(nome_tela):
+def mudar_tela(nome_tela, forcar_rerun=False):
+    # Quando usada como callback de botão, a alteração acontece ANTES do rerun natural
+    # do Streamlit. Assim não precisamos disparar um segundo rerun.
     st.session_state['tela_atual'] = nome_tela
     st.session_state['celula_selecionada'] = None
     st.session_state['maq_ativa'] = None
@@ -1213,7 +1341,22 @@ def mudar_tela(nome_tela):
     st.session_state['fila_prev_sel'] = None
     st.session_state['setor_prev_sel'] = None
     st.session_state['lirs_maq_ativa'] = None
-    st.rerun()
+    if forcar_rerun:
+        st.rerun()
+
+
+def botao_navegar(label, nome_tela, **kwargs):
+    """Botão de navegação sem o rerun duplo que causava o efeito de piscar."""
+    return st.button(label, on_click=mudar_tela, args=(nome_tela,), **kwargs)
+
+
+def definir_estado(chave, valor):
+    st.session_state[chave] = valor
+
+
+def definir_estados(valores):
+    for chave, valor in valores.items():
+        st.session_state[chave] = valor
 
 def ler_status_atual():
     checar_e_auto_encerrar()
@@ -1299,9 +1442,7 @@ def painel_controle_maquina(maq_id, setor):
         else:
             col_t.markdown(f"<h4 style='color: #2DD4BF !important; margin:0;'>⚙️ MÁQUINA: {maq_id}</h4>", unsafe_allow_html=True)
             
-        if col_f.button("✕", key=f"fechar_{maq_id}"):
-            st.session_state['maq_ativa'] = None
-            st.rerun()
+        col_f.button("✕", key=f"fechar_{maq_id}", on_click=definir_estado, args=('maq_ativa', None))
 
         if setor == 'RTF':
             with st.expander("🔄 Alterar Tipo CNC desta Máquina"):
@@ -1514,9 +1655,9 @@ def painel_controle_maquina(maq_id, setor):
                     st.session_state[flow_key] = "detalhe_prod"
                     st.rerun()
                     
-            if st.button("🟡 PREPARAÇÃO / SEQUÊNCIA", key=f"st_prep_{maq_id}", use_container_width=True): st.session_state[flow_key] = "detalhe_prep"; st.rerun()
-            if st.button("🛠️ MANUTENÇÃO", key=f"st_man_{maq_id}", use_container_width=True): st.session_state[flow_key] = "detalhe_man"; st.rerun()
-            if st.button("🔴 PARADA", key=f"st_par_{maq_id}", use_container_width=True): st.session_state[flow_key] = "detalhe_parada"; st.rerun()
+            st.button("🟡 PREPARAÇÃO / SEQUÊNCIA", key=f"st_prep_{maq_id}", use_container_width=True, on_click=definir_estado, args=(flow_key, "detalhe_prep"))
+            st.button("🛠️ MANUTENÇÃO", key=f"st_man_{maq_id}", use_container_width=True, on_click=definir_estado, args=(flow_key, "detalhe_man"))
+            st.button("🔴 PARADA", key=f"st_par_{maq_id}", use_container_width=True, on_click=definir_estado, args=(flow_key, "detalhe_parada"))
 
         elif st.session_state[flow_key] == "detalhe_prod":
             with st.form(f"form_prod_{maq_id}"):
@@ -1926,11 +2067,11 @@ def tela_login():
                 cookie_manager.set("user_setor", setor_val, key="set_setor", expires_at=expiracao)
                 cookie_manager.set("user_perfil", perfil_val, key="set_perfil", expires_at=expiracao)
 
-                mudar_tela('menu')
+                mudar_tela('menu', forcar_rerun=True)
             else: st.error("⚠️ Credenciais inválidas.")
 
 def tela_hub_relatorios():
-    if st.button("⬅ Voltar ao Menu Principal"): mudar_tela('menu')
+    botao_navegar("⬅ Voltar ao Menu Principal", 'menu')
     st.markdown("#### 📋 Central de Relatórios e Auditorias")
     st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Selecione qual módulo você deseja acessar.</p>", unsafe_allow_html=True)
     st.divider()
@@ -1944,8 +2085,7 @@ def tela_hub_relatorios():
             <p style='font-size: 12px; color: #A1A1AA;'>Gerar fechamentos e repasses.</p>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("ACESSAR RELATÓRIOS", use_container_width=True, type="primary"): mudar_tela('relatorio')
-        
+        botao_navegar("ACESSAR RELATÓRIOS", 'relatorio', use_container_width=True, type="primary")
     with col2:
         st.markdown("""
         <div style='background-color: #121214; padding: 15px; border: 1px solid #27272A; border-radius: 8px; text-align: center; margin-bottom: 10px;'>
@@ -1954,8 +2094,7 @@ def tela_hub_relatorios():
             <p style='font-size: 12px; color: #A1A1AA;'>Limpeza e liberação de linha.</p>
         </div>
         """, unsafe_allow_html=True)
-        if st.button("ACESSAR LIRS", use_container_width=True, type="primary"): mudar_tela('lirs')
-
+        botao_navegar("ACESSAR LIRS", 'lirs', use_container_width=True, type="primary")
 def tela_menu():
     exibir_alertas_preset()
     exibir_alertas_preparador()
@@ -1975,44 +2114,43 @@ def tela_menu():
     """, unsafe_allow_html=True)
     
     if perfil == 'adm':
-        if st.button("📊 VISÃO GERAL DE FÁBRICA", use_container_width=True, type="primary"): mudar_tela('visao_geral')
-        if st.button("💻 PAINEL DO PROGRAMADOR", use_container_width=True): mudar_tela('programador')
-        if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True): mudar_tela('afc')
-        if st.button("⚙ ACESSAR MÓDULO RETÍFICA", use_container_width=True): mudar_tela('rtf')
-        if st.button("🗄️ GERENCIAR ARMÁRIOS", use_container_width=True): mudar_tela('armarios')
-        if st.button("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", use_container_width=True): mudar_tela('checkup')
-        if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
-        if st.button("📋 RELATÓRIOS E LIRS", use_container_width=True): mudar_tela('hub_relatorios')
-        if st.button("📊 HISTÓRICOS E EXPORTAÇÕES", use_container_width=True): mudar_tela('historico')
-        if st.button("✏️ GERENCIAR BANCO DE DADOS", use_container_width=True): mudar_tela('editar')
+        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
+        botao_navegar("💻 PAINEL DO PROGRAMADOR", 'programador', use_container_width=True)
+        botao_navegar("⚙️ ACESSAR MÓDULO AFIAÇÃO", 'afc', use_container_width=True)
+        botao_navegar("⚙ ACESSAR MÓDULO RETÍFICA", 'rtf', use_container_width=True)
+        botao_navegar("🗄️ GERENCIAR ARMÁRIOS", 'armarios', use_container_width=True)
+        botao_navegar("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', use_container_width=True)
+        botao_navegar("👥 CONTROLE DE EQUIPE", 'equipe', use_container_width=True)
+        botao_navegar("📋 RELATÓRIOS E LIRS", 'hub_relatorios', use_container_width=True)
+        botao_navegar("📊 HISTÓRICOS E EXPORTAÇÕES", 'historico', use_container_width=True)
+        botao_navegar("✏️ GERENCIAR BANCO DE DADOS", 'editar', use_container_width=True)
     elif perfil == 'preset':
-        if st.button("📊 VISÃO GERAL DE FÁBRICA", use_container_width=True, type="primary"): mudar_tela('visao_geral')
-        if st.button("💻 PAINEL DO PROGRAMADOR", use_container_width=True): mudar_tela('programador')
-        if st.button("🗄 GERENCIAR ARMÁRIOS", use_container_width=True): mudar_tela('armarios')
-        if st.button("🔍 PROGRAMAÇÃO DO SETOR", use_container_width=True): mudar_tela('checkup')
+        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
+        botao_navegar("💻 PAINEL DO PROGRAMADOR", 'programador', use_container_width=True)
+        botao_navegar("🗄 GERENCIAR ARMÁRIOS", 'armarios', use_container_width=True)
+        botao_navegar("🔍 PROGRAMAÇÃO DO SETOR", 'checkup', use_container_width=True)
     elif perfil == 'programador':
-        if st.button("📊 VISÃO GERAL DE FÁBRICA", use_container_width=True, type="primary"): mudar_tela('visao_geral')
-        if st.button("💻 PAINEL DO PROGRAMADOR", use_container_width=True, type="primary"): mudar_tela('programador')
-        if st.button("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", use_container_width=True): mudar_tela('checkup')
-        if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
+        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
+        botao_navegar("💻 PAINEL DO PROGRAMADOR", 'programador', use_container_width=True, type="primary")
+        botao_navegar("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', use_container_width=True)
+        botao_navegar("👥 CONTROLE DE EQUIPE", 'equipe', use_container_width=True)
     elif perfil == 'preparador':
-        if st.button("📊 VISÃO GERAL DE FÁBRICA", use_container_width=True, type="primary"): mudar_tela('visao_geral')
+        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
         if st.session_state['setor_usuario'] in ['AFC', 'TECNICO']:
-            if st.button("⚙️ ACESSAR MÓDULO AFIAÇÃO", use_container_width=True): mudar_tela('afc')
+            botao_navegar("⚙️ ACESSAR MÓDULO AFIAÇÃO", 'afc', use_container_width=True)
         if st.session_state['setor_usuario'] in ['RTF', 'TECNICO']:
-            if st.button("⚙ ACESSAR MÓDULO RETÍFICA", use_container_width=True): mudar_tela('rtf')
-        if st.button("🗄️ VISÃO DOS ARMÁRIOS", use_container_width=True): mudar_tela('armarios')
-        if st.button("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", use_container_width=True): mudar_tela('checkup')
-        if st.button("⚡ MINHAS INCIDÊNCIAS", use_container_width=True): mudar_tela('minhas_incidencias')
-        if st.button("👥 CONTROLE DE EQUIPE", use_container_width=True): mudar_tela('equipe')
-        if st.button("📋 RELATÓRIOS E LIRS", use_container_width=True): mudar_tela('hub_relatorios')
-        if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
+            botao_navegar("⚙ ACESSAR MÓDULO RETÍFICA", 'rtf', use_container_width=True)
+        botao_navegar("🗄️ VISÃO DOS ARMÁRIOS", 'armarios', use_container_width=True)
+        botao_navegar("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', use_container_width=True)
+        botao_navegar("⚡ MINHAS INCIDÊNCIAS", 'minhas_incidencias', use_container_width=True)
+        botao_navegar("👥 CONTROLE DE EQUIPE", 'equipe', use_container_width=True)
+        botao_navegar("📋 RELATÓRIOS E LIRS", 'hub_relatorios', use_container_width=True)
+        botao_navegar("✏️ CORREÇÃO DE APONTAMENTOS", 'editar', use_container_width=True)
     else:
-        if st.button("📊 VISÃO GERAL DE FÁBRICA", use_container_width=True, type="primary"): mudar_tela('visao_geral')
-        if st.button("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", use_container_width=True): mudar_tela('checkup')
-        if st.button("📋 RELATÓRIOS E LIRS", use_container_width=True): mudar_tela('hub_relatorios')
-        if st.button("✏️ CORREÇÃO DE APONTAMENTOS", use_container_width=True): mudar_tela('editar')
-    
+        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
+        botao_navegar("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', use_container_width=True)
+        botao_navegar("📋 RELATÓRIOS E LIRS", 'hub_relatorios', use_container_width=True)
+        botao_navegar("✏️ CORREÇÃO DE APONTAMENTOS", 'editar', use_container_width=True)
     st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
     if st.button("🚪 Encerramento de Sessão (Logout)", use_container_width=True):
         st.session_state['logout_realizado'] = True
@@ -2023,10 +2161,10 @@ def tela_menu():
             if cookie_manager.get("user_setor"): cookie_manager.delete("user_setor", key="del_setor")
             if cookie_manager.get("user_perfil"): cookie_manager.delete("user_perfil", key="del_perfil")
         except: pass 
-        mudar_tela('login')
+        mudar_tela('login', forcar_rerun=True)
 
 def tela_visao_geral():
-    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    botao_navegar("⬅️ Voltar ao Menu", 'menu')
     st.markdown("#### 📊 Visão Geral da Fábrica — Máquinas e OPs")
     st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Acompanhe em tempo real o status, os itens rodando e as ordens de produção em todas as máquinas da Afiação e Retífica.</p>", unsafe_allow_html=True)
     st.divider()
@@ -2083,13 +2221,10 @@ def render_grid_vertical(lista_maquinas, setor, status_dict):
             status_atual = status_dict.get(chave_busca, "PRODUZINDO")
             icone = get_status_icon(status_atual)
             label_botao = f"{icone} Máquina {maq} — {status_atual}"
-            if st.button(label_botao, key=f"btn_vert_{setor}_{maq}", use_container_width=True):
-                st.session_state['maq_ativa'] = maq
-                st.session_state['setor_ativo'] = setor
-                st.rerun()
+            st.button(label_botao, key=f"btn_vert_{setor}_{maq}", use_container_width=True, on_click=definir_estados, args=({'maq_ativa': maq, 'setor_ativo': setor},))
 
 def tela_checkup():
-    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    botao_navegar("⬅️ Voltar ao Menu", 'menu')
     st.markdown("#### 🔍 Programação e Incidências")
     st.divider()
     
@@ -2317,10 +2452,7 @@ def tela_checkup():
             else:
                 for setor_m, maq_m, st_m in incidencias_turno_atual:
                     icone = get_status_icon(st_m)
-                    if st.button(f"{icone} {setor_m} {maq_m} — {st_m}", key=f"chk_at_{setor_m}_{maq_m}", use_container_width=True):
-                        st.session_state['maq_ativa'] = maq_m
-                        st.session_state['setor_ativo'] = setor_m
-                        st.rerun()
+                    st.button(f"{icone} {setor_m} {maq_m} — {st_m}", key=f"chk_at_{setor_m}_{maq_m}", use_container_width=True, on_click=definir_estados, args=({'maq_ativa': maq_m, 'setor_ativo': setor_m},))
 
     with aba_futuro:
         st.markdown("**Programação de Setups e Paradas por Turno**")
@@ -2333,10 +2465,7 @@ def tela_checkup():
             else:
                 for setor_m, maq_m, st_m in lista_futura:
                     icone = get_status_icon(st_m)
-                    if st.button(f"{icone} {setor_m} {maq_m} — {st_m}", key=f"chk_fut_{setor_m}_{maq_m}", use_container_width=True):
-                        st.session_state['maq_ativa'] = maq_m
-                        st.session_state['setor_ativo'] = setor_m
-                        st.rerun()
+                    st.button(f"{icone} {setor_m} {maq_m} — {st_m}", key=f"chk_fut_{setor_m}_{maq_m}", use_container_width=True, on_click=definir_estados, args=({'maq_ativa': maq_m, 'setor_ativo': setor_m},))
 
     with aba_previsao:
         st.markdown("#### ⏱️ Lançar Previsão de Parada por Fila")
@@ -2344,8 +2473,8 @@ def tela_checkup():
 
         if setor_atual in ['TECNICO', 'GERAL', 'GERÊNCIA', 'PRESET', 'PROGRAMACAO'] or perfil == 'adm':
             c_s1, c_s2 = st.columns(2)
-            if c_s1.button("Setor: AFIAÇÃO", use_container_width=True): st.session_state['setor_prev_sel'] = 'AFC'; st.session_state['fila_prev_sel'] = None; st.rerun()
-            if c_s2.button("Setor: RETÍFICA", use_container_width=True): st.session_state['setor_prev_sel'] = 'RTF'; st.session_state['fila_prev_sel'] = None; st.rerun()
+            c_s1.button("Setor: AFIAÇÃO", use_container_width=True, on_click=definir_estados, args=({'setor_prev_sel': 'AFC', 'fila_prev_sel': None},))
+            c_s2.button("Setor: RETÍFICA", use_container_width=True, on_click=definir_estados, args=({'setor_prev_sel': 'RTF', 'fila_prev_sel': None},))
             setor_foco = st.session_state.get('setor_prev_sel', 'AFC')
         else:
             setor_foco = "AFC" if setor_atual == "AFC" else "RTF"
@@ -2354,16 +2483,16 @@ def tela_checkup():
         st.markdown("<hr style='margin: 5px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
         
         if st.session_state.get('fila_prev_sel') is None:
-            if st.button("📍 Fila 1", use_container_width=True): st.session_state['fila_prev_sel'] = 'fila_1'; st.rerun()
-            if st.button("📍 Fila 2", use_container_width=True): st.session_state['fila_prev_sel'] = 'fila_2'; st.rerun()
-            if st.button("📍 Fila 3", use_container_width=True): st.session_state['fila_prev_sel'] = 'fila_3'; st.rerun()
-            if st.button("📍 Fila 4", use_container_width=True): st.session_state['fila_prev_sel'] = 'fila_4'; st.rerun()
+            st.button("📍 Fila 1", use_container_width=True, on_click=definir_estado, args=('fila_prev_sel', 'fila_1'))
+            st.button("📍 Fila 2", use_container_width=True, on_click=definir_estado, args=('fila_prev_sel', 'fila_2'))
+            st.button("📍 Fila 3", use_container_width=True, on_click=definir_estado, args=('fila_prev_sel', 'fila_3'))
+            st.button("📍 Fila 4", use_container_width=True, on_click=definir_estado, args=('fila_prev_sel', 'fila_4'))
             if setor_foco == 'RTF':
                 st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
-                if st.button("⚫ Centerless (CNC1)", use_container_width=True): st.session_state['fila_prev_sel'] = 'centerless'; st.rerun()
-                if st.button("🟤 Facetadoras (CNC2)", use_container_width=True): st.session_state['fila_prev_sel'] = 'facetadoras'; st.rerun()
+                st.button("⚫ Centerless (CNC1)", use_container_width=True, on_click=definir_estado, args=('fila_prev_sel', 'centerless'))
+                st.button("🟤 Facetadoras (CNC2)", use_container_width=True, on_click=definir_estado, args=('fila_prev_sel', 'facetadoras'))
         else:
-            if st.button("⬅️ Voltar para seleção de Fila", key="voltar_fila_prev"): st.session_state['fila_prev_sel'] = None; st.rerun()
+            st.button("⬅️ Voltar para seleção de Fila", key="voltar_fila_prev", on_click=definir_estado, args=('fila_prev_sel', None))
             maquinas_foco = []
             if setor_foco == 'AFC':
                 if st.session_state['fila_prev_sel'] == 'fila_1': maquinas_foco = ["6-868", "9-088", "7-743", "11-365", "13-964", "15-973", "17-140", "19-760", "21-206", "23-165", "25-209", "27-431"]
@@ -2445,7 +2574,7 @@ def tela_checkup():
                         else: st.info("Nenhuma alteração de horário detectada.")
 
 def tela_minhas_incidencias():
-    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    botao_navegar("⬅️ Voltar ao Menu", 'menu')
     st.markdown(f"#### ⚡ Minhas Incidências — {st.session_state['operador']}")
     st.divider()
     status_dict = ler_status_atual()
@@ -2469,13 +2598,10 @@ def tela_minhas_incidencias():
     else:
         for setor_m, maq_m, st_m in minhas_maquinas:
             icone = get_status_icon(st_m)
-            if st.button(f"{icone} {setor_m} {maq_m} — {st_m}", key=f"min_{setor_m}_{maq_m}", use_container_width=True):
-                st.session_state['maq_ativa'] = maq_m
-                st.session_state['setor_ativo'] = setor_m
-                st.rerun()
+            st.button(f"{icone} {setor_m} {maq_m} — {st_m}", key=f"min_{setor_m}_{maq_m}", use_container_width=True, on_click=definir_estados, args=({'maq_ativa': maq_m, 'setor_ativo': setor_m},))
 
 def tela_afc():
-    if st.button("⬅ Voltar ao Menu"): mudar_tela('menu')
+    botao_navegar("⬅ Voltar ao Menu", 'menu')
     st.markdown("#### ⚙️ Setor Afiação — Filas")
     st.markdown("""
     <div style='background-color: #3f0000; padding: 12px; border-radius: 8px; border-left: 5px solid #ff4444; margin-bottom: 15px;'>
@@ -2498,12 +2624,12 @@ def tela_afc():
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] == 'AFC': painel_controle_maquina(st.session_state['maq_ativa'], 'AFC')
     
     if st.session_state['celula_selecionada'] is None:
-        if st.button("📍 Fila 1", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_1'; st.rerun()
-        if st.button("📍 Fila 2", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_2'; st.rerun()
-        if st.button("📍 Fila 3", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_3'; st.rerun()
-        if st.button("📍 Fila 4", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_4'; st.rerun()
+        st.button("📍 Fila 1", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'fila_1'))
+        st.button("📍 Fila 2", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'fila_2'))
+        st.button("📍 Fila 3", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'fila_3'))
+        st.button("📍 Fila 4", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'fila_4'))
     else:
-        if st.button("⬅️ Trocar de Fila"): st.session_state['celula_selecionada'] = None; st.session_state['maq_ativa'] = None; st.rerun()
+        st.button("⬅️ Trocar de Fila", on_click=definir_estados, args=({'celula_selecionada': None, 'maq_ativa': None},))
         st.divider()
         if st.session_state['celula_selecionada'] == 'fila_1': render_grid_vertical(["6-868", "9-088", "7-743", "11-365", "13-964", "15-973", "17-140", "19-760", "21-206", "23-165", "25-209", "27-431"], "AFC", status_dict)
         elif st.session_state['celula_selecionada'] == 'fila_2': render_grid_vertical(["8-247", "4-427", "10-812", "12-367", "14-967", "16-975", "18-957", "20-774", "22-813", "24-761", "26-635", "28-432"], "AFC", status_dict)
@@ -2511,7 +2637,7 @@ def tela_afc():
         elif st.session_state['celula_selecionada'] == 'fila_4': render_grid_vertical(["30-161", "32-081", "34-132", "36-084", "38-596", "40-142"], "AFC", status_dict)
 
 def tela_rtf():
-    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    botao_navegar("⬅️ Voltar ao Menu", 'menu')
     st.markdown("#### ⚙️ Setor Retífica — Filas")
     st.markdown("""
     <div style='background-color: #3f0000; padding: 12px; border-radius: 8px; border-left: 5px solid #ff4444; margin-bottom: 15px;'>
@@ -2552,15 +2678,15 @@ def tela_rtf():
     f4_atual = [m for m in base_fila_4 if m in todas_cnc3] + extraviados_cnc3
 
     if st.session_state['celula_selecionada'] is None:
-        if st.button("📍 Fila 1", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_1'; st.rerun()
-        if st.button("📍 Fila 2", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_2'; st.rerun()
-        if st.button("📍 Fila 3", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_3'; st.rerun()
-        if st.button("📍 Fila 4", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_4'; st.rerun()
+        st.button("📍 Fila 1", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'fila_1'))
+        st.button("📍 Fila 2", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'fila_2'))
+        st.button("📍 Fila 3", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'fila_3'))
+        st.button("📍 Fila 4", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'fila_4'))
         st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
-        if st.button("⚫ Centerless (CNC1)", use_container_width=True): st.session_state['celula_selecionada'] = 'centerless'; st.rerun()
-        if st.button("🟤 Facetadoras (CNC2)", use_container_width=True): st.session_state['celula_selecionada'] = 'facetadoras'; st.rerun()
+        st.button("⚫ Centerless (CNC1)", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'centerless'))
+        st.button("🟤 Facetadoras (CNC2)", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'facetadoras'))
     else:
-        if st.button("⬅️ Trocar de Fila / Setor"): st.session_state['celula_selecionada'] = None; st.session_state['maq_ativa'] = None; st.rerun()
+        st.button("⬅️ Trocar de Fila / Setor", on_click=definir_estados, args=({'celula_selecionada': None, 'maq_ativa': None},))
         st.divider()
         if st.session_state['celula_selecionada'] == 'fila_1': render_grid_vertical(f1_atual, "RTF", status_dict)
         elif st.session_state['celula_selecionada'] == 'fila_2': render_grid_vertical(f2_atual, "RTF", status_dict)
@@ -2570,7 +2696,7 @@ def tela_rtf():
         elif st.session_state['celula_selecionada'] == 'facetadoras': render_grid_vertical(todas_cnc2, "RTF", status_dict)
 
 def tela_equipe():
-    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    botao_navegar("⬅️ Voltar ao Menu", 'menu')
     st.markdown("#### 👥 Gestão de Equipe")
     with st.container():
         with st.form("form_equipe", clear_on_submit=True):
@@ -2587,7 +2713,7 @@ def tela_equipe():
         if not df_eq.empty: st.dataframe(df_eq, use_container_width=True, hide_index=True)
 
 def tela_editar():
-    if st.button("⬅️️ Voltar ao Menu"): mudar_tela('menu')
+    botao_navegar("⬅️️ Voltar ao Menu", 'menu')
     st.markdown("#### ✏️ Correção de Apontamentos")
     perfil = st.session_state['perfil']
     setor_usuario = st.session_state['setor_usuario']
@@ -2633,7 +2759,7 @@ def tela_editar():
     else: st.info("Nenhum apontamento encontrado no sistema.")
 
 def tela_historico():
-    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    botao_navegar("⬅️ Voltar ao Menu", 'menu')
     st.markdown("#### 📊 Histórico e Exportações")
     aba1, aba2 = st.tabs(["📝 Relatórios Textuais", "📥 Banco de Eventos (Planilha)"])
     with aba1:
@@ -2659,7 +2785,7 @@ def tela_historico():
                     st.download_button("📥 Baixar Planilha", data=csv, file_name="eventos.csv", mime="text/csv", type="primary")
 
 def tela_relatorio():
-    if st.button("⬅️ Voltar à Central"): mudar_tela('hub_relatorios')
+    botao_navegar("⬅️ Voltar à Central", 'hub_relatorios')
     st.markdown("#### 📋 Fechamento e Relatório de Turno")
     col1, col2 = st.columns(2)
     gerar = col1.button("👁 Visualizar", use_container_width=True)
@@ -2682,7 +2808,7 @@ def tela_relatorio():
 
 def tela_armarios():
     exibir_alertas_preset()
-    if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
+    botao_navegar("⬅️ Voltar ao Menu", 'menu')
     st.markdown("#### 🗄️ Gestão de Armários (Pré-Set)")
     
     inicializar_armarios()
@@ -3100,10 +3226,7 @@ def tela_armarios():
             st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode editar as gavetas em lote.")
 
 def tela_lirs():
-    if st.button("⬅ Voltar à Central"): 
-        st.session_state['lirs_maq_ativa'] = None
-        st.session_state['celula_selecionada'] = None
-        mudar_tela('hub_relatorios')
+    botao_navegar("⬅ Voltar à Central", 'hub_relatorios')
         
     st.markdown("#### 🧹 LIRS - Auditoria e Liberação de Linha")
     st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Processo padronizado de validação de setup e passagem de turno.</p>", unsafe_allow_html=True)
@@ -3115,25 +3238,23 @@ def tela_lirs():
     
     with aba_execucao:
         c_s1, c_s2 = st.columns(2)
-        if c_s1.button("🏭 SETOR AFIAÇÃO", type="primary" if st.session_state['lirs_setor'] == 'AFC' else "secondary", use_container_width=True): 
-            st.session_state['lirs_setor'] = 'AFC'; st.session_state['celula_selecionada'] = None; st.session_state['lirs_maq_ativa'] = None; st.rerun()
-        if c_s2.button("🏭 SETOR RETÍFICA", type="primary" if st.session_state['lirs_setor'] == 'RTF' else "secondary", use_container_width=True): 
-            st.session_state['lirs_setor'] = 'RTF'; st.session_state['celula_selecionada'] = None; st.session_state['lirs_maq_ativa'] = None; st.rerun()
+        c_s1.button("🏭 SETOR AFIAÇÃO", type="primary" if st.session_state['lirs_setor'] == 'AFC' else "secondary", use_container_width=True, on_click=definir_estados, args=({'lirs_setor': 'AFC', 'celula_selecionada': None, 'lirs_maq_ativa': None},))
+        c_s2.button("🏭 SETOR RETÍFICA", type="primary" if st.session_state['lirs_setor'] == 'RTF' else "secondary", use_container_width=True, on_click=definir_estados, args=({'lirs_setor': 'RTF', 'celula_selecionada': None, 'lirs_maq_ativa': None},))
 
         setor = st.session_state['lirs_setor']
         st.divider()
 
         if st.session_state['celula_selecionada'] is None:
-            if st.button("📍 Fila 1", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_1'; st.rerun()
-            if st.button("📍 Fila 2", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_2'; st.rerun()
-            if st.button("📍 Fila 3", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_3'; st.rerun()
-            if st.button("📍 Fila 4", use_container_width=True): st.session_state['celula_selecionada'] = 'fila_4'; st.rerun()
+            st.button("📍 Fila 1", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'fila_1'))
+            st.button("📍 Fila 2", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'fila_2'))
+            st.button("📍 Fila 3", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'fila_3'))
+            st.button("📍 Fila 4", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'fila_4'))
             if setor == 'RTF':
                 st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
-                if st.button("⚫ Centerless (CNC1)", use_container_width=True): st.session_state['celula_selecionada'] = 'centerless'; st.rerun()
-                if st.button("🟤 Facetadoras (CNC2)", use_container_width=True): st.session_state['celula_selecionada'] = 'facetadoras'; st.rerun()
+                st.button("⚫ Centerless (CNC1)", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'centerless'))
+                st.button("🟤 Facetadoras (CNC2)", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'facetadoras'))
         else:
-            if st.button("⬅️ Voltar à Seleção de Fila"): st.session_state['celula_selecionada'] = None; st.session_state['lirs_maq_ativa'] = None; st.rerun()
+            st.button("⬅️ Voltar à Seleção de Fila", on_click=definir_estados, args=({'celula_selecionada': None, 'lirs_maq_ativa': None},))
             
             maquinas_foco = []
             if setor == 'AFC':
@@ -3301,7 +3422,7 @@ def tela_lirs():
         st.code(texto_relatorio, language="text")
 
 def tela_programador():
-    if st.button("⬅ Voltar ao Menu"): mudar_tela('menu')
+    botao_navegar("⬅ Voltar ao Menu", 'menu')
     st.markdown("#### 💻 Painel de Programação CNC")
     st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Visualize as preparações e confirme o envio dos programas para as máquinas.</p>", unsafe_allow_html=True)
     st.divider()
