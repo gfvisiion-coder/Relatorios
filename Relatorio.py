@@ -368,7 +368,7 @@ cookies_salvos = cookie_manager.get_all()
 
 if not cookies_salvos and not st.session_state['cookie_sync']:
     st.session_state['cookie_sync'] = True
-    time.sleep(0.3)
+
     st.rerun()
 
 ARQUIVO_DADOS = "banco_operacao.csv"
@@ -1204,7 +1204,6 @@ if not st.session_state['operador'] and not st.session_state['logout_realizado']
         st.session_state['setor_usuario'] = cookies_salvos.get("user_setor", "")
         st.session_state['perfil'] = cookies_salvos.get("user_perfil", "")
         st.session_state['tela_atual'] = 'menu'
-        st.rerun() 
 
 def mudar_tela(nome_tela):
     st.session_state['tela_atual'] = nome_tela
@@ -1312,7 +1311,7 @@ def painel_controle_maquina(maq_id, setor):
                     tipo_limpo = novo_tipo.split(" ")[0]
                     set_tipo_cnc(maq_id, tipo_limpo)
                     st.success(f"✅ Máquina alterada para {tipo_limpo}!")
-                    time.sleep(0.5); st.rerun()
+                    st.rerun()
             
         status_dict = ler_status_atual()
         status_atual = status_dict.get(f"{setor} {maq_id}", "PRODUZINDO")
@@ -1420,7 +1419,7 @@ def painel_controle_maquina(maq_id, setor):
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
                         st.success(f"✅ Troca concluída em {minutos_decorridos} min! Novo agendamento: {h_alvo if h_alvo else '--'}")
-                        time.sleep(2.0); st.rerun()
+                        st.rerun()
 
                 else:
                     st.markdown(f"<p style='text-align: center; font-weight: 600;'>O setup desta máquina foi finalizado?</p>", unsafe_allow_html=True)
@@ -1467,7 +1466,7 @@ def painel_controle_maquina(maq_id, setor):
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
                         st.success("✅ Setup assumido com sucesso!")
-                        time.sleep(0.5); st.rerun()
+                        st.rerun()
 
         elif st.session_state[flow_key] == "pergunta" and not is_setup_ativo:
             st.markdown(f"<p style='text-align: center; font-weight: 600;'>Esta máquina ainda está com o status atual?</p>", unsafe_allow_html=True)
@@ -1559,7 +1558,7 @@ def painel_controle_maquina(maq_id, setor):
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
                         st.success("✅ Apontamento registrado! Máquina em Produção.")
-                        time.sleep(0.5); st.rerun()
+                        st.rerun()
 
         elif st.session_state[flow_key] == "detalhe_parada":
             with st.form(f"form_par_{maq_id}"):
@@ -1584,7 +1583,7 @@ def painel_controle_maquina(maq_id, setor):
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
                         st.success("✅ Máquina registrada como PARADA!")
-                        time.sleep(0.5); st.rerun()
+                        st.rerun()
 
         elif st.session_state[flow_key] == "detalhe_prep":
             with st.form(f"form_prep_{maq_id}"):
@@ -1678,7 +1677,7 @@ def painel_controle_maquina(maq_id, setor):
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
                         st.success("✅ Registro salvo com sucesso!")
-                        time.sleep(0.5); st.rerun()
+                        st.rerun()
 
         elif st.session_state[flow_key] == "acoes_espera":
             with st.form(f"form_espera_{maq_id}"):
@@ -1784,7 +1783,7 @@ def painel_controle_maquina(maq_id, setor):
                     st.session_state['maq_ativa'] = None
                     del st.session_state[flow_key]
                     st.success("✅ Troca de rebolo iniciada! O tempo já está contando.")
-                    time.sleep(1.5); st.rerun()
+                    st.rerun()
 
                 if btn_adiar:
                     if novo_horario_adiar.strip():
@@ -1800,7 +1799,7 @@ def painel_controle_maquina(maq_id, setor):
                             st.session_state['maq_ativa'] = None
                             del st.session_state[flow_key]
                             st.success(f"✅ Agendamento adiado para {novo_horario_adiar.strip()}!")
-                            time.sleep(0.5); st.rerun()
+                            st.rerun()
                     else: st.error("⚠️ Informe o novo horário para adiar!")
                     
                 if btn_sugerir:
@@ -1832,7 +1831,7 @@ def painel_controle_maquina(maq_id, setor):
                             st.session_state['maq_ativa'] = None
                             del st.session_state[flow_key]
                             st.success("✅ Sugestão e validação do programa atualizadas!")
-                            time.sleep(0.5); st.rerun()
+                            st.rerun()
                             
                 if btn_iniciar:
                     if is_comum and not nova_ordem_input.strip(): st.error("⚠️ Para INICIAR a preparação, informe a Nova Ordem (OP)!")
@@ -1871,7 +1870,7 @@ def painel_controle_maquina(maq_id, setor):
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
                         st.success("✅ Preparação iniciada!")
-                        time.sleep(0.5); st.rerun()
+                        st.rerun()
 
         elif st.session_state[flow_key] == "detalhe_man":
             with st.form(f"form_man_{maq_id}"):
@@ -1889,7 +1888,7 @@ def painel_controle_maquina(maq_id, setor):
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
                         st.success("✅ Registrado!")
-                        time.sleep(0.5); st.rerun()
+                        st.rerun()
 
 def tela_login():
     st.markdown("<h2 style='text-align: center; color: #14B8A6 !important; margin-top: 30px;'>🏭 RELATORIO AFIAÇÃO</h2>", unsafe_allow_html=True)
@@ -1926,8 +1925,7 @@ def tela_login():
                 cookie_manager.set("user_turno", turno_val, key="set_turno", expires_at=expiracao)
                 cookie_manager.set("user_setor", setor_val, key="set_setor", expires_at=expiracao)
                 cookie_manager.set("user_perfil", perfil_val, key="set_perfil", expires_at=expiracao)
-                
-                time.sleep(0.5)
+
                 mudar_tela('menu')
             else: st.error("⚠️ Credenciais inválidas.")
 
@@ -2025,7 +2023,7 @@ def tela_menu():
             if cookie_manager.get("user_setor"): cookie_manager.delete("user_setor", key="del_setor")
             if cookie_manager.get("user_perfil"): cookie_manager.delete("user_perfil", key="del_perfil")
         except: pass 
-        time.sleep(0.5); mudar_tela('login')
+        mudar_tela('login')
 
 def tela_visao_geral():
     if st.button("⬅️ Voltar ao Menu"): mudar_tela('menu')
@@ -2443,7 +2441,7 @@ def tela_checkup():
                             df_dados = pd.concat([df_dados, pd.DataFrame(novas_linhas)], ignore_index=True)
                             df_dados.to_csv(ARQUIVO_DADOS, index=False)
                             st.success("✅ Previsões atualizadas com sucesso!")
-                            time.sleep(1); st.rerun()
+                            st.rerun()
                         else: st.info("Nenhuma alteração de horário detectada.")
 
 def tela_minhas_incidencias():
@@ -2490,11 +2488,11 @@ def tela_afc():
     if col_em1.button("🔴 Parar todas (AFC)", use_container_width=True):
         registrar_queda_energia("AFC")
         st.success("✅ Todas as afiadoras registradas como PARADAS!")
-        time.sleep(1); st.rerun()
+        st.rerun()
     if col_em2.button("🔄 Restaurar Status", use_container_width=True):
         restaurar_queda_energia("AFC")
         st.success("✅ Status das afiadoras restaurado!")
-        time.sleep(1); st.rerun()
+        st.rerun()
         
     status_dict = ler_status_atual()
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] == 'AFC': painel_controle_maquina(st.session_state['maq_ativa'], 'AFC')
@@ -2526,11 +2524,11 @@ def tela_rtf():
     if col_em1.button("🔴 Parar todas (RTF)", use_container_width=True):
         registrar_queda_energia("RTF")
         st.success("✅ Todas as retíficas registradas como PARADAS!")
-        time.sleep(1); st.rerun()
+        st.rerun()
     if col_em2.button("🔄 Restaurar Status", use_container_width=True):
         restaurar_queda_energia("RTF")
         st.success("✅ Status das retíficas restaurado!")
-        time.sleep(1); st.rerun()
+        st.rerun()
 
     status_dict = ler_status_atual()
     if st.session_state['maq_ativa'] and st.session_state['setor_ativo'] == 'RTF': painel_controle_maquina(st.session_state['maq_ativa'], 'RTF')
@@ -2582,7 +2580,7 @@ def tela_equipe():
                 if nome:
                     salvar_csv({"Tipo": tipo, "Nome": nome.upper()}, ARQUIVO_EQUIPE)
                     st.success(f"✅ {nome.upper()} registrado como {tipo}!")
-                    time.sleep(0.5); st.rerun()
+                    st.rerun()
     st.divider()
     if os.path.exists(ARQUIVO_EQUIPE):
         df_eq = pd.read_csv(ARQUIVO_EQUIPE)
@@ -2600,7 +2598,7 @@ def tela_editar():
             if os.path.exists(ARQUIVO_DADOS): os.remove(ARQUIVO_DADOS)
             if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
             st.success("✅ Banco de dados apagado com sucesso!")
-            time.sleep(0.5); st.rerun()
+            st.rerun()
     else: col_salvar = st.container()
         
     if os.path.exists(ARQUIVO_DADOS):
@@ -2631,7 +2629,7 @@ def tela_editar():
                     df_maq = pd.concat([df_maq, nova_linha], ignore_index=True)
             df_maq.to_csv(ARQUIVO_DADOS, index=False)
             st.success("✨ Banco de dados atualizado com sucesso!")
-            time.sleep(0.5); st.rerun()
+            st.rerun()
     else: st.info("Nenhum apontamento encontrado no sistema.")
 
 def tela_historico():
@@ -2680,7 +2678,7 @@ def tela_relatorio():
         if encerrar:
             executar_fechamento_silencioso(curr_d, curr_t)
             st.success("✨ Turno encerrado manualmente! O banco de dados foi limpo e está pronto para continuar.")
-            time.sleep(2); st.rerun()
+            st.rerun()
 
 def tela_armarios():
     exibir_alertas_preset()
@@ -2749,7 +2747,7 @@ def tela_armarios():
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                             st.session_state['gaveta_selecionada'] = None
                             st.success(f"✅ Setup guardado na gaveta da MÁQUINA {pos_sel}!")
-                            time.sleep(1); st.rerun()
+                            st.rerun()
                 if c2.form_submit_button("❌ Cancelar", use_container_width=True):
                     st.session_state['gaveta_selecionada'] = None
                     st.rerun()
@@ -2795,7 +2793,7 @@ def tela_armarios():
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                             st.session_state['gaveta_selecionada'] = None
                             st.success("✅ Gaveta atualizada com sucesso!")
-                            time.sleep(1); st.rerun()
+                            st.rerun()
                 if c2.form_submit_button("🗑️ Excluir", use_container_width=True):
                     idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                     if not idx.empty:
@@ -2803,7 +2801,7 @@ def tela_armarios():
                         df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                         st.session_state['gaveta_selecionada'] = None
                         st.success("✅ Gaveta liberada com sucesso!")
-                        time.sleep(1); st.rerun()
+                        st.rerun()
                 if c3.form_submit_button("❌ Cancelar", use_container_width=True):
                     st.session_state['gaveta_selecionada'] = None
                     st.rerun()
@@ -2922,7 +2920,7 @@ def tela_armarios():
                             ]
                             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                             st.success(f"✅ Ferramental guardado para a MAQ {pos_sel} do {armario_sel}!")
-                            time.sleep(1.5); st.rerun()
+                            st.rerun()
         else: 
             st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode inserir ou remover itens nos armários.")
 
@@ -3044,7 +3042,7 @@ def tela_armarios():
                             pd.DataFrame([nova_dev]).to_csv(ARQUIVO_DEVOLUCOES, index=False)
                             
                         st.success("✅ Devolução registrada com sucesso!")
-                        time.sleep(1)
+
                         st.rerun()
             
             st.divider()
@@ -3097,7 +3095,7 @@ def tela_armarios():
                     df_arm.loc[mask, 'Observacao'] = str(row['Observacao']).strip()
                 df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
                 st.success("✅ Armários atualizados em lote com sucesso!")
-                time.sleep(0.5); st.rerun()
+                st.rerun()
         else:
             st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode editar as gavetas em lote.")
 
@@ -3234,7 +3232,7 @@ def tela_lirs():
                                 
                                 st.session_state['lirs_maq_ativa'] = None
                                 st.success(f"✅ Equipamento {maq_ativa} auditado e liberado para produção do {turno_atual}!")
-                                time.sleep(1.5); st.rerun()
+                                st.rerun()
 
             for maq in ordenar_maquinas(maquinas_foco):
                 st_val = status_dict.get(f"{setor} {maq}", "")
@@ -3442,7 +3440,7 @@ def tela_programador():
                                 hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                                 salvar_csv({"Setor": setor_m, "Maquina": f"{setor_m} {maq_m}", "Operador": st.session_state['operador'], "Status": raw_st, "Hora": hora_br_str}, ARQUIVO_DADOS)
                                 st.success("✅ Programa alterado para NOK!")
-                                time.sleep(0.5); st.rerun()
+                                st.rerun()
                     else:
                         if cols[j].button("✅ Validar / Enviar Programa", key=f"btn_okprog_{setor_m}_{maq_m}", type="primary", use_container_width=True):
                             info_atual = obter_info_maquina(maq_m, setor_m)
@@ -3453,7 +3451,7 @@ def tela_programador():
                                 hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                                 salvar_csv({"Setor": setor_m, "Maquina": f"{setor_m} {maq_m}", "Operador": st.session_state['operador'], "Status": raw_st, "Hora": hora_br_str}, ARQUIVO_DADOS)
                                 st.success("✅ Programa validado como OK!")
-                                time.sleep(0.5); st.rerun()
+                                st.rerun()
 
     render_grid_setor_prog(lista_afc, "AFIAÇÃO (AFC)")
     render_grid_setor_prog(lista_rtf, "RETÍFICA (RTF)")
