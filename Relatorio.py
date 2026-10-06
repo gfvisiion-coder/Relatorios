@@ -16,6 +16,22 @@ import hashlib
 from requests.adapters import HTTPAdapter
 import extra_streamlit_components as stx
 
+# =============================================================
+# 🛡️ PROTEÇÃO CONTRA RECURSÃO EM RERUNS DO STREAMLIT
+# =============================================================
+# O Streamlit reexecuta este arquivo no MESMO processo. Como o app usa wrappers
+# de compatibilidade para pd.read_csv/to_csv/os.path.exists/os.remove, um rerun
+# poderia herdar os wrappers da execução anterior. Restauramos as implementações
+# reais ANTES de qualquer acesso ao Turso ou a arquivos.
+from pandas.io.parsers import read_csv as _BASE_PANDAS_READ_CSV
+from pandas.core.generic import NDFrame as _BASE_PANDAS_NDFRAME
+import genericpath as _BASE_GENERICPATH
+
+pd.read_csv = _BASE_PANDAS_READ_CSV
+pd.DataFrame.to_csv = _BASE_PANDAS_NDFRAME.to_csv
+os.path.exists = _BASE_GENERICPATH.exists
+os.remove = os.unlink
+
 # Configuração do Streamlit deve ocorrer antes de qualquer outro comando st.*.
 st.set_page_config(page_title="Relatorio - Setor Afiação", page_icon="📱", layout="centered", initial_sidebar_state="collapsed")
 
@@ -742,10 +758,13 @@ TABELAS_TURSO = {
     ARQUIVO_CNC, ARQUIVO_FECHAMENTO, "historico_devolucoes.csv"
 }
 
-_original_pd_read_csv = pd.read_csv
-_original_df_to_csv = pd.DataFrame.to_csv
-_original_exists = os.path.exists
-_original_remove = os.remove
+# Referências estáveis às implementações reais restauradas no início do arquivo.
+# Nunca capture pd.read_csv/os.path.exists diretamente neste ponto, pois eles
+# podem já ter sido substituídos em uma execução anterior do Streamlit.
+_original_pd_read_csv = _BASE_PANDAS_READ_CSV
+_original_df_to_csv = _BASE_PANDAS_NDFRAME.to_csv
+_original_exists = _BASE_GENERICPATH.exists
+_original_remove = os.unlink
 
 
 def _nome_tabela_caminho(path):

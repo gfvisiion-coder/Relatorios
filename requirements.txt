@@ -1,4 +1,5 @@
 streamlit
 pandas
-extra-streamlit-components
+requests
 openpyxl
+extra-streamlit-components
