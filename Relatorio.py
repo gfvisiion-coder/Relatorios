@@ -3067,6 +3067,11 @@ def _classificar_preparacao_home(status):
     return None
 
 
+def _eh_aguardando_setup_home(status):
+    """True quando existe setup programado/aguardando, mas ainda não está PREPARANDO."""
+    return _classificar_preparacao_home(status) == 'aguardando'
+
+
 def _classificar_status_home(status):
     up = str(status).upper()
     if 'MANUTENÇÃO' in up or 'MANUTENCAO' in up:
