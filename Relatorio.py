@@ -988,6 +988,345 @@ CSS_APP = """
 """
 st.markdown(CSS_APP, unsafe_allow_html=True)
 
+
+# --- CAMADA VISUAL IMERSIVA V2 (somente interface) ---
+CSS_IMERSIVO_V2 = """
+<style>
+    /* Fundo ambiental: grade técnica + luzes suaves */
+    .stApp { position: relative; isolation: isolate; overflow-x: hidden; }
+    .stApp::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        z-index: -2;
+        pointer-events: none;
+        opacity: .36;
+        background-image:
+            linear-gradient(rgba(255,255,255,.022) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(255,255,255,.022) 1px, transparent 1px);
+        background-size: 34px 34px;
+        mask-image: linear-gradient(to bottom, black 0%, rgba(0,0,0,.55) 55%, transparent 100%);
+    }
+    .stApp::after {
+        content: "";
+        position: fixed;
+        width: 760px;
+        height: 760px;
+        left: 50%;
+        top: -520px;
+        transform: translateX(-50%);
+        z-index: -1;
+        pointer-events: none;
+        border-radius: 999px;
+        background: radial-gradient(circle, rgba(124,58,237,.23) 0%, rgba(45,212,191,.07) 34%, transparent 70%);
+        filter: blur(10px);
+        animation: ambient-breathe 8s ease-in-out infinite alternate;
+    }
+    @keyframes ambient-breathe {
+        from { transform: translateX(-50%) scale(.94); opacity: .72; }
+        to   { transform: translateX(-50%) scale(1.07); opacity: 1; }
+    }
+    @keyframes immersive-rise {
+        from { opacity: 0; transform: translateY(12px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes status-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(45,212,191,.0); }
+        50% { box-shadow: 0 0 0 7px rgba(45,212,191,.07); }
+    }
+    @keyframes logo-float {
+        0%, 100% { transform: translateY(0) rotate(-1deg); }
+        50% { transform: translateY(-6px) rotate(1deg); }
+    }
+
+    .block-container { position: relative; z-index: 1; }
+
+    /* Cards com sensação de profundidade */
+    div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"] {
+        position: relative;
+        overflow: hidden;
+        background:
+            linear-gradient(145deg, rgba(28,28,38,.90), rgba(12,12,18,.94)) !important;
+        border: 1px solid rgba(255,255,255,.085) !important;
+        box-shadow:
+            0 24px 70px rgba(0,0,0,.34),
+            inset 0 1px 0 rgba(255,255,255,.045) !important;
+        backdrop-filter: blur(18px) saturate(130%);
+    }
+    div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"]::before {
+        content: "";
+        position: absolute;
+        inset: 0 0 auto 0;
+        height: 1px;
+        background: linear-gradient(90deg, transparent, rgba(196,181,253,.38), rgba(94,234,212,.22), transparent);
+        pointer-events: none;
+    }
+
+    /* Botões: cards operacionais */
+    div[data-testid="stButton"] > button,
+    div[data-testid="stFormSubmitButton"] > button {
+        position: relative;
+        overflow: hidden;
+        isolation: isolate;
+    }
+    div[data-testid="stButton"] > button::after,
+    div[data-testid="stFormSubmitButton"] > button::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        opacity: 0;
+        background: linear-gradient(110deg, transparent 10%, rgba(255,255,255,.075) 48%, transparent 85%);
+        transform: translateX(-60%);
+        transition: opacity .25s ease, transform .45s ease;
+    }
+    div[data-testid="stButton"] > button:hover::after,
+    div[data-testid="stFormSubmitButton"] > button:hover::after {
+        opacity: 1;
+        transform: translateX(45%);
+    }
+    div[data-testid="stButton"] > button:hover,
+    div[data-testid="stFormSubmitButton"] > button:hover {
+        transform: translateY(-2px) scale(1.006) !important;
+    }
+
+    /* Login cinematográfico */
+    .login-stage {
+        width: min(900px, 100%);
+        margin: 3.5vh auto 18px;
+        text-align: center;
+        animation: immersive-rise .55s ease both;
+    }
+    .login-orbit {
+        position: relative;
+        width: 96px;
+        height: 96px;
+        margin: 0 auto 18px;
+        display: grid;
+        place-items: center;
+    }
+    .login-orbit::before,
+    .login-orbit::after {
+        content: "";
+        position: absolute;
+        border-radius: 999px;
+        border: 1px solid rgba(196,181,253,.18);
+    }
+    .login-orbit::before { inset: 1px; }
+    .login-orbit::after { inset: 11px; border-color: rgba(94,234,212,.18); }
+    .login-core {
+        width: 66px;
+        height: 66px;
+        display: grid;
+        place-items: center;
+        border-radius: 21px;
+        font-size: 31px;
+        background: linear-gradient(145deg, rgba(124,58,237,.36), rgba(13,148,136,.16));
+        border: 1px solid rgba(255,255,255,.12);
+        box-shadow: 0 20px 60px rgba(109,40,217,.28), inset 0 1px 0 rgba(255,255,255,.09);
+        animation: logo-float 4.8s ease-in-out infinite;
+    }
+    .login-eyebrow,
+    .cockpit-eyebrow {
+        color: #A78BFA;
+        font-size: 10px;
+        font-weight: 900;
+        letter-spacing: 1.8px;
+        text-transform: uppercase;
+        margin-bottom: 9px;
+    }
+    .login-main-title {
+        margin: 0;
+        font-size: clamp(34px, 5.2vw, 58px);
+        line-height: .98;
+        font-weight: 950;
+        letter-spacing: -2px;
+        background: linear-gradient(100deg, #FFFFFF 0%, #DDD6FE 44%, #99F6E4 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        text-wrap: balance;
+    }
+    .login-description {
+        max-width: 610px;
+        margin: 15px auto 0;
+        color: #A1A1AA !important;
+        font-size: 14px;
+        line-height: 1.6;
+    }
+    .system-strip {
+        display: inline-flex;
+        align-items: center;
+        gap: 9px;
+        margin-top: 17px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(45,212,191,.18);
+        background: rgba(8,47,43,.22);
+        color: #99F6E4;
+        font-size: 10px;
+        font-weight: 900;
+        letter-spacing: .85px;
+        text-transform: uppercase;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+    }
+    .system-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 999px;
+        background: #2DD4BF;
+        box-shadow: 0 0 16px rgba(45,212,191,.85);
+        animation: status-pulse 2.2s ease-in-out infinite;
+    }
+    .login-form-head {
+        margin: 1px 0 14px;
+        padding: 0 2px 13px;
+        border-bottom: 1px solid rgba(255,255,255,.07);
+    }
+    .login-form-title { color:#FAFAFA; font-size:16px; font-weight:900; letter-spacing:-.25px; }
+    .login-form-sub { color:#71717A; font-size:11px; margin-top:4px; }
+
+    /* Cockpit / menu */
+    .cockpit-shell {
+        position: relative;
+        overflow: hidden;
+        padding: 22px;
+        margin: 2px 0 18px;
+        border-radius: 24px;
+        border: 1px solid rgba(255,255,255,.09);
+        background:
+            radial-gradient(circle at 85% 5%, rgba(45,212,191,.10), transparent 28%),
+            linear-gradient(135deg, rgba(124,58,237,.15), rgba(20,20,29,.90) 42%, rgba(12,12,18,.94));
+        box-shadow: 0 28px 80px rgba(0,0,0,.34), inset 0 1px 0 rgba(255,255,255,.05);
+        backdrop-filter: blur(20px);
+        animation: immersive-rise .45s ease both;
+    }
+    .cockpit-shell::after {
+        content:"";
+        position:absolute;
+        width:280px;
+        height:280px;
+        right:-120px;
+        bottom:-170px;
+        border-radius:999px;
+        background:radial-gradient(circle, rgba(139,92,246,.24), transparent 66%);
+        pointer-events:none;
+    }
+    .cockpit-top {
+        display:flex;
+        align-items:center;
+        justify-content:space-between;
+        gap:16px;
+    }
+    .cockpit-greeting {
+        color:#FAFAFA;
+        font-size:clamp(23px, 3vw, 34px);
+        line-height:1.05;
+        font-weight:950;
+        letter-spacing:-1px;
+        margin:0;
+    }
+    .cockpit-name {
+        background:linear-gradient(90deg,#C4B5FD,#99F6E4);
+        -webkit-background-clip:text;
+        -webkit-text-fill-color:transparent;
+    }
+    .cockpit-sub { color:#A1A1AA; font-size:12px; margin-top:7px; }
+    .cockpit-avatar {
+        width:58px;
+        height:58px;
+        min-width:58px;
+        border-radius:18px;
+        display:grid;
+        place-items:center;
+        font-size:24px;
+        background:linear-gradient(145deg,rgba(139,92,246,.24),rgba(45,212,191,.08));
+        border:1px solid rgba(196,181,253,.22);
+        box-shadow:0 14px 36px rgba(0,0,0,.25);
+    }
+    .cockpit-metrics {
+        display:grid;
+        grid-template-columns:repeat(3,minmax(0,1fr));
+        gap:10px;
+        margin-top:19px;
+    }
+    .cockpit-metric {
+        padding:11px 12px;
+        border-radius:14px;
+        background:rgba(255,255,255,.035);
+        border:1px solid rgba(255,255,255,.065);
+        min-width:0;
+    }
+    .metric-label { color:#71717A; font-size:9px; font-weight:900; text-transform:uppercase; letter-spacing:.9px; }
+    .metric-value { color:#F4F4F5; font-size:12px; font-weight:850; margin-top:4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .metric-online { color:#5EEAD4; }
+
+    .menu-head {
+        display:flex;
+        align-items:end;
+        justify-content:space-between;
+        gap:12px;
+        margin: 3px 2px 12px;
+    }
+    .menu-title { color:#F4F4F5; font-size:14px; font-weight:900; }
+    .menu-caption { color:#71717A; font-size:10px; margin-top:3px; }
+    .menu-hint { color:#8B5CF6; font-size:10px; font-weight:850; text-transform:uppercase; letter-spacing:.7px; }
+
+    /* Menu em grade no desktop */
+    .menu-grid-anchor + div[data-testid="stHorizontalBlock"] { gap: 12px !important; }
+
+    /* Logout mais discreto */
+    .logout-separator {
+        height:1px;
+        margin:20px 0 14px;
+        background:linear-gradient(90deg,transparent,rgba(255,255,255,.09),transparent);
+    }
+
+    @media (min-width: 769px) {
+        .menu-grid-anchor + div[data-testid="stHorizontalBlock"] div[data-testid="stButton"] > button {
+            min-height: 72px !important;
+            justify-content: flex-start !important;
+            text-align: left !important;
+            padding-left: 18px !important;
+            font-size: 13px !important;
+            border-radius: 17px !important;
+        }
+    }
+
+    @media (max-width: 768px) {
+        .stApp::before { background-size: 28px 28px; opacity:.24; }
+        .stApp::after { width:520px; height:520px; top:-390px; }
+
+        .login-stage { margin-top: 2.5vh; }
+        .login-orbit { width:80px; height:80px; margin-bottom:13px; }
+        .login-core { width:58px; height:58px; border-radius:19px; font-size:27px; }
+        .login-main-title { font-size:34px; letter-spacing:-1.4px; }
+        .login-description { padding:0 14px; font-size:12px; }
+        .system-strip { margin-top:13px; font-size:9px; }
+
+        .cockpit-shell { padding:17px; border-radius:20px; margin-bottom:14px; }
+        .cockpit-avatar { width:48px; height:48px; min-width:48px; border-radius:15px; font-size:21px; }
+        .cockpit-greeting { font-size:25px; }
+        .cockpit-sub { font-size:11px; }
+        .cockpit-metrics { grid-template-columns:1fr 1fr; gap:8px; margin-top:15px; }
+        .cockpit-metric:last-child { grid-column:1 / -1; }
+        .cockpit-metric { padding:10px; }
+        .metric-value { font-size:11px; }
+
+        .menu-head { margin-bottom:9px; }
+        .menu-hint { display:none; }
+        div[data-testid="stButton"] > button,
+        div[data-testid="stFormSubmitButton"] > button {
+            min-height:62px !important;
+        }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior:auto !important; }
+    }
+</style>
+"""
+st.markdown(CSS_IMERSIVO_V2, unsafe_allow_html=True)
+
 # --- GERENCIADOR DE COOKIES E ARQUIVOS ---
 # IMPORTANTE: CookieManager é um componente do navegador. Na primeira renderização
 # ele pode devolver {} e, assim que o navegador responde, o próprio componente
@@ -2619,74 +2958,84 @@ def painel_controle_maquina(maq_id, setor):
 
 def tela_login():
     st.markdown("""
-    <div class="login-hero">
-        <div class="login-logo">⚙️</div>
-        <div class="login-title">AFIAÇÃO DIGITAL</div>
-        <p class="login-subtitle">Controle operacional de produção, preparação e ocorrências em uma única experiência.</p>
-        <div class="login-pill">● Sistema operacional online</div>
+    <div class="login-stage">
+        <div class="login-orbit"><div class="login-core">⚙️</div></div>
+        <div class="login-eyebrow">Manufacturing Experience</div>
+        <div class="login-main-title">AFIAÇÃO DIGITAL</div>
+        <p class="login-description">Um cockpit operacional para produção, preparação, ocorrências e decisões do turno.</p>
+        <div class="system-strip"><span class="system-dot"></span> Ambiente conectado • Turso Online</div>
     </div>
     """, unsafe_allow_html=True)
-    with st.container():
-        cod = st.text_input("Digite seu codigo de Acesso:", type="password", placeholder="Digite aqui...")
-        nome = st.text_input("Nome do Colaborador / RE:", placeholder="Digite seu nome...")
-        salvar_acesso = st.checkbox(
-            "💾 Salvar acesso neste dispositivo",
-            value=False,
-            help="Quando marcado, este navegador entrará automaticamente nas próximas vezes. Não use em computador compartilhado."
-        )
-        st.caption("🔒 O código de acesso não é armazenado. O app salva apenas o acesso já validado neste navegador.")
-        st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-        if st.button("ACESSAR SISTEMA", use_container_width=True, type="primary"):
-            codigos_validos = {
-                "9999": ("GERAL", "GERÊNCIA", "adm"),
-                "7777": ("GERAL", "PROGRAMACAO", "programador"),
-                "1010": ("1° TURNO", "TECNICO", "preparador"), "2020": ("2° TURNO", "TECNICO", "preparador"), "3030": ("3° TURNO", "TECNICO", "preparador"),
-                "1123": ("1° TURNO", "AFC", "preparador"), "2123": ("2° TURNO", "AFC", "preparador"), "3123": ("3° TURNO", "AFC", "preparador"),
-                "1234": ("1° TURNO", "RTF", "preparador"), "2234": ("2° TURNO", "RTF", "preparador"), "3234": ("3° TURNO", "RTF", "preparador"),
-                "1001": ("1° TURNO", "AFC", "operador"), "2001": ("2° TURNO", "AFC", "operador"), "3001": ("3° TURNO", "AFC", "operador"),
-                "1002": ("1° TURNO", "RTF", "operador"), "2002": ("2° TURNO", "RTF", "operador"), "3002": ("3° TURNO", "RTF", "operador"),
-                "4040": ("1° TURNO", "PRESET", "preset"), "5050": ("2° TURNO", "PRESET", "preset"), "6060": ("3° TURNO", "PRESET", "preset")
-            }
-            if cod in codigos_validos and nome:
-                turno_val, setor_val, perfil_val = codigos_validos[cod]
-                if perfil_val != "adm":
-                    if not pode_logar(turno_val):
-                        st.error(f"🚫 Acesso Negado: Fora do horário permitido para o {turno_val}.")
-                        return
-                nome_formatado = nome.upper()
-                st.session_state['logout_realizado'] = False
-                st.session_state['turno'] = turno_val
-                st.session_state['setor_usuario'] = setor_val
-                st.session_state['perfil'] = perfil_val
-                st.session_state['operador'] = nome_formatado
-                
-                # Persistência opcional do login.
-                # Usamos UM único cookie assinado para evitar corrida entre vários
-                # componentes CookieManager e tornar o auto-login confiável.
-                if salvar_acesso:
-                    expiracao = datetime.now() + timedelta(days=365)
-                    token_login = gerar_token_login(nome_formatado, turno_val, setor_val, perfil_val, dias=365)
-                    cookie_manager.set(
-                        COOKIE_LOGIN,
-                        token_login,
-                        key="set_auto_login_v2",
-                        path="/",
-                        expires_at=expiracao,
-                        same_site="lax",
-                    )
-                    # O CookieManager grava no navegador pelo componente JS.
-                    # Esta pequena espera acontece SOMENTE no login e evita que o
-                    # rerun interrompa a gravação antes de o browser receber o cookie.
-                    time.sleep(0.35)
-                else:
-                    try:
-                        if COOKIE_LOGIN in cookies_salvos:
-                            cookie_manager.delete(COOKIE_LOGIN, key="del_auto_login_v2")
-                    except Exception:
-                        pass
 
-                mudar_tela('menu', forcar_rerun=True)
-            else: st.error("⚠️ Credenciais inválidas.")
+    espaco_esq, coluna_login, espaco_dir = st.columns([1.25, 1.0, 1.25])
+    with coluna_login:
+        with st.container():
+            st.markdown("""
+            <div class="login-form-head">
+                <div class="login-form-title">Acessar estação</div>
+                <div class="login-form-sub">Identifique-se para carregar seu ambiente de trabalho.</div>
+            </div>
+            """, unsafe_allow_html=True)
+            cod = st.text_input("Código de acesso", type="password", placeholder="Digite seu código...")
+            nome = st.text_input("Colaborador / RE", placeholder="Digite seu nome ou RE...")
+            salvar_acesso = st.checkbox(
+                "💾 Manter acesso neste dispositivo",
+                value=False,
+                help="Quando marcado, este navegador entrará automaticamente nas próximas vezes. Não use em computador compartilhado."
+            )
+            st.caption("🔒 Seu código não é armazenado. Apenas o acesso validado pode ser lembrado neste navegador.")
+            st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
+            if st.button("ACESSAR SISTEMA", use_container_width=True, type="primary"):
+                codigos_validos = {
+                    "9999": ("GERAL", "GERÊNCIA", "adm"),
+                    "7777": ("GERAL", "PROGRAMACAO", "programador"),
+                    "1010": ("1° TURNO", "TECNICO", "preparador"), "2020": ("2° TURNO", "TECNICO", "preparador"), "3030": ("3° TURNO", "TECNICO", "preparador"),
+                    "1123": ("1° TURNO", "AFC", "preparador"), "2123": ("2° TURNO", "AFC", "preparador"), "3123": ("3° TURNO", "AFC", "preparador"),
+                    "1234": ("1° TURNO", "RTF", "preparador"), "2234": ("2° TURNO", "RTF", "preparador"), "3234": ("3° TURNO", "RTF", "preparador"),
+                    "1001": ("1° TURNO", "AFC", "operador"), "2001": ("2° TURNO", "AFC", "operador"), "3001": ("3° TURNO", "AFC", "operador"),
+                    "1002": ("1° TURNO", "RTF", "operador"), "2002": ("2° TURNO", "RTF", "operador"), "3002": ("3° TURNO", "RTF", "operador"),
+                    "4040": ("1° TURNO", "PRESET", "preset"), "5050": ("2° TURNO", "PRESET", "preset"), "6060": ("3° TURNO", "PRESET", "preset")
+                }
+                if cod in codigos_validos and nome:
+                    turno_val, setor_val, perfil_val = codigos_validos[cod]
+                    if perfil_val != "adm":
+                        if not pode_logar(turno_val):
+                            st.error(f"🚫 Acesso Negado: Fora do horário permitido para o {turno_val}.")
+                            return
+                    nome_formatado = nome.upper()
+                    st.session_state['logout_realizado'] = False
+                    st.session_state['turno'] = turno_val
+                    st.session_state['setor_usuario'] = setor_val
+                    st.session_state['perfil'] = perfil_val
+                    st.session_state['operador'] = nome_formatado
+                
+                    # Persistência opcional do login.
+                    # Usamos UM único cookie assinado para evitar corrida entre vários
+                    # componentes CookieManager e tornar o auto-login confiável.
+                    if salvar_acesso:
+                        expiracao = datetime.now() + timedelta(days=365)
+                        token_login = gerar_token_login(nome_formatado, turno_val, setor_val, perfil_val, dias=365)
+                        cookie_manager.set(
+                            COOKIE_LOGIN,
+                            token_login,
+                            key="set_auto_login_v2",
+                            path="/",
+                            expires_at=expiracao,
+                            same_site="lax",
+                        )
+                        # O CookieManager grava no navegador pelo componente JS.
+                        # Esta pequena espera acontece SOMENTE no login e evita que o
+                        # rerun interrompa a gravação antes de o browser receber o cookie.
+                        time.sleep(0.35)
+                    else:
+                        try:
+                            if COOKIE_LOGIN in cookies_salvos:
+                                cookie_manager.delete(COOKIE_LOGIN, key="del_auto_login_v2")
+                        except Exception:
+                            pass
+
+                    mudar_tela('menu', forcar_rerun=True)
+                else: st.error("⚠️ Credenciais inválidas.")
 
 def tela_hub_relatorios():
     botao_navegar("⬅ Voltar ao Menu Principal", 'menu')
@@ -2722,82 +3071,120 @@ def tela_menu():
     elif perfil == 'preset': setor_txt = "Pré-Set"
     elif perfil == 'programador': setor_txt = "Programação CNC"
     else: setor_txt = 'Afiação' if st.session_state['setor_usuario']=='AFC' else 'Retífica'
-    
+
     nome_exibicao = str(st.session_state['operador']).strip()
+    primeiro_nome = nome_exibicao.split()[0].title() if nome_exibicao else "Operador"
+    hora_agora = datetime.now(FUSO_BR).hour
+    saudacao = "Bom dia" if 5 <= hora_agora < 12 else ("Boa tarde" if 12 <= hora_agora < 18 else "Boa noite")
+    perfil_txt = {
+        'adm': 'Administrador', 'preset': 'Pré-Set', 'programador': 'Programador',
+        'preparador': 'Preparador', 'operador': 'Operador'
+    }.get(perfil, str(perfil).title())
+
     st.markdown(f"""
-    <div class="user-shell">
-        <div class="user-left">
-            <div class="user-avatar">👤</div>
-            <div style="min-width:0;">
-                <div class="user-kicker">Sessão ativa</div>
-                <div class="user-name">{nome_exibicao}</div>
-                <div class="user-meta">{st.session_state['turno']} • {setor_txt}</div>
+    <div class="cockpit-shell">
+        <div class="cockpit-top">
+            <div>
+                <div class="cockpit-eyebrow">Cockpit operacional</div>
+                <div class="cockpit-greeting">{saudacao}, <span class="cockpit-name">{primeiro_nome}</span>.</div>
+                <div class="cockpit-sub">Seu ambiente está pronto para o turno. Selecione um módulo para continuar.</div>
             </div>
+            <div class="cockpit-avatar">👤</div>
         </div>
-        <div class="live-badge">● Online</div>
+        <div class="cockpit-metrics">
+            <div class="cockpit-metric"><div class="metric-label">Turno</div><div class="metric-value">{st.session_state['turno']}</div></div>
+            <div class="cockpit-metric"><div class="metric-label">Área</div><div class="metric-value">{setor_txt}</div></div>
+            <div class="cockpit-metric"><div class="metric-label">Conexão</div><div class="metric-value metric-online">● Sistema online</div></div>
+        </div>
     </div>
-    <div class="menu-section-title">Acesso rápido</div>
+    <div class="menu-head">
+        <div><div class="menu-title">Central de operações</div><div class="menu-caption">Acessos liberados para {perfil_txt}</div></div>
+        <div class="menu-hint">Selecione um módulo →</div>
+    </div>
     """, unsafe_allow_html=True)
-    
+
     if perfil == 'adm':
-        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
-        botao_navegar("💻 PAINEL DO PROGRAMADOR", 'programador', use_container_width=True)
-        botao_navegar("⚙️ ACESSAR MÓDULO AFIAÇÃO", 'afc', use_container_width=True)
-        botao_navegar("⚙ ACESSAR MÓDULO RETÍFICA", 'rtf', use_container_width=True)
-        botao_navegar("🗄️ GERENCIAR ARMÁRIOS", 'armarios', use_container_width=True)
-        botao_navegar("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', use_container_width=True)
-        botao_navegar("👥 CONTROLE DE EQUIPE", 'equipe', use_container_width=True)
-        botao_navegar("📋 RELATÓRIOS E LIRS", 'hub_relatorios', use_container_width=True)
-        botao_navegar("📊 HISTÓRICOS E EXPORTAÇÕES", 'historico', use_container_width=True)
-        botao_navegar("✏️ GERENCIAR BANCO DE DADOS", 'editar', use_container_width=True)
+        acoes = [
+            ("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', True),
+            ("💻 PAINEL DO PROGRAMADOR", 'programador', False),
+            ("⚙️ MÓDULO AFIAÇÃO", 'afc', False),
+            ("⚙️ MÓDULO RETÍFICA", 'rtf', False),
+            ("🗄️ GERENCIAR ARMÁRIOS", 'armarios', False),
+            ("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', False),
+            ("👥 CONTROLE DE EQUIPE", 'equipe', False),
+            ("📋 RELATÓRIOS E LIRS", 'hub_relatorios', False),
+            ("📊 HISTÓRICOS E EXPORTAÇÕES", 'historico', False),
+            ("✏️ GERENCIAR BANCO DE DADOS", 'editar', False),
+        ]
     elif perfil == 'preset':
-        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
-        botao_navegar("💻 PAINEL DO PROGRAMADOR", 'programador', use_container_width=True)
-        botao_navegar("🗄 GERENCIAR ARMÁRIOS", 'armarios', use_container_width=True)
-        botao_navegar("🔍 PROGRAMAÇÃO DO SETOR", 'checkup', use_container_width=True)
+        acoes = [
+            ("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', True),
+            ("💻 PAINEL DO PROGRAMADOR", 'programador', False),
+            ("🗄️ GERENCIAR ARMÁRIOS", 'armarios', False),
+            ("🔍 PROGRAMAÇÃO DO SETOR", 'checkup', False),
+        ]
     elif perfil == 'programador':
-        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
-        botao_navegar("💻 PAINEL DO PROGRAMADOR", 'programador', use_container_width=True, type="primary")
-        botao_navegar("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', use_container_width=True)
-        botao_navegar("👥 CONTROLE DE EQUIPE", 'equipe', use_container_width=True)
+        acoes = [
+            ("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', True),
+            ("💻 PAINEL DO PROGRAMADOR", 'programador', True),
+            ("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', False),
+            ("👥 CONTROLE DE EQUIPE", 'equipe', False),
+        ]
     elif perfil == 'preparador':
-        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
+        acoes = [("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', True)]
         if st.session_state['setor_usuario'] in ['AFC', 'TECNICO']:
-            botao_navegar("⚙️ ACESSAR MÓDULO AFIAÇÃO", 'afc', use_container_width=True)
+            acoes.append(("⚙️ MÓDULO AFIAÇÃO", 'afc', False))
         if st.session_state['setor_usuario'] in ['RTF', 'TECNICO']:
-            botao_navegar("⚙ ACESSAR MÓDULO RETÍFICA", 'rtf', use_container_width=True)
-        botao_navegar("🗄️ VISÃO DOS ARMÁRIOS", 'armarios', use_container_width=True)
-        botao_navegar("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', use_container_width=True)
-        botao_navegar("⚡ MINHAS INCIDÊNCIAS", 'minhas_incidencias', use_container_width=True)
-        botao_navegar("👥 CONTROLE DE EQUIPE", 'equipe', use_container_width=True)
-        botao_navegar("📋 RELATÓRIOS E LIRS", 'hub_relatorios', use_container_width=True)
-        botao_navegar("✏️ CORREÇÃO DE APONTAMENTOS", 'editar', use_container_width=True)
+            acoes.append(("⚙️ MÓDULO RETÍFICA", 'rtf', False))
+        acoes += [
+            ("🗄️ VISÃO DOS ARMÁRIOS", 'armarios', False),
+            ("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', False),
+            ("⚡ MINHAS INCIDÊNCIAS", 'minhas_incidencias', False),
+            ("👥 CONTROLE DE EQUIPE", 'equipe', False),
+            ("📋 RELATÓRIOS E LIRS", 'hub_relatorios', False),
+            ("✏️ CORREÇÃO DE APONTAMENTOS", 'editar', False),
+        ]
     else:
-        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
-        botao_navegar("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', use_container_width=True)
-        botao_navegar("📋 RELATÓRIOS E LIRS", 'hub_relatorios', use_container_width=True)
-        botao_navegar("✏️ CORREÇÃO DE APONTAMENTOS", 'editar', use_container_width=True)
-    st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
-    if st.button("🚪 Encerramento de Sessão (Logout)", use_container_width=True):
-        st.session_state['logout_realizado'] = True
-        st.session_state['operador'], st.session_state['turno'], st.session_state['setor_usuario'], st.session_state['perfil'] = '', '', '', ''
-        try:
-            # Remove o cookie novo de auto-login.
-            if COOKIE_LOGIN in (cookie_manager.cookies or {}):
-                cookie_manager.delete(COOKIE_LOGIN, key="del_auto_login_logout")
-            # Limpa também cookies da versão anterior, caso ainda existam.
-            for nome_cookie, chave in [
-                ("salvar_acesso", "del_salvar_acesso_antigo"),
-                ("user_logado", "del_logado_antigo"),
-                ("user_turno", "del_turno_antigo"),
-                ("user_setor", "del_setor_antigo"),
-                ("user_perfil", "del_perfil_antigo"),
-            ]:
-                if nome_cookie in (cookie_manager.cookies or {}):
-                    cookie_manager.delete(nome_cookie, key=chave)
-        except Exception:
-            pass
-        mudar_tela('login', forcar_rerun=True)
+        acoes = [
+            ("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', True),
+            ("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', False),
+            ("📋 RELATÓRIOS E LIRS", 'hub_relatorios', False),
+            ("✏️ CORREÇÃO DE APONTAMENTOS", 'editar', False),
+        ]
+
+    for i in range(0, len(acoes), 2):
+        st.markdown('<div class="menu-grid-anchor"></div>', unsafe_allow_html=True)
+        cols = st.columns(2)
+        for j in range(2):
+            if i + j < len(acoes):
+                label, destino, destaque = acoes[i + j]
+                with cols[j]:
+                    kwargs = {"use_container_width": True}
+                    if destaque:
+                        kwargs["type"] = "primary"
+                    botao_navegar(label, destino, **kwargs)
+
+    st.markdown('<div class="logout-separator"></div>', unsafe_allow_html=True)
+    c1, c2, c3 = st.columns([1, 1.2, 1])
+    with c2:
+        if st.button("🚪 Encerrar sessão", use_container_width=True):
+            st.session_state['logout_realizado'] = True
+            st.session_state['operador'], st.session_state['turno'], st.session_state['setor_usuario'], st.session_state['perfil'] = '', '', '', ''
+            try:
+                if COOKIE_LOGIN in (cookie_manager.cookies or {}):
+                    cookie_manager.delete(COOKIE_LOGIN, key="del_auto_login_logout")
+                for nome_cookie, chave in [
+                    ("salvar_acesso", "del_salvar_acesso_antigo"),
+                    ("user_logado", "del_logado_antigo"),
+                    ("user_turno", "del_turno_antigo"),
+                    ("user_setor", "del_setor_antigo"),
+                    ("user_perfil", "del_perfil_antigo"),
+                ]:
+                    if nome_cookie in (cookie_manager.cookies or {}):
+                        cookie_manager.delete(nome_cookie, key=chave)
+            except Exception:
+                pass
+            mudar_tela('login', forcar_rerun=True)
 
 def tela_visao_geral():
     botao_navegar("⬅️ Voltar ao Menu", 'menu')
