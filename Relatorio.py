@@ -35,7 +35,7 @@ os.path.exists = _BASE_GENERICPATH.exists
 os.remove = os.unlink
 
 # Configuração do Streamlit deve ocorrer antes de qualquer outro comando st.*.
-st.set_page_config(page_title="Relatório - Setor Afiação", page_icon="🏭", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Afiação Digital", page_icon="🏭", layout="wide", initial_sidebar_state="collapsed")
 
 
 # ==========================================
@@ -1210,6 +1210,127 @@ CSS_APP = """
 </style>
 """
 st.markdown(CSS_APP, unsafe_allow_html=True)
+
+
+# --- AJUSTE VISUAL V7: superfícies claras + letras escuras ---
+CSS_LIGHT_V7 = """
+<style>
+    :root {
+        --text: #172033;
+        --muted: #667085;
+        --surface: #FFFFFF;
+        --surface-2: #F6F8FC;
+        --border: rgba(30, 41, 59, .11);
+    }
+
+    .stApp {
+        background:
+            radial-gradient(circle at 10% 0%, rgba(139,92,246,.08), transparent 24%),
+            radial-gradient(circle at 92% 8%, rgba(45,212,191,.07), transparent 22%),
+            linear-gradient(180deg, #F6F7FB 0%, #F3F5F9 100%) !important;
+        color: #172033 !important;
+    }
+
+    h1, h2, h3, h4, h5, h6, p,
+    div[data-testid="stMarkdownContainer"] > p {
+        color: #172033 !important;
+    }
+    label { color: #475467 !important; }
+
+    div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"] {
+        background: rgba(255,255,255,.94) !important;
+        border: 1px solid rgba(30,41,59,.10) !important;
+        box-shadow: 0 12px 32px rgba(15,23,42,.06) !important;
+    }
+
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="textarea"] > div {
+        background: #FFFFFF !important;
+        border-color: #D8DEE9 !important;
+        box-shadow: 0 1px 2px rgba(15,23,42,.03) !important;
+    }
+    input, select, textarea { color: #172033 !important; }
+    input::placeholder, textarea::placeholder { color: #98A2B3 !important; }
+
+    button[kind="secondary"], div[data-testid="stButton"] > button:not([kind="primary"]) {
+        background: #FFFFFF !important;
+        color: #344054 !important;
+        border: 1px solid #D7DDE7 !important;
+        box-shadow: 0 4px 12px rgba(15,23,42,.04) !important;
+    }
+    button[kind="secondary"]:hover, div[data-testid="stButton"] > button:not([kind="primary"]):hover {
+        background: #F6F3FF !important;
+        color: #5B21B6 !important;
+        border-color: #A78BFA !important;
+    }
+    button[kind="primary"], div[data-testid="stFormSubmitButton"] > button {
+        color: #FFFFFF !important;
+    }
+
+    /* Navegação clara */
+    .st-key-topbar_native {
+        background: rgba(255,255,255,.96) !important;
+        border-color: rgba(30,41,59,.10) !important;
+        box-shadow: 0 12px 34px rgba(15,23,42,.08) !important;
+    }
+    .native-brand-name, .native-user-name { color: #172033 !important; }
+    .native-brand-sub, .native-user-meta { color: #667085 !important; }
+    .st-key-topbar_native div[data-testid="stTextInput"] > div > div {
+        background: #F8FAFC !important;
+        border-color: #D8DEE9 !important;
+    }
+    .st-key-topbar_native div[data-testid="stTextInput"] input { color: #172033 !important; }
+
+    /* Dashboard 9999 - cards claros e texto escuro */
+    .dash-title, .dash-panel-title, .kpi-value, .sector-name,
+    .attention-machine, .prep-machine, .prep-time,
+    .setup-month-title, .setup-sector-pill b,
+    .setup-metric-main strong, .mgr-title, .mgr-process-name,
+    .mgr-machine-name, .mgr-summary-num, .mgr-data-box b {
+        color: #172033 !important;
+    }
+    .dash-eyebrow, .dash-subtitle, .dash-date, .dash-panel-sub,
+    .kpi-label, .kpi-foot, .sector-pct, .sector-mini span,
+    .attention-status, .prep-status, .prep-meta,
+    .setup-month-sub, .setup-sector-pill span,
+    .setup-metric-head, .setup-metric-main span,
+    .setup-metric-average span, .mgr-sub, .mgr-summary-label,
+    .mgr-summary-meta, .mgr-data-box span, .mgr-next {
+        color: #667085 !important;
+    }
+    .sector-mini b, .prep-chip b, .prep-section-count { color: #344054 !important; }
+
+    .kpi-card, .dash-panel, .setup-month-panel,
+    .mgr-summary-card, .mgr-process, .mgr-machine,
+    .setup-metric-card, .attention-item, .prep-item,
+    .prep-kpi-mini, .setup-sector-pill, .mgr-data-box {
+        background: #FFFFFF !important;
+        border-color: rgba(30,41,59,.10) !important;
+        box-shadow: 0 8px 24px rgba(15,23,42,.05) !important;
+    }
+    .sector-track { background: #E9EDF4 !important; }
+    .prep-empty, .mgr-empty { color: #667085 !important; border-color: #D8DEE9 !important; }
+    .mgr-state { background: #F6F8FC !important; }
+    .mgr-process-count { background: #F2F4F7 !important; color: #475467 !important; }
+    .setup-month-badge { color: #6D28D9 !important; background: #F3EEFF !important; }
+
+    /* Menu clássico dos outros códigos */
+    .classic-user-card {
+        background: #FFFFFF;
+        padding: 14px 16px;
+        border-radius: 14px;
+        border: 1px solid #E0E5ED;
+        border-left: 4px solid #8B5CF6;
+        box-shadow: 0 8px 24px rgba(15,23,42,.05);
+        margin-bottom: 15px;
+    }
+    .classic-user-label { margin:0 !important; font-size:11px !important; color:#667085 !important; text-transform:uppercase; letter-spacing:.55px; font-weight:800; }
+    .classic-user-name { margin:4px 0 0 !important; font-size:17px !important; color:#172033 !important; font-weight:900; }
+    .classic-user-meta { margin:3px 0 0 !important; font-size:12px !important; color:#0F766E !important; font-weight:800; }
+</style>
+"""
+st.markdown(CSS_LIGHT_V7, unsafe_allow_html=True)
 
 # --- GERENCIADOR DE COOKIES E ARQUIVOS ---
 # IMPORTANTE: CookieManager é um componente do navegador. Na primeira renderização
@@ -3490,7 +3611,7 @@ def tela_hub_relatorios():
         </div>
         """, unsafe_allow_html=True)
         botao_navegar("ACESSAR LIRS", 'lirs', use_container_width=True, type="primary")
-def tela_menu():
+def _tela_menu_dashboard_9999():
     exibir_alertas_preset()
     exibir_alertas_preparador()
 
@@ -3668,6 +3789,101 @@ def tela_menu():
             pass
         mudar_tela('login', forcar_rerun=True)
 
+
+
+def _tela_menu_classico():
+    """Menu original para todos os acessos que não são o 9999/Gerência."""
+    exibir_alertas_preset()
+    exibir_alertas_preparador()
+    perfil = st.session_state['perfil']
+    if perfil == 'adm':
+        setor_txt = "Gerência"
+    elif st.session_state['setor_usuario'] == 'TECNICO':
+        setor_txt = "Técnico (Geral)"
+    elif perfil == 'preset':
+        setor_txt = "Pré-Set"
+    elif perfil == 'programador':
+        setor_txt = "Programação CNC"
+    else:
+        setor_txt = 'Afiação' if st.session_state['setor_usuario'] == 'AFC' else 'Retífica'
+
+    st.markdown(f"""
+    <div class='classic-user-card'>
+        <p class='classic-user-label'>Usuário logado</p>
+        <p class='classic-user-name'>{html.escape(str(st.session_state['operador']))}</p>
+        <p class='classic-user-meta'>{html.escape(str(st.session_state['turno']))} • {html.escape(setor_txt)}</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    if perfil == 'adm':
+        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
+        botao_navegar("💻 PAINEL DO PROGRAMADOR", 'programador', use_container_width=True)
+        botao_navegar("⚙️ ACESSAR MÓDULO AFIAÇÃO", 'afc', use_container_width=True)
+        botao_navegar("⚙ ACESSAR MÓDULO RETÍFICA", 'rtf', use_container_width=True)
+        botao_navegar("🗄️ GERENCIAR ARMÁRIOS", 'armarios', use_container_width=True)
+        botao_navegar("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', use_container_width=True)
+        botao_navegar("👥 CONTROLE DE EQUIPE", 'equipe', use_container_width=True)
+        botao_navegar("📋 RELATÓRIOS E LIRS", 'hub_relatorios', use_container_width=True)
+        botao_navegar("📊 HISTÓRICOS E EXPORTAÇÕES", 'historico', use_container_width=True)
+        botao_navegar("✏️ GERENCIAR BANCO DE DADOS", 'editar', use_container_width=True)
+    elif perfil == 'preset':
+        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
+        botao_navegar("💻 PAINEL DO PROGRAMADOR", 'programador', use_container_width=True)
+        botao_navegar("🗄 GERENCIAR ARMÁRIOS", 'armarios', use_container_width=True)
+        botao_navegar("🔍 PROGRAMAÇÃO DO SETOR", 'checkup', use_container_width=True)
+    elif perfil == 'programador':
+        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
+        botao_navegar("💻 PAINEL DO PROGRAMADOR", 'programador', use_container_width=True, type="primary")
+        botao_navegar("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', use_container_width=True)
+        botao_navegar("👥 CONTROLE DE EQUIPE", 'equipe', use_container_width=True)
+    elif perfil == 'preparador':
+        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
+        if st.session_state['setor_usuario'] in ['AFC', 'TECNICO']:
+            botao_navegar("⚙️ ACESSAR MÓDULO AFIAÇÃO", 'afc', use_container_width=True)
+        if st.session_state['setor_usuario'] in ['RTF', 'TECNICO']:
+            botao_navegar("⚙ ACESSAR MÓDULO RETÍFICA", 'rtf', use_container_width=True)
+        botao_navegar("🗄️ VISÃO DOS ARMÁRIOS", 'armarios', use_container_width=True)
+        botao_navegar("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', use_container_width=True)
+        botao_navegar("⚡ MINHAS INCIDÊNCIAS", 'minhas_incidencias', use_container_width=True)
+        botao_navegar("👥 CONTROLE DE EQUIPE", 'equipe', use_container_width=True)
+        botao_navegar("📋 RELATÓRIOS E LIRS", 'hub_relatorios', use_container_width=True)
+        botao_navegar("✏️ CORREÇÃO DE APONTAMENTOS", 'editar', use_container_width=True)
+    else:
+        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
+        botao_navegar("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', use_container_width=True)
+        botao_navegar("📋 RELATÓRIOS E LIRS", 'hub_relatorios', use_container_width=True)
+        botao_navegar("✏️ CORREÇÃO DE APONTAMENTOS", 'editar', use_container_width=True)
+
+    st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
+    if st.button("🚪 Encerramento de Sessão (Logout)", use_container_width=True, key='logout_menu_classico'):
+        st.session_state['logout_realizado'] = True
+        st.session_state['operador'], st.session_state['turno'], st.session_state['setor_usuario'], st.session_state['perfil'] = '', '', '', ''
+        try:
+            if COOKIE_LOGIN in (cookie_manager.cookies or {}):
+                cookie_manager.delete(COOKIE_LOGIN, key="del_auto_login_logout_classico")
+            for nome_cookie, chave in [
+                ("salvar_acesso", "del_salvar_acesso_antigo_classico"),
+                ("user_logado", "del_logado_antigo_classico"),
+                ("user_turno", "del_turno_antigo_classico"),
+                ("user_setor", "del_setor_antigo_classico"),
+                ("user_perfil", "del_perfil_antigo_classico"),
+            ]:
+                if nome_cookie in (cookie_manager.cookies or {}):
+                    cookie_manager.delete(nome_cookie, key=chave)
+        except Exception:
+            pass
+        mudar_tela('login', forcar_rerun=True)
+
+
+def tela_menu():
+    """Dashboard analítico somente para o código 9999 (perfil adm + GERÊNCIA)."""
+    eh_9999 = (
+        st.session_state.get('perfil') == 'adm'
+        and str(st.session_state.get('setor_usuario', '')).upper() == 'GERÊNCIA'
+    )
+    if eh_9999:
+        return _tela_menu_dashboard_9999()
+    return _tela_menu_classico()
 
 def _extrair_op_item_gerencia(status):
     status = str(status or '')
