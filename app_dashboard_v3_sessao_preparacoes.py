@@ -1075,6 +1075,82 @@ CSS_APP = """
         .kpi-value {font-size:27px;} .sector-mini {margin-left:0;padding-left:0;}
         .attention-item {grid-template-columns:32px minmax(0,1fr);} .attention-sector {display:none;}
     }
+
+    /* =========================================================
+       NAVEGAÇÃO NATIVA (SEM RELOAD / SEM PERDER SESSION_STATE)
+       ========================================================= */
+    .st-key-topbar_native {
+        position: sticky; top: .55rem; z-index: 999;
+        padding: 10px 12px 8px; margin: 0 0 8px 0;
+        border: 1px solid rgba(255,255,255,.10); border-radius: 18px;
+        background: rgba(20,20,28,.94);
+        backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+        box-shadow: 0 16px 45px rgba(0,0,0,.24);
+    }
+    .native-brand {display:flex;align-items:center;gap:10px;min-height:42px;}
+    .native-brand-icon {width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,#8B5CF6,#0F766E);color:#fff;font-size:18px;box-shadow:0 8px 22px rgba(109,40,217,.28);}
+    .native-brand-name {color:#FAFAFA;font-size:13px;font-weight:950;letter-spacing:.4px;line-height:1.05;}
+    .native-brand-sub {color:#8B8B98;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;margin-top:4px;}
+    .native-user {display:flex;align-items:center;justify-content:flex-end;gap:8px;min-height:42px;}
+    .native-user-avatar {width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:rgba(139,92,246,.17);color:#C4B5FD;font-size:13px;font-weight:900;}
+    .native-user-name {color:#F4F4F5;font-size:11px;font-weight:850;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;}
+    .native-user-meta {color:#71717A;font-size:9px;font-weight:700;margin-top:1px;text-align:right;}
+    .st-key-topbar_native div[data-testid="stTextInput"] {margin-top:2px;}
+    .st-key-topbar_native div[data-testid="stTextInput"] > div > div {
+        min-height:42px !important; border-radius:12px !important;
+        background:rgba(255,255,255,.055)!important; border-color:rgba(255,255,255,.09)!important;
+    }
+    .st-key-topbar_native div[data-testid="stTextInput"] input {font-size:12px!important;color:#F4F4F5!important;}
+    .st-key-topbar_nav_native {margin: 0 0 18px 0; overflow-x:auto; scrollbar-width:none;}
+    .st-key-topbar_nav_native::-webkit-scrollbar {display:none;}
+    .st-key-topbar_nav_native div[data-testid="stHorizontalBlock"] {flex-wrap:nowrap!important;gap:.42rem!important;min-width:max-content;}
+    .st-key-topbar_nav_native div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {flex:0 0 auto!important;width:auto!important;min-width:108px!important;}
+    .st-key-topbar_nav_native div[data-testid="stButton"] > button {
+        min-height:40px!important;height:40px!important;padding:0 13px!important;border-radius:11px!important;
+        white-space:nowrap!important;font-size:11px!important;margin:0!important;
+    }
+
+    /* Preparações - Home */
+    .prep-kpi-breakdown {display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:12px;}
+    .prep-kpi-mini {padding:7px 8px;border-radius:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.055);}
+    .prep-kpi-mini-label {color:#858590;font-size:8px;font-weight:850;text-transform:uppercase;letter-spacing:.45px;}
+    .prep-kpi-mini-value {color:#F7F7FA;font-size:15px;font-weight:950;margin-top:2px;}
+    .prep-kpi-mini.active {border-color:rgba(45,212,191,.14);background:rgba(45,212,191,.055);}
+    .prep-kpi-mini.waiting {border-color:rgba(245,158,11,.15);background:rgba(245,158,11,.055);}
+    .prep-kpi-mini.active .prep-kpi-mini-value {color:#5EEAD4;}
+    .prep-kpi-mini.waiting .prep-kpi-mini-value {color:#FBBF24;}
+    .prep-summary {display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;}
+    .prep-chip {display:inline-flex;align-items:center;gap:6px;padding:6px 9px;border-radius:999px;font-size:9px;font-weight:850;border:1px solid rgba(255,255,255,.06);background:rgba(255,255,255,.035);color:#A8A8B2;}
+    .prep-chip b {font-size:11px;color:#F4F4F5;}
+    .prep-chip.active {background:rgba(45,212,191,.07);border-color:rgba(45,212,191,.16);color:#5EEAD4;}
+    .prep-chip.waiting {background:rgba(245,158,11,.07);border-color:rgba(245,158,11,.17);color:#FBBF24;}
+    .prep-section-title {display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:14px;margin-bottom:7px;color:#CFCFD6;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.55px;}
+    .prep-section-count {display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 6px;border-radius:8px;background:rgba(255,255,255,.055);color:#F4F4F5;font-size:10px;}
+    .prep-list {display:flex;flex-direction:column;gap:7px;}
+    .prep-item {display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:9px;padding:9px 10px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.055);}
+    .prep-item.active {border-left:3px solid rgba(45,212,191,.82);}
+    .prep-item.waiting {border-left:3px solid rgba(245,158,11,.82);}
+    .prep-ico {width:32px;height:32px;display:grid;place-items:center;border-radius:9px;background:rgba(139,92,246,.10);font-size:13px;}
+    .prep-machine {color:#ECECF0;font-size:11px;font-weight:900;}
+    .prep-status {color:#81818C;font-size:9px;font-weight:700;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .prep-meta {display:flex;align-items:center;gap:5px;margin-top:3px;color:#676772;font-size:8px;font-weight:750;}
+    .prep-time {min-width:62px;text-align:right;color:#F4F4F5;font-size:11px;font-weight:950;}
+    .prep-time span {display:block;color:#6F6F79;font-size:8px;font-weight:750;margin-bottom:1px;}
+    .prep-empty {padding:13px 8px;color:#777782;font-size:10px;text-align:center;border:1px dashed rgba(255,255,255,.07);border-radius:11px;}
+    .prep-more {color:#777782;font-size:9px;font-weight:750;text-align:center;padding-top:6px;}
+    @media (max-width:768px) {
+        .st-key-topbar_native {position:relative;top:0;padding:9px;border-radius:15px;}
+        .st-key-topbar_native div[data-testid="stHorizontalBlock"] {gap:.5rem!important;}
+        .st-key-topbar_native div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {min-width:min(100%,220px)!important;}
+        .native-user {justify-content:flex-start;}
+        .native-user-name,.native-user-meta {text-align:left;}
+        .st-key-topbar_nav_native {margin-bottom:14px;}
+        .st-key-topbar_nav_native div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {min-width:105px!important;flex:0 0 105px!important;}
+        .st-key-topbar_nav_native div[data-testid="stButton"] > button {min-height:40px!important;height:40px!important;font-size:10px!important;padding:0 9px!important;}
+        .prep-item {grid-template-columns:31px minmax(0,1fr) auto;padding:8px;}
+        .prep-time {min-width:55px;font-size:10px;}
+    }
+
 </style>
 """
 st.markdown(CSS_APP, unsafe_allow_html=True)
@@ -2708,71 +2784,40 @@ def painel_controle_maquina(maq_id, setor):
                         st.success("✅ Registrado!")
                         st.rerun()
 
-def _valor_query(nome):
-    try:
-        valor = st.query_params.get(nome)
-        if isinstance(valor, list):
-            valor = valor[0] if valor else None
-        return str(valor).strip() if valor is not None else None
-    except Exception:
-        return None
-
-
-def processar_navegacao_url():
-    # Processa cliques da barra HTML e busca de máquina sem alterar o backend.
-    if not st.session_state.get('operador'):
+def _buscar_maquina_topbar():
+    """Busca uma máquina sem trocar de URL nem reiniciar a sessão do Streamlit."""
+    busca = str(st.session_state.get('topbar_busca_maquina', '') or '').strip()
+    if not busca:
         return
 
-    destino = _valor_query('nav')
-    busca = _valor_query('maq')
+    termo = busca.upper().replace('MÁQUINA', '').replace('MAQUINA', '').strip()
+    termo = termo.replace('AFC ', '').replace('RTF ', '').strip()
+    perfil = st.session_state.get('perfil', '')
+    setor_user = st.session_state.get('setor_usuario', '')
 
-    if destino:
-        permitidos = {
-            'menu', 'visao_geral', 'checkup', 'armarios', 'equipe',
-            'hub_relatorios', 'historico', 'programador', 'editar',
-            'afc', 'rtf', 'minhas_incidencias', 'lirs', 'relatorio'
-        }
-        if destino in permitidos:
-            st.session_state['tela_atual'] = destino
-            st.session_state['maq_ativa'] = None
-        try:
-            st.query_params.clear()
-        except Exception:
-            pass
-        return
+    setor_encontrado = None
+    if termo in TODAS_AFC:
+        setor_encontrado = 'AFC'
+    elif termo in TODAS_RTF:
+        setor_encontrado = 'RTF'
 
-    if busca:
-        termo = busca.upper().replace('MÁQUINA', '').replace('MAQUINA', '').strip()
-        termo = termo.replace('AFC ', '').replace('RTF ', '').strip()
-        perfil = st.session_state.get('perfil', '')
-        setor_user = st.session_state.get('setor_usuario', '')
+    pode_abrir = (
+        perfil == 'adm' or
+        (perfil == 'preparador' and setor_user in [setor_encontrado, 'TECNICO'])
+    )
 
-        setor_encontrado = None
-        if termo in TODAS_AFC:
-            setor_encontrado = 'AFC'
-        elif termo in TODAS_RTF:
-            setor_encontrado = 'RTF'
+    if setor_encontrado and pode_abrir:
+        st.session_state['maq_ativa'] = termo
+        st.session_state['setor_ativo'] = setor_encontrado
+        st.session_state['celula_selecionada'] = None
+        st.session_state['tela_atual'] = 'afc' if setor_encontrado == 'AFC' else 'rtf'
+    elif setor_encontrado:
+        st.session_state['tela_atual'] = 'visao_geral'
+        st.session_state['_busca_msg'] = f"Máquina {termo} encontrada em {setor_encontrado}. Seu perfil possui acesso de consulta pela Visão Geral."
+    else:
+        st.session_state['_busca_msg'] = f"Máquina '{busca}' não encontrada."
 
-        pode_abrir = (
-            perfil == 'adm' or
-            (perfil == 'preparador' and setor_user in [setor_encontrado, 'TECNICO'])
-        )
-
-        if setor_encontrado and pode_abrir:
-            st.session_state['maq_ativa'] = termo
-            st.session_state['setor_ativo'] = setor_encontrado
-            st.session_state['celula_selecionada'] = None
-            st.session_state['tela_atual'] = 'afc' if setor_encontrado == 'AFC' else 'rtf'
-        elif setor_encontrado:
-            st.session_state['tela_atual'] = 'visao_geral'
-            st.session_state['_busca_msg'] = f"Máquina {termo} encontrada em {setor_encontrado}. Seu perfil possui acesso de consulta pela Visão Geral."
-        else:
-            st.session_state['_busca_msg'] = f"Máquina '{html.escape(busca)}' não encontrada."
-
-        try:
-            st.query_params.clear()
-        except Exception:
-            pass
+    st.session_state['topbar_busca_maquina'] = ''
 
 
 def _links_topo_por_perfil():
@@ -2793,10 +2838,12 @@ def _links_topo_por_perfil():
 
 
 def renderizar_topbar(tela_atual):
+    """Barra nativa do Streamlit: não recarrega a página nem perde a sessão."""
     perfil = st.session_state.get('perfil', '')
     setor = st.session_state.get('setor_usuario', '')
     turno = st.session_state.get('turno', '')
-    nome = html.escape(str(st.session_state.get('operador', 'Usuário')))
+    nome_raw = str(st.session_state.get('operador', 'Usuário'))
+    nome = html.escape(nome_raw)
 
     aliases_ativos = {
         'afc': 'visao_geral', 'rtf': 'visao_geral',
@@ -2804,48 +2851,67 @@ def renderizar_topbar(tela_atual):
         'relatorio': 'hub_relatorios', 'lirs': 'hub_relatorios',
     }
     ativo = aliases_ativos.get(tela_atual, tela_atual)
+    setor_txt = 'Geral' if setor in ['GERAL', 'GERÊNCIA'] else setor.title() if setor else perfil.title()
+    inicial = html.escape(nome_raw[:1].upper() if nome_raw else 'U')
 
-    links_html = []
-    for destino, icone, rotulo in _links_topo_por_perfil():
-        cls = 'app-nav-link active' if ativo == destino else 'app-nav-link'
-        links_html.append(
-            f'<a class="{cls}" href="?nav={destino}" target="_self">'
-            f'<span style="margin-right:6px;opacity:.9">{icone}</span>{rotulo}</a>'
+    with st.container(key='topbar_native'):
+        c_brand, c_search, c_user = st.columns([2.1, 2.0, 1.25])
+
+        c_brand.markdown(
+            f'''<div class="native-brand">
+<div class="native-brand-icon">⚙</div>
+<div><div class="native-brand-name">AFIAÇÃO DIGITAL</div><div class="native-brand-sub">Operação em tempo real</div></div>
+</div>''',
+            unsafe_allow_html=True
         )
 
-    setor_txt = 'Geral' if setor in ['GERAL', 'GERÊNCIA'] else setor.title() if setor else perfil.title()
-    inicial = nome[:1].upper() if nome else 'U'
+        with c_search:
+            st.text_input(
+                'Buscar máquina',
+                key='topbar_busca_maquina',
+                placeholder='⌕  Buscar máquina e pressionar Enter...',
+                label_visibility='collapsed',
+                on_change=_buscar_maquina_topbar,
+            )
 
-    st.markdown(f'''
-    <div class="app-topbar">
-        <a class="app-brand" href="?nav=menu" target="_self">
-            <div class="app-brand-icon">⚙</div>
-            <div class="app-brand-copy">
-                <div class="app-brand-name">AFIAÇÃO DIGITAL</div>
-                <div class="app-brand-sub">Operação em tempo real</div>
-            </div>
-        </a>
-        <div class="app-nav-scroll">{''.join(links_html)}</div>
-        <form class="machine-search" method="get" target="_self">
-            <div class="machine-search-wrap">
-                <span style="color:#777782;font-size:13px;">⌕</span>
-                <input name="maq" autocomplete="off" placeholder="Buscar máquina..." />
-                <button type="submit" aria-label="Buscar">→</button>
-            </div>
-        </form>
-        <div class="app-top-user">
-            <div class="app-top-avatar">{inicial}</div>
-            <div class="app-top-user-copy">
-                <div class="app-top-user-name">{nome}</div>
-                <div class="app-top-user-meta">{html.escape(turno)} · {html.escape(setor_txt)}</div>
-            </div>
-        </div>
-    </div>
-    ''', unsafe_allow_html=True)
+        c_user.markdown(
+            f'''<div class="native-user">
+<div><div class="native-user-name">{nome}</div><div class="native-user-meta">{html.escape(turno)} · {html.escape(setor_txt)}</div></div>
+<div class="native-user-avatar">{inicial}</div>
+</div>''',
+            unsafe_allow_html=True
+        )
+
+    links = _links_topo_por_perfil()
+    with st.container(key='topbar_nav_native'):
+        cols = st.columns(len(links))
+        for i, (destino, icone, rotulo) in enumerate(links):
+            cols[i].button(
+                f'{icone}  {rotulo}',
+                key=f'topnav_{destino}',
+                use_container_width=True,
+                type='primary' if ativo == destino else 'secondary',
+                on_click=mudar_tela,
+                args=(destino,),
+            )
 
     msg = st.session_state.pop('_busca_msg', None)
     if msg:
         st.info(msg)
+
+
+def _classificar_preparacao_home(status):
+    """Separa preparação EXECUTANDO de preparação AGUARDANDO."""
+    up = str(status).strip().upper()
+    if up.startswith('PREPARANDO'):
+        return 'ativa'
+    if (
+        up.startswith('PREPARAÇÃO') or up.startswith('PREPARACAO') or
+        up.startswith('SEQUÊNCIA') or up.startswith('SEQUENCIA') or
+        up.startswith('AGUARDANDO') or 'AGUARDANDO PREPARADOR' in up
+    ):
+        return 'aguardando'
+    return None
 
 
 def _classificar_status_home(status):
@@ -2854,7 +2920,7 @@ def _classificar_status_home(status):
         return 'manutencao'
     if up.startswith('PARADA') or ' PARADA' in up:
         return 'parada'
-    if any(k in up for k in ['PREPARAÇÃO', 'PREPARACAO', 'PREPARANDO', 'SEQUÊNCIA', 'SEQUENCIA', 'AGUARDANDO PREPARADOR']):
+    if _classificar_preparacao_home(status):
         return 'preparacao'
     if 'PRODUZINDO' in up:
         return 'producao'
@@ -2862,15 +2928,24 @@ def _classificar_status_home(status):
 
 
 def _resumo_setor_home(status_dict, setor, maquinas):
-    r = {'producao':0, 'preparacao':0, 'parada':0, 'manutencao':0, 'outros':0, 'total':len(maquinas)}
+    r = {
+        'producao':0, 'preparacao':0, 'prep_ativa':0, 'prep_aguardando':0,
+        'parada':0, 'manutencao':0, 'outros':0, 'total':len(maquinas)
+    }
     for m in maquinas:
         st_val = status_dict.get(f'{setor} {m}', 'PRODUZINDO')
-        r[_classificar_status_home(st_val)] += 1
+        classe = _classificar_status_home(st_val)
+        r[classe] += 1
+        if classe == 'preparacao':
+            detalhe = _classificar_preparacao_home(st_val)
+            if detalhe == 'ativa':
+                r['prep_ativa'] += 1
+            else:
+                r['prep_aguardando'] += 1
     return r
 
 
 def _render_kpi(label, valor, icone, cor, detalhe):
-    # Sem recuo no HTML: evita o Markdown do Streamlit tratar como bloco de código.
     return f'''<div class="kpi-card" style="--kpi-color:{cor}">
 <div class="kpi-head"><div class="kpi-label">{label}</div><div class="kpi-icon">{icone}</div></div>
 <div class="kpi-value">{valor}</div>
@@ -2878,11 +2953,22 @@ def _render_kpi(label, valor, icone, cor, detalhe):
 </div>'''
 
 
+def _render_prep_kpi(ativas, aguardando):
+    total = ativas + aguardando
+    return f'''<div class="kpi-card" style="--kpi-color:#F59E0B">
+<div class="kpi-head"><div class="kpi-label">Preparações</div><div class="kpi-icon">⚙</div></div>
+<div class="kpi-value">{total}</div>
+<div class="prep-kpi-breakdown">
+<div class="prep-kpi-mini active"><div class="prep-kpi-mini-label">Ativas</div><div class="prep-kpi-mini-value">{ativas}</div></div>
+<div class="prep-kpi-mini waiting"><div class="prep-kpi-mini-label">Aguardando</div><div class="prep-kpi-mini-value">{aguardando}</div></div>
+</div>
+</div>'''
+
+
 def _render_setor_bar(nome, resumo):
     total = max(1, resumo['total'])
     prod = resumo['producao']
     pct = round((prod / total) * 100)
-    # HTML começa na coluna zero para não virar código Markdown.
     return f'''<div class="sector-row">
 <div class="sector-name">{nome}</div>
 <div class="sector-track"><div class="sector-fill" style="width:{pct}%"></div></div>
@@ -2890,9 +2976,75 @@ def _render_setor_bar(nome, resumo):
 </div>
 <div class="sector-mini">
 <span>Produção <b>{prod}</b></span>
-<span>Prep. <b>{resumo['preparacao']}</b></span>
+<span>Prep. ativa <b>{resumo['prep_ativa']}</b></span>
+<span>Aguard. <b>{resumo['prep_aguardando']}</b></span>
 <span>Parada <b>{resumo['parada']}</b></span>
 <span>Manut. <b>{resumo['manutencao']}</b></span>
+</div>'''
+
+
+def _estado_atual_home():
+    """Metadados do último apontamento de cada máquina, usados apenas no dashboard."""
+    try:
+        df = _carregar_ultimos_apontamentos().copy()
+    except Exception:
+        return {}
+    saida = {}
+    if df.empty:
+        return saida
+    for _, row in df.iterrows():
+        chave = str(row.get('Maquina', '')).strip()
+        if not chave:
+            continue
+        saida[chave] = {
+            'hora': str(row.get('Hora', '') or '').strip(),
+            'operador': str(row.get('Operador', '') or '').strip(),
+            'status': str(row.get('Status', '') or '').strip(),
+        }
+    return saida
+
+
+def _minutos_status_home(hora_inicio):
+    """Calcula há quanto tempo o estado atual começou (até 24h, pois o banco guarda HH:MM)."""
+    try:
+        h = datetime.strptime(str(hora_inicio).strip(), '%H:%M').time()
+        agora = datetime.now(FUSO_BR)
+        inicio = datetime.combine(agora.date(), h, tzinfo=FUSO_BR)
+        if inicio > agora:
+            inicio -= timedelta(days=1)
+        return max(0, int((agora - inicio).total_seconds() // 60))
+    except Exception:
+        return 0
+
+
+def _tempo_curto_home(mins):
+    mins = max(0, int(mins or 0))
+    if mins < 1:
+        return 'agora'
+    if mins < 60:
+        return f'{mins} min'
+    h, m = divmod(mins, 60)
+    return f'{h}h {m:02d}m' if m else f'{h}h'
+
+
+def _render_prep_item(setor, maq, status, hora_inicio, operador, tipo):
+    mins = _minutos_status_home(hora_inicio)
+    tempo = _tempo_curto_home(mins)
+    status_curto = html.escape(str(status).split('[')[0].strip())
+    op = html.escape(str(operador).strip()) if operador else ''
+    meta = html.escape(setor)
+    if op:
+        meta += f' · {op}'
+    classe = 'active' if tipo == 'ativa' else 'waiting'
+    icone = '▶' if tipo == 'ativa' else '◷'
+    return f'''<div class="prep-item {classe}">
+<div class="prep-ico">{icone}</div>
+<div style="min-width:0">
+<div class="prep-machine">Máquina {html.escape(maq)}</div>
+<div class="prep-status">{status_curto}</div>
+<div class="prep-meta">{meta}</div>
+</div>
+<div class="prep-time"><span>há</span>{tempo}</div>
 </div>'''
 
 
@@ -3020,9 +3172,11 @@ def tela_menu():
     exibir_alertas_preparador()
 
     status_dict = ler_status_atual()
+    estado_meta = _estado_atual_home()
     resumo_afc = _resumo_setor_home(status_dict, 'AFC', TODAS_AFC)
     resumo_rtf = _resumo_setor_home(status_dict, 'RTF', TODAS_RTF)
-    totais = {chave: resumo_afc[chave] + resumo_rtf[chave] for chave in ['producao','preparacao','parada','manutencao','outros']}
+    chaves_total = ['producao','preparacao','prep_ativa','prep_aguardando','parada','manutencao','outros']
+    totais = {chave: resumo_afc[chave] + resumo_rtf[chave] for chave in chaves_total}
     total_maquinas = len(TODAS_AFC) + len(TODAS_RTF)
 
     agora = datetime.now(FUSO_BR)
@@ -3042,49 +3196,67 @@ def tela_menu():
     </div>
     <div class="kpi-grid">
         {_render_kpi('Produzindo', totais['producao'], '▶', '#2DD4BF', f'de {total_maquinas} máquinas')}
-        {_render_kpi('Preparações', totais['preparacao'], '⚙', '#F59E0B', 'em preparação / aguardando')}
+        {_render_prep_kpi(totais['prep_ativa'], totais['prep_aguardando'])}
         {_render_kpi('Paradas', totais['parada'], '■', '#EF4444', 'requerem acompanhamento')}
         {_render_kpi('Manutenção', totais['manutencao'], '⌁', '#8B5CF6', 'máquinas em manutenção')}
     </div>
     '''), unsafe_allow_html=True)
 
-    atencao = []
-    prioridade = {'manutencao':0, 'parada':1, 'preparacao':2, 'outros':3}
+    preparacoes = {'ativa': [], 'aguardando': []}
     for setor, maquinas in [('AFC', TODAS_AFC), ('RTF', TODAS_RTF)]:
-        for m in maquinas:
-            st_val = status_dict.get(f'{setor} {m}', 'PRODUZINDO')
-            classe = _classificar_status_home(st_val)
-            if classe != 'producao':
-                atencao.append((prioridade.get(classe,9), setor, m, st_val, classe))
-    atencao.sort(key=lambda x: (x[0], x[1], x[2]))
+        for maq in maquinas:
+            chave = f'{setor} {maq}'
+            st_val = status_dict.get(chave, 'PRODUZINDO')
+            tipo = _classificar_preparacao_home(st_val)
+            if not tipo:
+                continue
+            meta = estado_meta.get(chave, {})
+            hora_inicio = meta.get('hora', '')
+            mins = _minutos_status_home(hora_inicio)
+            preparacoes[tipo].append({
+                'setor': setor,
+                'maq': maq,
+                'status': st_val,
+                'hora': hora_inicio,
+                'operador': meta.get('operador', ''),
+                'mins': mins,
+            })
 
-    itens_html = []
-    icon_map = {'manutencao':'🛠','parada':'●','preparacao':'⚙','outros':'!'}
-    for _, setor, maq, st_val, classe in atencao[:7]:
-        status_curto = html.escape(str(st_val).split('[')[0].strip())
-        itens_html.append(f'''<div class="attention-item">
-<div class="attention-ico">{icon_map.get(classe,'!')}</div>
-<div style="min-width:0">
-<div class="attention-machine">Máquina {html.escape(maq)}</div>
-<div class="attention-status">{status_curto}</div>
-</div>
-<div class="attention-sector">{setor}</div>
-</div>''')
-    if not itens_html:
-        itens_html.append('<div class="attention-empty">✓ Nenhuma máquina exige atenção agora.</div>')
+    preparacoes['ativa'].sort(key=lambda x: (-x['mins'], x['setor'], x['maq']))
+    preparacoes['aguardando'].sort(key=lambda x: (-x['mins'], x['setor'], x['maq']))
+
+    def montar_lista(tipo, limite=6):
+        itens = preparacoes[tipo]
+        if not itens:
+            txt = 'Nenhuma preparação ativa.' if tipo == 'ativa' else 'Nenhuma máquina aguardando preparação.'
+            return f'<div class="prep-empty">{txt}</div>'
+        html_itens = ''.join(
+            _render_prep_item(x['setor'], x['maq'], x['status'], x['hora'], x['operador'], tipo)
+            for x in itens[:limite]
+        )
+        if len(itens) > limite:
+            html_itens += f'<div class="prep-more">+ {len(itens)-limite} outra(s) máquina(s)</div>'
+        return html_itens
 
     st.markdown(textwrap.dedent(f'''
     <div class="dashboard-grid">
         <div class="dash-panel">
             <div class="dash-panel-title">Desempenho por setor</div>
-            <div class="dash-panel-sub">Percentual de máquinas em produção agora</div>
+            <div class="dash-panel-sub">Percentual de máquinas em produção e situação das preparações</div>
             {_render_setor_bar('Afiação', resumo_afc)}
             {_render_setor_bar('Retífica', resumo_rtf)}
         </div>
         <div class="dash-panel">
-            <div class="dash-panel-title">Atenção agora</div>
-            <div class="dash-panel-sub">Preparações, paradas e manutenções prioritárias</div>
-            <div class="attention-list">{''.join(itens_html)}</div>
+            <div class="dash-panel-title">Preparações agora</div>
+            <div class="dash-panel-sub">Separadas entre execução ativa e máquinas aguardando</div>
+            <div class="prep-summary">
+                <div class="prep-chip active">● Ativas <b>{totais['prep_ativa']}</b></div>
+                <div class="prep-chip waiting">◷ Aguardando <b>{totais['prep_aguardando']}</b></div>
+            </div>
+            <div class="prep-section-title"><span>▶ Preparação ativa</span><span class="prep-section-count">{totais['prep_ativa']}</span></div>
+            <div class="prep-list">{montar_lista('ativa')}</div>
+            <div class="prep-section-title"><span>◷ Aguardando preparação</span><span class="prep-section-count">{totais['prep_aguardando']}</span></div>
+            <div class="prep-list">{montar_lista('aguardando')}</div>
         </div>
     </div>
     '''), unsafe_allow_html=True)
@@ -3095,7 +3267,13 @@ def tela_menu():
         st.markdown('<div class="quick-title">Acessos rápidos</div>', unsafe_allow_html=True)
         cols = st.columns(min(len(acoes),4))
         for i, (rotulo, destino) in enumerate(acoes):
-            cols[i % len(cols)].button(rotulo, key=f'home_quick_{destino}', use_container_width=True, on_click=mudar_tela, args=(destino,))
+            cols[i % len(cols)].button(
+                rotulo,
+                key=f'home_quick_{destino}',
+                use_container_width=True,
+                on_click=mudar_tela,
+                args=(destino,)
+            )
 
     st.markdown("<div style='margin-top:18px'></div>", unsafe_allow_html=True)
     if st.button("🚪 Encerrar sessão", key='logout_home', use_container_width=True):
@@ -4536,7 +4714,7 @@ def tela_programador():
     render_grid_setor_prog(lista_rtf, "RETÍFICA (RTF)")
 
 # --- ROTEAMENTO DE TELAS ---
-processar_navegacao_url()
+# Navegação nativa: sem query string e sem reload completo do navegador.
 tela = st.session_state['tela_atual']
 
 if tela != 'login' and st.session_state.get('operador'):
