@@ -1033,8 +1033,11 @@ CSS_APP = """
     .kpi-value {color:#FFFFFF;font-size:34px;font-weight:950;letter-spacing:-1.3px;line-height:1;margin-top:17px;}
     .kpi-foot {display:flex;align-items:center;gap:6px;color:#777782;font-size:10px;font-weight:750;margin-top:8px;}
     .kpi-dot {width:6px;height:6px;border-radius:99px;background:var(--kpi-color);box-shadow:0 0 12px var(--kpi-color);}
-    .dashboard-grid {display:grid;grid-template-columns:minmax(0,1.25fr) minmax(330px,.75fr);gap:14px;margin-top:14px;}
-    .dash-panel {background:linear-gradient(180deg,rgba(26,26,35,.94),rgba(18,18,25,.96));border:1px solid rgba(255,255,255,.085);border-radius:18px;padding:17px;box-shadow:0 14px 38px rgba(0,0,0,.17);}
+    .dashboard-grid {display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:14px;margin-top:14px;align-items:start;}
+    .dash-panel {background:linear-gradient(180deg,rgba(26,26,35,.94),rgba(18,18,25,.96));border:1px solid rgba(255,255,255,.085);border-radius:18px;padding:17px;box-shadow:0 14px 38px rgba(0,0,0,.17);height:auto;align-self:start;}
+    .sector-panel {padding:13px 15px;}
+    .sector-panel .sector-row {margin-top:11px;}
+    .sector-panel .sector-mini {margin-top:5px;}
     .dash-panel-title {color:#F4F4F5;font-size:13px;font-weight:900;}
     .dash-panel-sub {color:#777782;font-size:10px;font-weight:700;margin-top:4px;}
     .sector-row {display:grid;grid-template-columns:82px 1fr 48px;align-items:center;gap:10px;margin-top:17px;}
@@ -1138,6 +1141,35 @@ CSS_APP = """
     .prep-time span {display:block;color:#6F6F79;font-size:8px;font-weight:750;margin-bottom:1px;}
     .prep-empty {padding:13px 8px;color:#777782;font-size:10px;text-align:center;border:1px dashed rgba(255,255,255,.07);border-radius:11px;}
     .prep-more {color:#777782;font-size:9px;font-weight:750;text-align:center;padding-top:6px;}
+    /* Visão gerencial por processo */
+    .mgr-intro {display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin:2px 0 13px;}
+    .mgr-title {color:#F7F7FA;font-size:22px;font-weight:950;letter-spacing:-.5px;}
+    .mgr-sub {color:#858590;font-size:10px;font-weight:700;margin-top:4px;}
+    .mgr-summary {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:0 0 14px;}
+    .mgr-summary-card {padding:12px 13px;border-radius:14px;background:linear-gradient(180deg,rgba(27,27,37,.96),rgba(19,19,27,.96));border:1px solid rgba(255,255,255,.07);}
+    .mgr-summary-label {color:#858590;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.5px;}
+    .mgr-summary-num {color:#FFFFFF;font-size:26px;font-weight:950;line-height:1;margin-top:8px;}
+    .mgr-summary-meta {color:#6F6F7A;font-size:8px;font-weight:750;margin-top:5px;}
+    .mgr-process {margin-top:12px;padding:14px;border-radius:17px;background:linear-gradient(180deg,rgba(25,25,34,.95),rgba(18,18,25,.97));border:1px solid rgba(255,255,255,.075);box-shadow:0 12px 32px rgba(0,0,0,.14);}
+    .mgr-process-head {display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;}
+    .mgr-process-name {display:flex;align-items:center;gap:8px;color:#F1F1F4;font-size:12px;font-weight:950;}
+    .mgr-process-dot {width:8px;height:8px;border-radius:99px;background:var(--mgr-color,#8B5CF6);box-shadow:0 0 14px var(--mgr-color,#8B5CF6);}
+    .mgr-process-count {padding:5px 8px;border-radius:9px;color:#BDBDC7;background:rgba(255,255,255,.045);font-size:9px;font-weight:900;}
+    .mgr-machine-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;}
+    .mgr-machine {position:relative;overflow:hidden;min-height:112px;padding:11px;border-radius:13px;background:rgba(255,255,255,.032);border:1px solid rgba(255,255,255,.055);border-left:3px solid var(--state-color,#2DD4BF);}
+    .mgr-machine-top {display:flex;align-items:center;justify-content:space-between;gap:8px;}
+    .mgr-machine-name {color:#F4F4F5;font-size:11px;font-weight:950;}
+    .mgr-state {max-width:64%;padding:4px 6px;border-radius:7px;background:rgba(255,255,255,.045);color:var(--state-color,#2DD4BF);font-size:7px;font-weight:950;text-transform:uppercase;letter-spacing:.25px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .mgr-machine-data {display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:11px;}
+    .mgr-data-box {min-width:0;padding:7px;border-radius:9px;background:rgba(255,255,255,.028);}
+    .mgr-data-box span {display:block;color:#686873;font-size:7px;font-weight:800;text-transform:uppercase;letter-spacing:.35px;}
+    .mgr-data-box b {display:block;color:#DCDCE2;font-size:9px;font-weight:900;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .mgr-next {margin-top:7px;color:#7E7E89;font-size:8px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .mgr-next b {color:#F59E0B;}
+    .mgr-empty {padding:18px 6px;text-align:center;color:#73737E;font-size:10px;border:1px dashed rgba(255,255,255,.07);border-radius:11px;}
+    @media (max-width:1280px) {.mgr-machine-grid {grid-template-columns:repeat(3,minmax(0,1fr));}}
+    @media (max-width:980px) {.mgr-summary {grid-template-columns:repeat(2,minmax(0,1fr));}.mgr-machine-grid {grid-template-columns:repeat(2,minmax(0,1fr));}}
+    @media (max-width:560px) {.mgr-intro {display:block;}.mgr-summary {grid-template-columns:1fr 1fr;gap:7px}.mgr-process {padding:11px}.mgr-machine-grid {grid-template-columns:1fr}.mgr-machine {min-height:104px}.mgr-summary-num {font-size:23px;}}
     /* Desempenho mensal de setups */
     .setup-month-panel {margin-top:14px;background:linear-gradient(180deg,rgba(26,26,35,.94),rgba(18,18,25,.96));border:1px solid rgba(255,255,255,.085);border-radius:18px;padding:17px;box-shadow:0 14px 38px rgba(0,0,0,.17);}
     .setup-month-top {display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:13px;}
@@ -3547,7 +3579,7 @@ def tela_menu():
 
     st.markdown(textwrap.dedent(f'''
     <div class="dashboard-grid">
-        <div class="dash-panel">
+        <div class="dash-panel sector-panel">
             <div class="dash-panel-title">Produção por setor</div>
             <div class="dash-panel-sub">Máquinas aguardando setup continuam contabilizadas como produção</div>
             {_render_setor_bar('Afiação', resumo_afc)}
@@ -3637,56 +3669,256 @@ def tela_menu():
         mudar_tela('login', forcar_rerun=True)
 
 
+def _extrair_op_item_gerencia(status):
+    status = str(status or '')
+    op = '-'
+    item = '-'
+    if '[Ordem:' in status:
+        try: op = status.split('[Ordem:')[1].split(']')[0].strip() or '-'
+        except Exception: pass
+    for marcador in ['[Novo Item:', '[Item Atual:', '[Item:']:
+        if marcador in status:
+            try:
+                valor = status.split(marcador)[1].split(']')[0].strip()
+                if valor:
+                    item = valor
+                    break
+            except Exception:
+                pass
+    return op, item
+
+
+def _tipo_explicito_rtf(status):
+    up = _normalizar_setup_home(status)
+    if '[PROCESSO: GUIA]' in up or 'PREPARACAO - GUIA' in up or ' GUIA' in up:
+        return 'GUIA'
+    if '[PROCESSO: HASTE]' in up or 'PREPARACAO - HASTE' in up or ' HASTE' in up:
+        return 'HASTE'
+    return None
+
+
+def _mapa_processo_rodando_rtf(status_dict):
+    # Programação futura não troca o processo em execução. O grupo só muda quando PREPARANDO inicia.
+    tipos_cnc = ler_tipos_cnc()
+    ativo = {}
+    pendente = {}
+
+    for maq in TODAS_RTF:
+        tipo_cnc = tipos_cnc.get(maq, 'RTF_CNC3')
+        if tipo_cnc == 'RTF_CNC2':
+            ativo[maq] = 'FACETADORA'
+        elif tipo_cnc == 'RTF_CNC1':
+            ativo[maq] = 'HASTE'
+
+    def processar_eventos(df):
+        if df is None or df.empty:
+            return
+        for _, row in df.iterrows():
+            maq_full = str(row.get('Maquina', ''))
+            if not maq_full.startswith('RTF '):
+                continue
+            maq = maq_full.replace('RTF ', '', 1).strip()
+            if tipos_cnc.get(maq, 'RTF_CNC3') == 'RTF_CNC2':
+                ativo[maq] = 'FACETADORA'
+                continue
+            st_raw = str(row.get('Status', ''))
+            st_up = _normalizar_setup_home(st_raw)
+            tipo = _tipo_explicito_rtf(st_raw)
+            if tipo:
+                pendente[maq] = tipo
+                if st_up.startswith('PRODUZINDO') and '[PROCESSO:' in st_up:
+                    ativo[maq] = tipo
+            if st_up.startswith('PREPARANDO'):
+                tipo_inicio = tipo or pendente.get(maq)
+                if tipo_inicio:
+                    ativo[maq] = tipo_inicio
+
+    try:
+        hist = _quote_identifier(ARQUIVO_HISTORICO_EVENTOS)
+        if tabela_existe(ARQUIVO_HISTORICO_EVENTOS):
+            sql_hist = f'''SELECT "Maquina", "Status", "Hora" FROM {hist}
+                WHERE "Setor"='RTF'
+                  AND (UPPER("Status") LIKE '%HASTE%'
+                       OR UPPER("Status") LIKE '%GUIA%'
+                       OR UPPER("Status") LIKE 'PREPARANDO%'
+                       OR UPPER("Status") LIKE 'PRODUZINDO%')
+                ORDER BY rowid DESC LIMIT 5000'''
+            result = turso_request(sql_hist, want_rows=True, timeout=30)
+            df_hist = _resultado_turso_df(result)
+            if not df_hist.empty:
+                processar_eventos(df_hist.iloc[::-1].reset_index(drop=True))
+    except Exception:
+        pass
+
+    try:
+        atual = _quote_identifier(ARQUIVO_DADOS)
+        if tabela_existe(ARQUIVO_DADOS):
+            sql_atual = f'''SELECT "Maquina", "Status", "Hora" FROM {atual}
+                WHERE "Setor"='RTF' ORDER BY rowid ASC'''
+            result = turso_request(sql_atual, want_rows=True, timeout=30)
+            processar_eventos(_resultado_turso_df(result))
+    except Exception:
+        pass
+
+    for maq in TODAS_RTF:
+        if tipos_cnc.get(maq, 'RTF_CNC3') == 'RTF_CNC2':
+            ativo[maq] = 'FACETADORA'
+            continue
+        if maq not in ativo:
+            atual_st = status_dict.get(f'RTF {maq}', '')
+            tipo_atual = _tipo_explicito_rtf(atual_st)
+            if str(atual_st).upper().startswith('PREPARANDO') and tipo_atual:
+                ativo[maq] = tipo_atual
+            else:
+                ativo[maq] = 'HASTE'
+    return ativo
+
+
+def _estado_gerencial_maquina(status):
+    up = _normalizar_setup_home(status)
+    if up.startswith('MANUTENCAO'):
+        return 'MANUTENÇÃO', '#F97316'
+    if up.startswith('PARADA'):
+        return 'PARADA', '#EF4444'
+    if up.startswith('PREPARANDO'):
+        return 'SETUP ATIVO', '#2DD4BF'
+    if _eh_aguardando_setup_home(status):
+        return 'RODANDO · SETUP AGUARDANDO', '#F59E0B'
+    return 'PRODUZINDO', '#22C55E'
+
+
+def _proxima_programacao_gerencia(status):
+    if not _eh_aguardando_setup_home(status):
+        return ''
+    tipo = _tipo_explicito_rtf(status)
+    if not tipo:
+        up = _normalizar_setup_home(status)
+        if 'SEQUENCIA' in up: tipo = 'SEQUÊNCIA'
+        elif 'PREPARACAO' in up: tipo = 'PREPARAÇÃO'
+    hora = _extrair_hora_programada_home(status)
+    partes = []
+    if tipo: partes.append(tipo)
+    if hora: partes.append(hora)
+    return ' · '.join(partes)
+
+
+def _render_grupo_gerencia(nome, maquinas, setor, status_dict, cor):
+    cards = []
+    for maq in ordenar_maquinas(maquinas):
+        st_val = status_dict.get(f'{setor} {maq}', 'PRODUZINDO')
+        op, item = _extrair_op_item_gerencia(st_val)
+        estado, cor_estado = _estado_gerencial_maquina(st_val)
+        prox = _proxima_programacao_gerencia(st_val)
+        if prox:
+            prox_html = f'<div class="mgr-next">Próximo setup: <b>{html.escape(prox)}</b></div>'
+        else:
+            prox_html = '<div class="mgr-next">Sem setup futuro programado</div>'
+        cards.append(f'''<div class="mgr-machine" style="--state-color:{cor_estado}">
+            <div class="mgr-machine-top">
+                <div class="mgr-machine-name">Máquina {html.escape(str(maq))}</div>
+                <div class="mgr-state">{html.escape(estado)}</div>
+            </div>
+            <div class="mgr-machine-data">
+                <div class="mgr-data-box"><span>Item rodando</span><b>{html.escape(str(item))}</b></div>
+                <div class="mgr-data-box"><span>OP</span><b>{html.escape(str(op))}</b></div>
+            </div>
+            {prox_html}
+        </div>''')
+    corpo = ''.join(cards) if cards else '<div class="mgr-empty">Nenhuma máquina nesta categoria.</div>'
+    return f'''<div class="mgr-process" style="--mgr-color:{cor}">
+        <div class="mgr-process-head">
+            <div class="mgr-process-name"><span class="mgr-process-dot"></span>{html.escape(nome)}</div>
+            <div class="mgr-process-count">{len(maquinas)} máquinas</div>
+        </div>
+        <div class="mgr-machine-grid">{corpo}</div>
+    </div>'''
+
+
 def tela_visao_geral():
     botao_navegar("⬅️ Voltar ao Menu", 'menu')
+    status_dict = ler_status_atual()
+
+    if (st.session_state.get('perfil') == 'adm' and str(st.session_state.get('setor_usuario', '')).upper() == 'GERÊNCIA'):
+        mapa_rtf = _mapa_processo_rodando_rtf(status_dict)
+        tipos_cnc = ler_tipos_cnc()
+        afiadoras = list(TODAS_AFC)
+        facetadoras = [m for m in TODAS_RTF if tipos_cnc.get(m, 'RTF_CNC3') == 'RTF_CNC2']
+        ret_haste = [m for m in TODAS_RTF if m not in facetadoras and mapa_rtf.get(m) == 'HASTE']
+        ret_guia = [m for m in TODAS_RTF if m not in facetadoras and mapa_rtf.get(m) == 'GUIA']
+
+        grupos = [
+            ('Afiadoras', afiadoras, 'AFC', '#8B5CF6'),
+            ('Retífica Haste', ret_haste, 'RTF', '#A78BFA'),
+            ('Retífica Guia', ret_guia, 'RTF', '#60A5FA'),
+            ('Facetadoras', facetadoras, 'RTF', '#2DD4BF'),
+        ]
+
+        def resumo_status(lista, setor):
+            prod = prep = espera = problema = 0
+            for m in lista:
+                s = status_dict.get(f'{setor} {m}', 'PRODUZINDO')
+                up = _normalizar_setup_home(s)
+                if up.startswith('PREPARANDO'):
+                    prep += 1
+                elif up.startswith('PARADA') or up.startswith('MANUTENCAO'):
+                    problema += 1
+                elif _eh_aguardando_setup_home(s):
+                    espera += 1
+                    prod += 1
+                else:
+                    prod += 1
+            return prod, prep, espera, problema
+
+        summary_html = []
+        for nome, lista, setor, cor in grupos:
+            prod, prep, espera, problema = resumo_status(lista, setor)
+            summary_html.append(f'''<div class="mgr-summary-card" style="border-top:2px solid {cor}">
+                <div class="mgr-summary-label">{html.escape(nome)}</div>
+                <div class="mgr-summary-num">{len(lista)}</div>
+                <div class="mgr-summary-meta">{prod} rodando · {prep} setup ativo · {espera} aguardando · {problema} parada/manut.</div>
+            </div>''')
+
+        conteudo = f'''
+        <div class="mgr-intro">
+            <div>
+                <div class="mgr-title">Visão Geral da Fábrica</div>
+                <div class="mgr-sub">Separado pelo processo que está realmente rodando. Uma programação futura não muda o grupo da máquina até o setup iniciar.</div>
+            </div>
+        </div>
+        <div class="mgr-summary">{''.join(summary_html)}</div>
+        {_render_grupo_gerencia('Afiadoras', afiadoras, 'AFC', status_dict, '#8B5CF6')}
+        {_render_grupo_gerencia('Retífica Haste', ret_haste, 'RTF', status_dict, '#A78BFA')}
+        {_render_grupo_gerencia('Retífica Guia', ret_guia, 'RTF', status_dict, '#60A5FA')}
+        {_render_grupo_gerencia('Facetadoras', facetadoras, 'RTF', status_dict, '#2DD4BF')}
+        '''
+        st.markdown(textwrap.dedent(conteudo), unsafe_allow_html=True)
+        return
+
     st.markdown("#### 📊 Visão Geral da Fábrica — Máquinas e OPs")
     st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Acompanhe em tempo real o status, os itens rodando e as ordens de produção em todas as máquinas da Afiação e Retífica.</p>", unsafe_allow_html=True)
     st.divider()
-
-    status_dict = ler_status_atual()
     setor_filtro = st.radio("Filtrar Setor:", ["Todos", "Afiação (AFC)", "Retífica (RTF)"], horizontal=True)
-    
     listas_analise = []
     if setor_filtro in ["Todos", "Afiação (AFC)"]:
         listas_analise.append(("Afiação (AFC)", TODAS_AFC))
     if setor_filtro in ["Todos", "Retífica (RTF)"]:
         listas_analise.append(("Retífica (RTF)", TODAS_RTF))
-
     for nome_setor, lista_maq in listas_analise:
         st.markdown(f"##### 🏭 {nome_setor}")
-        
         for m in ordenar_maquinas(lista_maq):
             prefixo = "AFC" if "Afiação" in nome_setor else "RTF"
             st_val = status_dict.get(f"{prefixo} {m}", "PRODUZINDO")
             icone = get_status_icon(st_val)
-            
-            op_rodando = "-"
-            item_rodando = "-"
-            if "[Ordem:" in st_val:
-                try: op_rodando = st_val.split("[Ordem:")[1].split("]")[0].strip()
-                except: pass
-            if "[Item:" in st_val:
-                try: item_rodando = st_val.split("[Item:")[1].split("]")[0].strip()
-                except: pass
-            elif "[Novo Item:" in st_val:
-                try: item_rodando = st_val.split("[Novo Item:")[1].split("]")[0].strip()
-                except: pass
-            elif "[Item Atual:" in st_val:
-                try: item_rodando = st_val.split("[Item Atual:")[1].split("]")[0].strip()
-                except: pass
-
-            st.markdown(f"""
-            <div style='background-color: #18181B; padding: 10px; border-radius: 8px; margin-bottom: 8px; border: 1px solid #27272A;'>
-                <div style='display: flex; justify-content: space-between; align-items: center;'>
-                    <span style='font-size: 14px; font-weight: bold; color: #2DD4BF;'>{icone} Máquina {m}</span>
-                    <span style='font-size: 12px; color: #A1A1AA; background: #27272A; padding: 2px 8px; border-radius: 4px;'>{st_val.split('[')[0].strip()}</span>
+            op_rodando, item_rodando = _extrair_op_item_gerencia(st_val)
+            bloco = f'''<div style="background-color:#18181B;padding:10px;border-radius:8px;margin-bottom:8px;border:1px solid #27272A;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-size:14px;font-weight:bold;color:#2DD4BF;">{icone} Máquina {m}</span>
+                    <span style="font-size:12px;color:#A1A1AA;background:#27272A;padding:2px 8px;border-radius:4px;">{st_val.split('[')[0].strip()}</span>
                 </div>
-                <div style='margin-top: 6px; font-size: 13px; color: #F4F4F5;'>
-                    📦 Item: <b>{item_rodando}</b> | 📋 OP: <b>{op_rodando}</b>
-                </div>
-            </div>
-            """, unsafe_allow_html=True)
-        st.markdown("<div style='margin-top: 15px;'></div>", unsafe_allow_html=True)
+                <div style="margin-top:6px;font-size:13px;color:#F4F4F5;">📦 Item: <b>{item_rodando}</b> | 📋 OP: <b>{op_rodando}</b></div>
+            </div>'''
+            st.markdown(bloco, unsafe_allow_html=True)
+        st.markdown("<div style='margin-top:15px;'></div>", unsafe_allow_html=True)
 
 def render_grid_vertical(lista_maquinas, setor, status_dict):
     for maq in ordenar_maquinas(lista_maquinas):
