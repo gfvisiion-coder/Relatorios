@@ -2405,6 +2405,14 @@ def salvar_csv(dados, arquivo):
     tudo novamente. Isso ficava progressivamente mais lento conforme o histórico
     crescia.
     """
+    dados = dict(dados)
+    # Proteção global: nenhum novo apontamento pode entrar com dois horários
+    # [AGENDADO] no mesmo Status. Mantém apenas o último horário informado.
+    try:
+        if str(arquivo) == str(ARQUIVO_DADOS) and 'Status' in dados:
+            dados['Status'] = _agendamento_unico_status(dados.get('Status', ''))
+    except Exception:
+        pass
     df_novo = pd.DataFrame([dados])
     salvar_tabela(df_novo, arquivo, modo="append")
 
@@ -4902,39 +4910,69 @@ def _normalizar_hora_edicao(valor):
     return txt
 
 
-def _sincronizar_hora_escrita_status(status, hora_nova):
-    """Atualiza a hora escrita no Status quando o registro é uma programação.
+def _agendamento_unico_status(status, hora_forcada=None):
+    """Garante no máximo UM horário de agendamento no texto do Status.
 
-    A coluna Hora é a fonte editável na tela Correção de Apontamentos. Alguns
-    status também carregam a programação dentro do próprio texto; sem sincronizar
-    os dois, a interface continuava mostrando o horário antigo.
+    Aceita tanto ``AGENDADA PARA HH:MM`` quanto ``[AGENDADO:HH:MM]``.
+    Quando ``hora_forcada`` é informada, todos os agendamentos antigos são
+    removidos e apenas ``[AGENDADO:hora_forcada]`` é gravado. Sem hora forçada,
+    só mexe no texto quando encontra duplicidade, preservando o horário mais
+    recente (última ocorrência no Status).
+    """
+    txt = str(status or "")
+    padrao = re.compile(
+        r"(?i)\[AGENDADO:\s*(\d{1,2}:\d{2})\s*\]|AGENDADA\s+PARA\s+(\d{1,2}:\d{2})"
+    )
+    encontrados = list(padrao.finditer(txt))
+    if not encontrados:
+        return txt
+
+    hora = _normalizar_hora_edicao(hora_forcada) if hora_forcada is not None else ""
+    if not re.fullmatch(r"\d{2}:\d{2}", hora or ""):
+        ultimo = encontrados[-1]
+        hora = _normalizar_hora_edicao(ultimo.group(1) or ultimo.group(2) or "")
+
+    if not re.fullmatch(r"\d{2}:\d{2}", hora or ""):
+        return txt
+
+    # Sem alteração explícita e sem duplicidade, preserva o texto exatamente.
+    if hora_forcada is None and len(encontrados) == 1:
+        return txt
+
+    # Remove TODAS as formas antigas antes de escrever a canônica.
+    txt = re.sub(r"(?i)\s*\[AGENDADO:\s*\d{1,2}:\d{2}\s*\]", "", txt)
+    txt = re.sub(r"(?i)\s*AGENDADA\s+PARA\s+\d{1,2}:\d{2}", "", txt)
+    txt = re.sub(r"[ \t]{2,}", " ", txt).strip()
+    return f"{txt} [AGENDADO:{hora}]".strip()
+
+
+def _sincronizar_hora_escrita_status(status, hora_nova):
+    """Sincroniza a coluna Hora com a hora escrita dentro do Status.
+
+    Para uma programação aguardando, remove qualquer agendamento antigo/duplicado
+    e grava somente um ``[AGENDADO:HH:MM]``. Em PREPARANDO, a coluna Hora é o
+    início real do setup; nesse caso apenas limpamos eventuais duplicidades sem
+    trocar a programação original.
     """
     status = str(status or "")
     hora_nova = _normalizar_hora_edicao(hora_nova)
     if not re.fullmatch(r"\d{2}:\d{2}", hora_nova or ""):
-        return status
+        return _agendamento_unico_status(status)
 
-    # Em PREPARANDO, Hora representa o início real do setup; [AGENDADO] continua
-    # sendo a programação original e não deve ser sobrescrita ao corrigir o início.
     if _normalizar_setup_home(status).startswith("PREPARANDO"):
-        return status
+        return _agendamento_unico_status(status)
 
-    status = re.sub(
-        r"(?i)(AGENDADA\s+PARA\s+)\d{1,2}:\d{2}",
-        lambda m: m.group(1) + hora_nova,
-        status,
-    )
-    status = re.sub(
-        r"(?i)(\[AGENDADO:\s*)\d{1,2}:\d{2}(\s*\])",
-        lambda m: m.group(1) + hora_nova + m.group(2),
-        status,
-    )
-    status = re.sub(
-        r"(?i)(\[FIM\s+PREVISTO:\s*)\d{1,2}:\d{2}(\s*\])",
-        lambda m: m.group(1) + hora_nova + m.group(2),
-        status,
-    )
-    return status
+    # Se existe agendamento escrito, substitui TODOS por apenas um novo.
+    if re.search(r"(?i)\[AGENDADO:|AGENDADA\s+PARA", status):
+        status = _agendamento_unico_status(status, hora_nova)
+
+    # Fim Previsto é outra informação; caso exista, também evita duplicidade.
+    if re.search(r"(?i)\[FIM\s+PREVISTO:", status):
+        status = re.sub(r"(?i)\s*\[FIM\s+PREVISTO:\s*\d{1,2}:\d{2}\s*\]", "", status)
+        status = re.sub(r"[ \t]{2,}", " ", status).strip()
+        status += f" [Fim Previsto:{hora_nova}]"
+
+    return status.strip()
 
 
 def tela_editar():
@@ -4981,6 +5019,8 @@ def tela_editar():
                     # horário programado que esteja escrito dentro do Status.
                     if hora_nova != hora_antiga:
                         status_novo = _sincronizar_hora_escrita_status(status_novo, hora_nova)
+                    else:
+                        status_novo = _agendamento_unico_status(status_novo)
                     df_maq.at[idx, 'Status'] = status_novo
                     df_maq.at[idx, 'Hora'] = hora_nova
                 else:
