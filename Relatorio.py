@@ -1141,6 +1141,12 @@ CSS_APP = """
     .prep-time span {display:block;color:#6F6F79;font-size:8px;font-weight:750;margin-bottom:1px;}
     .prep-empty {padding:13px 8px;color:#777782;font-size:10px;text-align:center;border:1px dashed rgba(255,255,255,.07);border-radius:11px;}
     .prep-more {color:#777782;font-size:9px;font-weight:750;text-align:center;padding-top:6px;}
+    .prep-sector-block {margin-top:8px;}
+    .prep-sector-head {display:flex;align-items:center;justify-content:space-between;gap:8px;margin:9px 0 6px;padding:6px 8px;border-radius:9px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.045);}
+    .prep-sector-name {font-size:9px;font-weight:950;letter-spacing:.55px;text-transform:uppercase;color:#D4D4D8;}
+    .prep-sector-name.afc {color:#5EEAD4;}
+    .prep-sector-name.rtf {color:#93C5FD;}
+    .prep-sector-count {min-width:22px;height:20px;padding:0 6px;display:inline-grid;place-items:center;border-radius:7px;background:rgba(255,255,255,.055);color:#F4F4F5;font-size:9px;font-weight:900;}
     /* Visão gerencial por processo */
     .mgr-intro {display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin:2px 0 13px;}
     .mgr-title {color:#F7F7FA;font-size:22px;font-weight:950;letter-spacing:-.5px;}
@@ -3745,10 +3751,14 @@ def _tela_menu_dashboard_9999():
     # Atrasadas primeiro; depois as próximas programações; sem horário ficam no fim.
     preparacoes['aguardando'].sort(key=lambda x: (x['ordem'], x['setor'], x['maq']))
 
-    def montar_lista(tipo, limite=6):
-        itens = preparacoes[tipo]
+    def contar_prep_setor(tipo, setor):
+        return sum(1 for x in preparacoes[tipo] if x['setor'] == setor)
+
+    def montar_lista_setor(tipo, setor, limite=5):
+        itens = [x for x in preparacoes[tipo] if x['setor'] == setor]
         if not itens:
-            txt = 'Nenhuma preparação ativa.' if tipo == 'ativa' else 'Nenhuma máquina aguardando preparação.'
+            setor_nome = 'Afiação' if setor == 'AFC' else 'Retífica'
+            txt = f'Nenhuma preparação de {setor_nome} nesta condição.'
             return f'<div class="prep-empty">{txt}</div>'
         html_itens = ''.join(
             _render_prep_item(
@@ -3758,7 +3768,7 @@ def _tela_menu_dashboard_9999():
             for x in itens[:limite]
         )
         if len(itens) > limite:
-            html_itens += f'<div class="prep-more">+ {len(itens)-limite} outra(s) máquina(s)</div>'
+            html_itens += f'<div class="prep-more">+ {len(itens)-limite} outra(s) máquina(s) de {setor}</div>'
         return html_itens
 
     meses_pt = {
@@ -3797,18 +3807,35 @@ def _tela_menu_dashboard_9999():
         + '</div></div>'
     )
 
+    at_afc = contar_prep_setor('ativa', 'AFC')
+    at_rtf = contar_prep_setor('ativa', 'RTF')
+    ag_afc = contar_prep_setor('aguardando', 'AFC')
+    ag_rtf = contar_prep_setor('aguardando', 'RTF')
+
     html_preparacoes = (
         '<div class="dash-panel">'
         '<div class="dash-panel-title">Preparações agora</div>'
-        '<div class="dash-panel-sub">Separadas entre execução ativa e máquinas aguardando</div>'
+        '<div class="dash-panel-sub">Afiação e Retífica separadas por situação</div>'
         '<div class="prep-summary">'
-        f'<div class="prep-chip active">● Ativas <b>{totais["prep_ativa"]}</b></div>'
-        f'<div class="prep-chip waiting">◷ Aguardando <b>{totais["prep_aguardando"]}</b></div>'
+        f'<div class="prep-chip active">● Ativas AFC <b>{at_afc}</b></div>'
+        f'<div class="prep-chip active">● Ativas RTF <b>{at_rtf}</b></div>'
+        f'<div class="prep-chip waiting">◷ Aguard. AFC <b>{ag_afc}</b></div>'
+        f'<div class="prep-chip waiting">◷ Aguard. RTF <b>{ag_rtf}</b></div>'
         '</div>'
         f'<div class="prep-section-title"><span>▶ Preparação ativa</span><span class="prep-section-count">{totais["prep_ativa"]}</span></div>'
-        f'<div class="prep-list">{montar_lista("ativa")}</div>'
+        '<div class="prep-sector-block">'
+        f'<div class="prep-sector-head"><span class="prep-sector-name afc">Afiação · AFC</span><span class="prep-sector-count">{at_afc}</span></div>'
+        f'<div class="prep-list">{montar_lista_setor("ativa", "AFC")}</div>'
+        f'<div class="prep-sector-head"><span class="prep-sector-name rtf">Retífica · RTF</span><span class="prep-sector-count">{at_rtf}</span></div>'
+        f'<div class="prep-list">{montar_lista_setor("ativa", "RTF")}</div>'
+        '</div>'
         f'<div class="prep-section-title"><span>◷ Aguardando preparação</span><span class="prep-section-count">{totais["prep_aguardando"]}</span></div>'
-        f'<div class="prep-list">{montar_lista("aguardando")}</div>'
+        '<div class="prep-sector-block">'
+        f'<div class="prep-sector-head"><span class="prep-sector-name afc">Afiação · AFC</span><span class="prep-sector-count">{ag_afc}</span></div>'
+        f'<div class="prep-list">{montar_lista_setor("aguardando", "AFC")}</div>'
+        f'<div class="prep-sector-head"><span class="prep-sector-name rtf">Retífica · RTF</span><span class="prep-sector-count">{ag_rtf}</span></div>'
+        f'<div class="prep-list">{montar_lista_setor("aguardando", "RTF")}</div>'
+        '</div>'
         '</div>'
     )
 
@@ -4042,10 +4069,14 @@ def _tela_menu_dashboard_preset():
     preparacoes['ativa'].sort(key=lambda x: (x['ordem'], x['setor'], x['maq']))
     preparacoes['aguardando'].sort(key=lambda x: (x['ordem'], x['setor'], x['maq']))
 
-    def montar_lista_preset(tipo, limite=8):
-        itens = preparacoes[tipo]
+    def contar_prep_setor_preset(tipo, setor):
+        return sum(1 for x in preparacoes[tipo] if x['setor'] == setor)
+
+    def montar_lista_preset_setor(tipo, setor, limite=6):
+        itens = [x for x in preparacoes[tipo] if x['setor'] == setor]
         if not itens:
-            txt = 'Nenhuma preparação ativa.' if tipo == 'ativa' else 'Nenhuma máquina aguardando preparação.'
+            setor_nome = 'Afiação' if setor == 'AFC' else 'Retífica'
+            txt = f'Nenhuma preparação de {setor_nome} nesta condição.'
             return f'<div class="prep-empty">{txt}</div>'
         blocos = []
         for x in itens[:limite]:
@@ -4054,7 +4085,7 @@ def _tela_menu_dashboard_preset():
                 tempo_info=x.get('tempo_info')
             ))
         if len(itens) > limite:
-            blocos.append(f'<div class="prep-more">+ {len(itens)-limite} outra(s) máquina(s)</div>')
+            blocos.append(f'<div class="prep-more">+ {len(itens)-limite} outra(s) máquina(s) de {setor}</div>')
         return ''.join(blocos)
 
     html_setor = (
@@ -4083,18 +4114,31 @@ def _tela_menu_dashboard_preset():
         '</div>'
     )
 
+    at_afc = contar_prep_setor_preset('ativa', 'AFC')
+    at_rtf = contar_prep_setor_preset('ativa', 'RTF')
+    ag_afc = contar_prep_setor_preset('aguardando', 'AFC')
+    ag_rtf = contar_prep_setor_preset('aguardando', 'RTF')
+
     html_preparacoes = (
         '<div class="dash-panel">'
         '<div class="dash-panel-title">Preparações agora</div>'
-        '<div class="dash-panel-sub">Prioridades atuais do Pré-Set</div>'
+        '<div class="dash-panel-sub">Prioridades do Pré-Set separadas por setor</div>'
         '<div class="prep-summary">'
-        f'<div class="prep-chip active">● Ativas <b>{totais["prep_ativa"]}</b></div>'
-        f'<div class="prep-chip waiting">◷ Aguardando <b>{totais["prep_aguardando"]}</b></div>'
+        f'<div class="prep-chip active">● Ativas AFC <b>{at_afc}</b></div>'
+        f'<div class="prep-chip active">● Ativas RTF <b>{at_rtf}</b></div>'
+        f'<div class="prep-chip waiting">◷ Aguard. AFC <b>{ag_afc}</b></div>'
+        f'<div class="prep-chip waiting">◷ Aguard. RTF <b>{ag_rtf}</b></div>'
         '</div>'
         f'<div class="prep-section-title"><span>▶ Preparação ativa</span><span class="prep-section-count">{totais["prep_ativa"]}</span></div>'
-        f'<div class="prep-list">{montar_lista_preset("ativa")}</div>'
+        f'<div class="prep-sector-head"><span class="prep-sector-name afc">Afiação · AFC</span><span class="prep-sector-count">{at_afc}</span></div>'
+        f'<div class="prep-list">{montar_lista_preset_setor("ativa", "AFC")}</div>'
+        f'<div class="prep-sector-head"><span class="prep-sector-name rtf">Retífica · RTF</span><span class="prep-sector-count">{at_rtf}</span></div>'
+        f'<div class="prep-list">{montar_lista_preset_setor("ativa", "RTF")}</div>'
         f'<div class="prep-section-title"><span>◷ Aguardando preparação</span><span class="prep-section-count">{totais["prep_aguardando"]}</span></div>'
-        f'<div class="prep-list">{montar_lista_preset("aguardando")}</div>'
+        f'<div class="prep-sector-head"><span class="prep-sector-name afc">Afiação · AFC</span><span class="prep-sector-count">{ag_afc}</span></div>'
+        f'<div class="prep-list">{montar_lista_preset_setor("aguardando", "AFC")}</div>'
+        f'<div class="prep-sector-head"><span class="prep-sector-name rtf">Retífica · RTF</span><span class="prep-sector-count">{ag_rtf}</span></div>'
+        f'<div class="prep-list">{montar_lista_preset_setor("aguardando", "RTF")}</div>'
         '</div>'
     )
 
