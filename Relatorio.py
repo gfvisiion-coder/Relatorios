@@ -33,7 +33,7 @@ os.path.exists = _BASE_GENERICPATH.exists
 os.remove = os.unlink
 
 # Configuração do Streamlit deve ocorrer antes de qualquer outro comando st.*.
-st.set_page_config(page_title="Relatorio - Setor Afiação", page_icon="📱", layout="centered", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Relatório - Setor Afiação", page_icon="🏭", layout="wide", initial_sidebar_state="collapsed")
 
 
 # ==========================================
@@ -610,81 +610,380 @@ TODAS_RTF = ["5-903", "8-086", "10-817", "12-962", "14-971", "16-183", "19-926",
              "29-785", "31-806", "33-807", "35-885", "37-857", "39-856",
              "30-786", "32-918", "34-842", "36-854", "38-881", "40-912", "42-885", "4-425", "6-6J1", "17-6J1", "3-426"]
 
-# --- DESIGN SYSTEM ---
+# --- DESIGN SYSTEM RESPONSIVO (DESKTOP + TABLET + MOBILE) ---
 CSS_APP = """
 <style>
-    .stApp { background-color: #09090B !important; }
-    h1, h2, h3, h4, h5, p, div[data-testid="stMarkdownContainer"] > p { 
-        color: #F4F4F5 !important; 
-        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important; 
+    :root {
+        --bg: #08080B;
+        --surface: rgba(20, 20, 27, 0.88);
+        --surface-2: #1A1A22;
+        --border: rgba(255,255,255,.09);
+        --text: #F7F7FA;
+        --muted: #9CA3AF;
+        --purple: #8B5CF6;
+        --purple-2: #6D28D9;
+        --teal: #2DD4BF;
+        --danger: #EF4444;
+        --warning: #F59E0B;
+        --radius: 16px;
     }
-    label { color: #E4E4E7 !important; font-size: 12px !important; font-weight: 700 !important; text-transform: uppercase; letter-spacing: 0.5px; }
-    .block-container { padding: 0.6rem 0.5rem !important; max-width: 100% !important; }
-    
-    button[kind="secondary"] { 
-        background-color: #18181B !important; color: #2DD4BF !important; 
-        border: 1px solid #3F3F46 !important; border-radius: 8px !important; 
-        font-weight: 600 !important; height: 46px !important; font-size: 13px !important;
-        width: 100% !important; margin-bottom: 6px !important; transition: all 0.2s ease-in-out;
+
+    html { scroll-behavior: smooth; }
+
+    .stApp {
+        background:
+            radial-gradient(circle at 15% 5%, rgba(139,92,246,.13), transparent 28%),
+            radial-gradient(circle at 90% 15%, rgba(45,212,191,.08), transparent 25%),
+            linear-gradient(180deg, #08080B 0%, #0C0C11 55%, #08080B 100%) !important;
+        color: var(--text) !important;
     }
-    button[kind="secondary"]:hover { border-color: #14B8A6 !important; background-color: #27272A !important; color: #5EEAD4 !important; }
-    
-    div[data-testid="stFormSubmitButton"] > button, button[kind="primary"] { 
-        background: linear-gradient(135deg, #0D9488 0%, #0F766E 100%) !important; 
-        color: white !important; border: none !important; border-radius: 8px !important; 
-        height: 46px !important; font-size: 13px !important; font-weight: 700 !important; 
-        width: 100% !important; box-shadow: 0 4px 12px rgba(13, 148, 136, 0.3);
+
+    h1, h2, h3, h4, h5, h6, p,
+    div[data-testid="stMarkdownContainer"] > p {
+        color: var(--text) !important;
+        font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
     }
-    div[data-testid="stFormSubmitButton"] > button:hover { background: linear-gradient(135deg, #0F766E 100%, #115E59 100%) !important; }
-    
-    div[data-baseweb="input"] > div, div[data-baseweb="select"] > div, div[data-baseweb="textarea"] > div { 
-        background-color: #27272A !important; border: 1px solid #52525B !important; 
-        border-radius: 8px !important; min-height: 42px !important; 
+
+    label {
+        color: #D4D4D8 !important;
+        font-size: 11px !important;
+        font-weight: 800 !important;
+        text-transform: uppercase;
+        letter-spacing: .7px;
     }
-    
-    input, select, textarea { color: #FF4444 !important; font-size: 15px !important; font-weight: 600 !important; }
-    
+
+    .block-container {
+        width: 100% !important;
+        max-width: 1480px !important;
+        padding: 1.25rem 2rem 4rem !important;
+        margin: 0 auto !important;
+    }
+
+    /* Cards / containers */
     div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"] {
-        background-color: #121214; border: 1px solid #27272A; border-radius: 12px;
-        padding: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+        background: linear-gradient(180deg, rgba(25,25,34,.91), rgba(16,16,22,.94));
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        padding: 16px;
+        box-shadow: 0 18px 55px rgba(0,0,0,.25);
+        backdrop-filter: blur(12px);
     }
-    
-    div[data-testid="stButton"] > button {
-        height: 60px !important;
-        padding: 5px !important;
-        border-radius: 8px !important;
-        font-size: 12px !important;
-        line-height: 1.2 !important;
-        white-space: pre-wrap !important;
+
+    /* Inputs */
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="select"] > div,
+    div[data-baseweb="textarea"] > div {
+        background: rgba(30,30,40,.92) !important;
+        border: 1px solid rgba(255,255,255,.12) !important;
+        border-radius: 12px !important;
+        min-height: 46px !important;
+        transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
     }
-    
+
+    div[data-baseweb="input"] > div:focus-within,
+    div[data-baseweb="select"] > div:focus-within,
+    div[data-baseweb="textarea"] > div:focus-within {
+        border-color: rgba(139,92,246,.9) !important;
+        box-shadow: 0 0 0 3px rgba(139,92,246,.14) !important;
+    }
+
+    input, select, textarea {
+        color: #FAFAFA !important;
+        font-size: 15px !important;
+        font-weight: 650 !important;
+    }
+
+    input::placeholder, textarea::placeholder { color: #71717A !important; }
+
+    /* Botões */
+    div[data-testid="stButton"] > button,
+    div[data-testid="stFormSubmitButton"] > button {
+        min-height: 54px !important;
+        height: auto !important;
+        padding: 10px 14px !important;
+        border-radius: 13px !important;
+        font-size: 13px !important;
+        line-height: 1.25 !important;
+        white-space: normal !important;
+        font-weight: 800 !important;
+        letter-spacing: .15px !important;
+        transition: transform .16s ease, border-color .16s ease, background .16s ease, box-shadow .16s ease !important;
+    }
+
+    div[data-testid="stButton"] > button:hover,
+    div[data-testid="stFormSubmitButton"] > button:hover {
+        transform: translateY(-1px);
+    }
+
+    div[data-testid="stButton"] > button:active,
+    div[data-testid="stFormSubmitButton"] > button:active {
+        transform: scale(.985);
+    }
+
+    button[kind="secondary"] {
+        background: linear-gradient(180deg, rgba(31,31,42,.96), rgba(22,22,30,.96)) !important;
+        color: #F4F4F5 !important;
+        border: 1px solid rgba(255,255,255,.10) !important;
+        box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+        width: 100% !important;
+        margin-bottom: 6px !important;
+    }
+
+    button[kind="secondary"]:hover {
+        border-color: rgba(139,92,246,.72) !important;
+        background: linear-gradient(180deg, rgba(39,39,52,.98), rgba(28,28,38,.98)) !important;
+        color: #FFFFFF !important;
+        box-shadow: 0 8px 28px rgba(139,92,246,.10);
+    }
+
+    div[data-testid="stFormSubmitButton"] > button,
+    button[kind="primary"] {
+        background: linear-gradient(135deg, #8B5CF6 0%, #6D28D9 55%, #0F766E 135%) !important;
+        color: white !important;
+        border: 1px solid rgba(255,255,255,.10) !important;
+        box-shadow: 0 10px 28px rgba(109,40,217,.26) !important;
+        width: 100% !important;
+    }
+
+    div[data-testid="stFormSubmitButton"] > button:hover,
+    button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #9F7AEA 0%, #7C3AED 55%, #0D9488 135%) !important;
+        box-shadow: 0 14px 35px rgba(109,40,217,.33) !important;
+    }
+
+    /* Tabs */
+    div[data-baseweb="tab-list"] {
+        gap: 8px;
+        background: rgba(18,18,24,.72);
+        padding: 6px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        overflow-x: auto;
+    }
+    button[data-baseweb="tab"] {
+        border-radius: 10px !important;
+        min-height: 42px !important;
+        padding: 0 14px !important;
+    }
+    button[data-baseweb="tab"][aria-selected="true"] {
+        background: rgba(139,92,246,.16) !important;
+    }
+
+    /* Expanders / dataframes */
+    div[data-testid="stExpander"] {
+        border: 1px solid var(--border) !important;
+        border-radius: 14px !important;
+        overflow: hidden;
+        background: rgba(17,17,23,.65) !important;
+    }
+    div[data-testid="stDataFrame"] {
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        overflow: hidden;
+    }
+
+    /* Hero do login */
+    .login-hero {
+        width: min(680px, 100%);
+        margin: 5vh auto 18px;
+        text-align: center;
+        padding: 18px 12px 6px;
+    }
+    .login-logo {
+        width: 72px;
+        height: 72px;
+        margin: 0 auto 18px;
+        border-radius: 22px;
+        display: grid;
+        place-items: center;
+        font-size: 34px;
+        background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(45,212,191,.12));
+        border: 1px solid rgba(255,255,255,.11);
+        box-shadow: 0 18px 55px rgba(109,40,217,.24), inset 0 1px 0 rgba(255,255,255,.08);
+    }
+    .login-title {
+        margin: 0;
+        font-size: clamp(28px, 4vw, 42px);
+        line-height: 1.02;
+        font-weight: 900;
+        letter-spacing: -1.2px;
+        background: linear-gradient(90deg, #FFFFFF, #C4B5FD 55%, #5EEAD4);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    .login-subtitle {
+        margin: 10px auto 0;
+        max-width: 520px;
+        color: #A1A1AA !important;
+        font-size: 14px;
+    }
+    .login-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        margin-top: 14px;
+        padding: 7px 11px;
+        border-radius: 999px;
+        border: 1px solid rgba(45,212,191,.18);
+        background: rgba(45,212,191,.07);
+        color: #99F6E4;
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .5px;
+        text-transform: uppercase;
+    }
+
+    /* Cabeçalho do usuário */
+    .user-shell {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 14px;
+        padding: 16px 18px;
+        margin: 2px 0 18px;
+        border-radius: 18px;
+        border: 1px solid rgba(255,255,255,.09);
+        background: linear-gradient(135deg, rgba(139,92,246,.12), rgba(18,18,25,.82) 44%, rgba(45,212,191,.07));
+        box-shadow: 0 16px 48px rgba(0,0,0,.22);
+    }
+    .user-left { display:flex; align-items:center; gap:13px; min-width:0; }
+    .user-avatar {
+        width: 46px; height: 46px; min-width: 46px;
+        display:grid; place-items:center;
+        border-radius:14px;
+        font-size:20px;
+        background: rgba(139,92,246,.15);
+        border: 1px solid rgba(139,92,246,.28);
+    }
+    .user-kicker { color:#A1A1AA; font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.65px; }
+    .user-name { color:#FAFAFA; font-size:18px; line-height:1.15; font-weight:900; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .user-meta { color:#5EEAD4; font-size:12px; font-weight:750; margin-top:3px; }
+    .live-badge {
+        flex: 0 0 auto;
+        padding: 8px 10px;
+        border-radius: 999px;
+        color:#C4B5FD;
+        border:1px solid rgba(139,92,246,.24);
+        background:rgba(139,92,246,.08);
+        font-size:10px;
+        font-weight:900;
+        text-transform:uppercase;
+        letter-spacing:.6px;
+    }
+
+    .menu-section-title {
+        color:#E4E4E7;
+        font-size:12px;
+        font-weight:900;
+        text-transform:uppercase;
+        letter-spacing:.85px;
+        margin: 4px 0 10px;
+    }
+
+    /* Toasts */
     div[data-testid="stToast"] {
-        background-color: #450a0a !important;
-        border: 1px solid #ef4444 !important;
-        border-radius: 8px !important;
+        background: rgba(69,10,10,.97) !important;
+        border: 1px solid rgba(239,68,68,.75) !important;
+        border-radius: 14px !important;
         padding: 15px !important;
+        box-shadow: 0 18px 48px rgba(0,0,0,.35);
     }
     div[data-testid="stToast"] div[data-testid="stMarkdownContainer"] > p {
-        color: #ff6b6b !important;
-        font-weight: 800 !important;
-        font-size: 16px !important;
+        color: #FFB4B4 !important;
+        font-weight: 850 !important;
+        font-size: 15px !important;
     }
-    
+
     @keyframes pulse-red {
-        0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-        70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-        100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        0% { box-shadow: 0 0 0 0 rgba(239,68,68,.55); }
+        70% { box-shadow: 0 0 0 11px rgba(239,68,68,0); }
+        100% { box-shadow: 0 0 0 0 rgba(239,68,68,0); }
     }
     .alerta-pisca {
         animation: pulse-red 2s infinite;
-        background-color: #450a0a !important;
-        border: 2px solid #ef4444 !important;
+        background: rgba(69,10,10,.84) !important;
+        border: 1px solid rgba(239,68,68,.75) !important;
         padding: 15px;
-        border-radius: 8px;
+        border-radius: 14px;
         margin-bottom: 20px;
     }
-    
+
     header { visibility: hidden; }
+    footer { visibility: hidden; }
+
+    /* TABLET */
+    @media (max-width: 1100px) {
+        .block-container { padding: 1rem 1rem 3.5rem !important; }
+        div[data-testid="stHorizontalBlock"] { gap: .65rem !important; }
+    }
+
+    /* CELULAR: interface mais próxima de app nativo */
+    @media (max-width: 768px) {
+        .stApp {
+            background:
+                radial-gradient(circle at 50% -10%, rgba(139,92,246,.18), transparent 33%),
+                linear-gradient(180deg, #08080B 0%, #0A0A0F 100%) !important;
+        }
+        .block-container {
+            max-width: 100% !important;
+            padding: .55rem .65rem 2.5rem !important;
+        }
+
+        /* Faz colunas virarem blocos empilhados quando não couberem. */
+        div[data-testid="stHorizontalBlock"] {
+            flex-wrap: wrap !important;
+            gap: .55rem !important;
+        }
+        div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+            min-width: min(100%, 220px) !important;
+            flex: 1 1 100% !important;
+            width: 100% !important;
+        }
+
+        div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"] {
+            border-radius: 15px;
+            padding: 12px;
+        }
+
+        div[data-testid="stButton"] > button,
+        div[data-testid="stFormSubmitButton"] > button {
+            min-height: 58px !important;
+            border-radius: 14px !important;
+            font-size: 13px !important;
+            padding: 11px 12px !important;
+        }
+
+        div[data-baseweb="input"] > div,
+        div[data-baseweb="select"] > div,
+        div[data-baseweb="textarea"] > div {
+            min-height: 50px !important;
+            border-radius: 13px !important;
+        }
+        input, select, textarea { font-size: 16px !important; } /* evita zoom automático no iPhone */
+
+        .login-hero { margin-top: 4vh; padding-top: 8px; }
+        .login-logo { width:64px; height:64px; border-radius:20px; font-size:30px; margin-bottom:15px; }
+        .login-title { font-size: 30px; }
+        .login-subtitle { font-size: 13px; padding: 0 10px; }
+
+        .user-shell { padding: 13px; border-radius: 16px; margin-bottom: 13px; }
+        .user-avatar { width:42px; height:42px; min-width:42px; border-radius:13px; }
+        .user-name { font-size: 16px; }
+        .user-meta { font-size: 11px; }
+        .live-badge { display:none; }
+
+        div[data-baseweb="tab-list"] { border-radius:12px; padding:4px; }
+        button[data-baseweb="tab"] { min-width:max-content; font-size:12px !important; }
+
+        /* Mais espaço para toque em checkbox/radio/toggle */
+        div[role="radiogroup"] { gap: 8px !important; }
+    }
+
+    /* DESKTOP GRANDE */
+    @media (min-width: 1280px) {
+        .block-container { padding-top: 1.5rem !important; }
+        div[data-testid="stButton"] > button { min-height: 56px !important; }
+    }
 </style>
 """
 st.markdown(CSS_APP, unsafe_allow_html=True)
@@ -2319,7 +2618,14 @@ def painel_controle_maquina(maq_id, setor):
                         st.rerun()
 
 def tela_login():
-    st.markdown("<h2 style='text-align: center; color: #14B8A6 !important; margin-top: 30px;'>🏭 RELATORIO AFIAÇÃO</h2>", unsafe_allow_html=True)
+    st.markdown("""
+    <div class="login-hero">
+        <div class="login-logo">⚙️</div>
+        <div class="login-title">AFIAÇÃO DIGITAL</div>
+        <p class="login-subtitle">Controle operacional de produção, preparação e ocorrências em uma única experiência.</p>
+        <div class="login-pill">● Sistema operacional online</div>
+    </div>
+    """, unsafe_allow_html=True)
     with st.container():
         cod = st.text_input("Digite seu codigo de Acesso:", type="password", placeholder="Digite aqui...")
         nome = st.text_input("Nome do Colaborador / RE:", placeholder="Digite seu nome...")
@@ -2417,12 +2723,20 @@ def tela_menu():
     elif perfil == 'programador': setor_txt = "Programação CNC"
     else: setor_txt = 'Afiação' if st.session_state['setor_usuario']=='AFC' else 'Retífica'
     
+    nome_exibicao = str(st.session_state['operador']).strip()
     st.markdown(f"""
-    <div style='background: #18181B; padding: 12px; border-radius: 10px; border-left: 4px solid #14B8A6; margin-bottom: 15px;'>
-        <p style='margin:0; font-size: 13px; color: #A1A1AA;'>Usuário Logado</p>
-        <p style='margin:0; font-size: 16px; font-weight: bold; color: #F4F4F5;'>{st.session_state['operador']}</p>
-        <p style='margin:0; font-size: 12px; color: #2DD4BF;'>{st.session_state['turno']} • {setor_txt}</p>
+    <div class="user-shell">
+        <div class="user-left">
+            <div class="user-avatar">👤</div>
+            <div style="min-width:0;">
+                <div class="user-kicker">Sessão ativa</div>
+                <div class="user-name">{nome_exibicao}</div>
+                <div class="user-meta">{st.session_state['turno']} • {setor_txt}</div>
+            </div>
+        </div>
+        <div class="live-badge">● Online</div>
     </div>
+    <div class="menu-section-title">Acesso rápido</div>
     """, unsafe_allow_html=True)
     
     if perfil == 'adm':
