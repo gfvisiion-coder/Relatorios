@@ -1306,6 +1306,80 @@ CSS_INPUTS_V8 = """
 """
 st.markdown(CSS_INPUTS_V8, unsafe_allow_html=True)
 
+# --- AJUSTE V9.2: contraste garantido nos campos digitáveis em celular ---
+CSS_MOBILE_INPUT_FIX = """
+<style>
+@media (max-width: 768px) {
+    div[data-baseweb="input"],
+    div[data-baseweb="textarea"],
+    div[data-baseweb="select"] {
+        color-scheme: light !important;
+    }
+
+    div[data-baseweb="input"] > div,
+    div[data-baseweb="textarea"] > div,
+    div[data-baseweb="select"] > div {
+        background-color: #FFFFFF !important;
+        color: #111111 !important;
+        border-color: #D4D4D8 !important;
+    }
+
+    div[data-baseweb="input"] input,
+    div[data-baseweb="textarea"] textarea,
+    div[data-baseweb="select"] input,
+    input[type="text"],
+    input[type="password"],
+    input[type="number"],
+    input[type="search"],
+    input[type="email"],
+    input[type="tel"],
+    input[type="date"],
+    input[type="time"],
+    textarea {
+        background-color: #FFFFFF !important;
+        color: #111111 !important;
+        -webkit-text-fill-color: #111111 !important;
+        caret-color: #000000 !important;
+        opacity: 1 !important;
+        text-shadow: none !important;
+        font-size: 16px !important;
+    }
+
+    div[data-baseweb="input"] input:focus,
+    div[data-baseweb="textarea"] textarea:focus,
+    input:focus, textarea:focus {
+        background-color: #FFFFFF !important;
+        color: #111111 !important;
+        -webkit-text-fill-color: #111111 !important;
+        caret-color: #000000 !important;
+    }
+
+    input::placeholder, textarea::placeholder {
+        color: #71717A !important;
+        -webkit-text-fill-color: #71717A !important;
+        opacity: 1 !important;
+    }
+
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus,
+    textarea:-webkit-autofill {
+        -webkit-text-fill-color: #111111 !important;
+        caret-color: #000000 !important;
+        -webkit-box-shadow: 0 0 0 1000px #FFFFFF inset !important;
+        box-shadow: 0 0 0 1000px #FFFFFF inset !important;
+    }
+
+    input::selection, textarea::selection {
+        background: #C4B5FD !important;
+        color: #111111 !important;
+        -webkit-text-fill-color: #111111 !important;
+    }
+}
+</style>
+"""
+st.markdown(CSS_MOBILE_INPUT_FIX, unsafe_allow_html=True)
+
 
 
 # --- GERENCIADOR DE COOKIES E ARQUIVOS ---
