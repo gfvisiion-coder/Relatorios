@@ -35,7 +35,7 @@ os.path.exists = _BASE_GENERICPATH.exists
 os.remove = os.unlink
 
 # Configuração do Streamlit deve ocorrer antes de qualquer outro comando st.*.
-st.set_page_config(page_title="Afiação Digital", page_icon="🏭", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Relatório - Setor Afiação", page_icon="🏭", layout="wide", initial_sidebar_state="collapsed")
 
 
 # ==========================================
@@ -1212,125 +1212,89 @@ CSS_APP = """
 st.markdown(CSS_APP, unsafe_allow_html=True)
 
 
-# --- AJUSTE VISUAL V7: superfícies claras + letras escuras ---
-CSS_LIGHT_V7 = """
+# --- AJUSTE V8: mantém tema escuro; somente campos digitáveis ficam claros com texto preto ---
+CSS_INPUTS_V8 = """
 <style>
-    :root {
-        --text: #172033;
-        --muted: #667085;
-        --surface: #FFFFFF;
-        --surface-2: #F6F8FC;
-        --border: rgba(30, 41, 59, .11);
-    }
-
-    .stApp {
-        background:
-            radial-gradient(circle at 10% 0%, rgba(139,92,246,.08), transparent 24%),
-            radial-gradient(circle at 92% 8%, rgba(45,212,191,.07), transparent 22%),
-            linear-gradient(180deg, #F6F7FB 0%, #F3F5F9 100%) !important;
-        color: #172033 !important;
-    }
-
-    h1, h2, h3, h4, h5, h6, p,
-    div[data-testid="stMarkdownContainer"] > p {
-        color: #172033 !important;
-    }
-    label { color: #475467 !important; }
-
-    div[data-testid="stVerticalBlock"] > div[data-testid="stContainer"] {
-        background: rgba(255,255,255,.94) !important;
-        border: 1px solid rgba(30,41,59,.10) !important;
-        box-shadow: 0 12px 32px rgba(15,23,42,.06) !important;
-    }
-
     div[data-baseweb="input"] > div,
-    div[data-baseweb="select"] > div,
-    div[data-baseweb="textarea"] > div {
+    div[data-baseweb="textarea"] > div,
+    div[data-baseweb="select"] > div {
         background: #FFFFFF !important;
-        border-color: #D8DEE9 !important;
-        box-shadow: 0 1px 2px rgba(15,23,42,.03) !important;
-    }
-    input, select, textarea { color: #172033 !important; }
-    input::placeholder, textarea::placeholder { color: #98A2B3 !important; }
-
-    button[kind="secondary"], div[data-testid="stButton"] > button:not([kind="primary"]) {
-        background: #FFFFFF !important;
-        color: #344054 !important;
-        border: 1px solid #D7DDE7 !important;
-        box-shadow: 0 4px 12px rgba(15,23,42,.04) !important;
-    }
-    button[kind="secondary"]:hover, div[data-testid="stButton"] > button:not([kind="primary"]):hover {
-        background: #F6F3FF !important;
-        color: #5B21B6 !important;
-        border-color: #A78BFA !important;
-    }
-    button[kind="primary"], div[data-testid="stFormSubmitButton"] > button {
-        color: #FFFFFF !important;
+        border-color: #D4D4D8 !important;
+        box-shadow: none !important;
     }
 
-    /* Navegação clara */
-    .st-key-topbar_native {
-        background: rgba(255,255,255,.96) !important;
-        border-color: rgba(30,41,59,.10) !important;
-        box-shadow: 0 12px 34px rgba(15,23,42,.08) !important;
+    div[data-baseweb="input"] input,
+    div[data-baseweb="textarea"] textarea,
+    div[data-baseweb="select"] input,
+    input[type="text"], input[type="password"], input[type="number"],
+    input[type="search"], input[type="email"], input[type="tel"],
+    input[type="date"], input[type="time"], textarea {
+        color: #111111 !important;
+        caret-color: #111111 !important;
+        -webkit-text-fill-color: #111111 !important;
     }
-    .native-brand-name, .native-user-name { color: #172033 !important; }
-    .native-brand-sub, .native-user-meta { color: #667085 !important; }
-    .st-key-topbar_native div[data-testid="stTextInput"] > div > div {
-        background: #F8FAFC !important;
-        border-color: #D8DEE9 !important;
-    }
-    .st-key-topbar_native div[data-testid="stTextInput"] input { color: #172033 !important; }
 
-    /* Dashboard 9999 - cards claros e texto escuro */
-    .dash-title, .dash-panel-title, .kpi-value, .sector-name,
-    .attention-machine, .prep-machine, .prep-time,
-    .setup-month-title, .setup-sector-pill b,
-    .setup-metric-main strong, .mgr-title, .mgr-process-name,
-    .mgr-machine-name, .mgr-summary-num, .mgr-data-box b {
-        color: #172033 !important;
+    div[data-baseweb="select"] [role="combobox"],
+    div[data-baseweb="select"] [role="combobox"] * {
+        color: #111111 !important;
+        -webkit-text-fill-color: #111111 !important;
     }
-    .dash-eyebrow, .dash-subtitle, .dash-date, .dash-panel-sub,
-    .kpi-label, .kpi-foot, .sector-pct, .sector-mini span,
-    .attention-status, .prep-status, .prep-meta,
-    .setup-month-sub, .setup-sector-pill span,
-    .setup-metric-head, .setup-metric-main span,
-    .setup-metric-average span, .mgr-sub, .mgr-summary-label,
-    .mgr-summary-meta, .mgr-data-box span, .mgr-next {
-        color: #667085 !important;
-    }
-    .sector-mini b, .prep-chip b, .prep-section-count { color: #344054 !important; }
 
-    .kpi-card, .dash-panel, .setup-month-panel,
-    .mgr-summary-card, .mgr-process, .mgr-machine,
-    .setup-metric-card, .attention-item, .prep-item,
-    .prep-kpi-mini, .setup-sector-pill, .mgr-data-box {
-        background: #FFFFFF !important;
-        border-color: rgba(30,41,59,.10) !important;
-        box-shadow: 0 8px 24px rgba(15,23,42,.05) !important;
+    input::placeholder, textarea::placeholder {
+        color: #71717A !important;
+        opacity: 1 !important;
+        -webkit-text-fill-color: #71717A !important;
     }
-    .sector-track { background: #E9EDF4 !important; }
-    .prep-empty, .mgr-empty { color: #667085 !important; border-color: #D8DEE9 !important; }
-    .mgr-state { background: #F6F8FC !important; }
-    .mgr-process-count { background: #F2F4F7 !important; color: #475467 !important; }
-    .setup-month-badge { color: #6D28D9 !important; background: #F3EEFF !important; }
 
-    /* Menu clássico dos outros códigos */
+    input:-webkit-autofill,
+    input:-webkit-autofill:hover,
+    input:-webkit-autofill:focus {
+        -webkit-text-fill-color: #111111 !important;
+        box-shadow: 0 0 0 1000px #FFFFFF inset !important;
+        transition: background-color 9999s ease-out 0s;
+    }
+
     .classic-user-card {
-        background: #FFFFFF;
+        background: #18181B;
         padding: 14px 16px;
-        border-radius: 14px;
-        border: 1px solid #E0E5ED;
-        border-left: 4px solid #8B5CF6;
-        box-shadow: 0 8px 24px rgba(15,23,42,.05);
+        border-radius: 12px;
+        border: 1px solid #27272A;
+        border-left: 4px solid #14B8A6;
+        box-shadow: 0 8px 24px rgba(0,0,0,.20);
         margin-bottom: 15px;
     }
-    .classic-user-label { margin:0 !important; font-size:11px !important; color:#667085 !important; text-transform:uppercase; letter-spacing:.55px; font-weight:800; }
-    .classic-user-name { margin:4px 0 0 !important; font-size:17px !important; color:#172033 !important; font-weight:900; }
-    .classic-user-meta { margin:3px 0 0 !important; font-size:12px !important; color:#0F766E !important; font-weight:800; }
+    .classic-user-label { margin:0 !important; font-size:11px !important; color:#A1A1AA !important; text-transform:uppercase; letter-spacing:.55px; font-weight:800; }
+    .classic-user-name { margin:4px 0 0 !important; font-size:17px !important; color:#F4F4F5 !important; font-weight:900; }
+    .classic-user-meta { margin:3px 0 0 !important; font-size:12px !important; color:#2DD4BF !important; font-weight:800; }
+
+    .dashboard-left-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 14px;
+        min-width: 0;
+    }
+    .dashboard-left-stack .setup-month-panel {
+        margin-top: 0 !important;
+        padding: 15px;
+    }
+    .dashboard-left-stack .setup-month-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    }
+    .dashboard-left-stack .setup-metric-card {
+        min-height: 112px;
+    }
+
+    @media (max-width: 520px) {
+        .dashboard-left-stack .setup-month-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        }
+        .dashboard-left-stack .setup-month-panel { padding: 12px; }
+    }
 </style>
 """
-st.markdown(CSS_LIGHT_V7, unsafe_allow_html=True)
+st.markdown(CSS_INPUTS_V8, unsafe_allow_html=True)
+
+
 
 # --- GERENCIADOR DE COOKIES E ARQUIVOS ---
 # IMPORTANTE: CookieManager é um componente do navegador. Na primeira renderização
@@ -3698,14 +3662,42 @@ def _tela_menu_dashboard_9999():
             html_itens += f'<div class="prep-more">+ {len(itens)-limite} outra(s) máquina(s)</div>'
         return html_itens
 
+    meses_pt = {
+        1:'Janeiro',2:'Fevereiro',3:'Março',4:'Abril',5:'Maio',6:'Junho',
+        7:'Julho',8:'Agosto',9:'Setembro',10:'Outubro',11:'Novembro',12:'Dezembro'
+    }
+    qtd_rtf, media_rtf = _media_setor_setup_home(metricas_mes, ['rtf_guia','rtf_haste'])
+    qtd_afc, media_afc = _media_setor_setup_home(metricas_mes, ['afc_preparacao','afc_sequencia'])
+    media_rtf_txt = _tempo_curto_home(media_rtf) if qtd_rtf else '—'
+    media_afc_txt = _tempo_curto_home(media_afc) if qtd_afc else '—'
+
     st.markdown(textwrap.dedent(f'''
     <div class="dashboard-grid">
-        <div class="dash-panel sector-panel">
-            <div class="dash-panel-title">Produção por setor</div>
-            <div class="dash-panel-sub">Máquinas aguardando setup continuam contabilizadas como produção</div>
-            {_render_setor_bar('Afiação', resumo_afc)}
-            {_render_setor_bar('Retífica', resumo_rtf)}
+        <div class="dashboard-left-stack">
+            <div class="dash-panel sector-panel">
+                <div class="dash-panel-title">Produção por setor</div>
+                <div class="dash-panel-sub">Máquinas aguardando setup continuam contabilizadas como produção</div>
+                {_render_setor_bar('Afiação', resumo_afc)}
+                {_render_setor_bar('Retífica', resumo_rtf)}
+            </div>
+
+            <div class="setup-month-panel">
+                <div class="setup-month-top">
+                    <div>
+                        <div class="setup-month-title">Médias de setup</div>
+                        <div class="setup-month-sub">Quantidade concluída e média do tempo ativo no mês</div>
+                    </div>
+                    <div class="setup-month-badge">{meses_pt.get(agora.month, agora.strftime('%m'))} / {agora.year}</div>
+                </div>
+                <div class="setup-month-grid">
+                    {_render_setup_metric_card('Retífica · Guia', metricas_mes['rtf_guia'], 'G', '#60A5FA')}
+                    {_render_setup_metric_card('Retífica · Haste', metricas_mes['rtf_haste'], 'H', '#A78BFA')}
+                    {_render_setup_metric_card('Afiação · Preparação', metricas_mes['afc_preparacao'], 'P', '#2DD4BF')}
+                    {_render_setup_metric_card('Afiação · Sequência', metricas_mes['afc_sequencia'], 'S', '#F59E0B')}
+                </div>
+            </div>
         </div>
+
         <div class="dash-panel">
             <div class="dash-panel-title">Preparações agora</div>
             <div class="dash-panel-sub">Separadas entre execução ativa e máquinas aguardando</div>
@@ -3717,37 +3709,6 @@ def _tela_menu_dashboard_9999():
             <div class="prep-list">{montar_lista('ativa')}</div>
             <div class="prep-section-title"><span>◷ Aguardando preparação</span><span class="prep-section-count">{totais['prep_aguardando']}</span></div>
             <div class="prep-list">{montar_lista('aguardando')}</div>
-        </div>
-    </div>
-    '''), unsafe_allow_html=True)
-
-    meses_pt = {
-        1:'Janeiro',2:'Fevereiro',3:'Março',4:'Abril',5:'Maio',6:'Junho',
-        7:'Julho',8:'Agosto',9:'Setembro',10:'Outubro',11:'Novembro',12:'Dezembro'
-    }
-    qtd_rtf, media_rtf = _media_setor_setup_home(metricas_mes, ['rtf_guia','rtf_haste'])
-    qtd_afc, media_afc = _media_setor_setup_home(metricas_mes, ['afc_preparacao','afc_sequencia'])
-    media_rtf_txt = _tempo_curto_home(media_rtf) if qtd_rtf else '—'
-    media_afc_txt = _tempo_curto_home(media_afc) if qtd_afc else '—'
-
-    st.markdown(textwrap.dedent(f'''
-    <div class="setup-month-panel">
-        <div class="setup-month-top">
-            <div>
-                <div class="setup-month-title">Desempenho mensal de setups</div>
-                <div class="setup-month-sub">Quantidade concluída e média do tempo em preparação ativa (PREPARANDO → PRODUZINDO)</div>
-            </div>
-            <div class="setup-month-badge">{meses_pt.get(agora.month, agora.strftime('%m'))} / {agora.year}</div>
-        </div>
-        <div class="setup-sector-summary">
-            <div class="setup-sector-pill"><span>Retífica</span><b>{qtd_rtf} setups · média {media_rtf_txt}</b></div>
-            <div class="setup-sector-pill"><span>Afiação</span><b>{qtd_afc} setups · média {media_afc_txt}</b></div>
-        </div>
-        <div class="setup-month-grid">
-            {_render_setup_metric_card('Retífica · Guia', metricas_mes['rtf_guia'], 'G', '#60A5FA')}
-            {_render_setup_metric_card('Retífica · Haste', metricas_mes['rtf_haste'], 'H', '#A78BFA')}
-            {_render_setup_metric_card('Afiação · Preparação', metricas_mes['afc_preparacao'], 'P', '#2DD4BF')}
-            {_render_setup_metric_card('Afiação · Sequência', metricas_mes['afc_sequencia'], 'S', '#F59E0B')}
         </div>
     </div>
     '''), unsafe_allow_html=True)
