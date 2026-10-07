@@ -3934,14 +3934,202 @@ def _tela_menu_classico():
         mudar_tela('login', forcar_rerun=True)
 
 
+
+def _tela_menu_dashboard_preset():
+    # Dashboard operacional do Pré-Set (4040/5050/6060).
+    # As médias/analytics gerenciais continuam exclusivas do 9999.
+    exibir_alertas_preset()
+
+    status_dict = ler_status_atual()
+    estado_meta = _estado_atual_home()
+    resumo_afc = _resumo_setor_home(status_dict, 'AFC', TODAS_AFC)
+    resumo_rtf = _resumo_setor_home(status_dict, 'RTF', TODAS_RTF)
+    totais = {
+        chave: resumo_afc[chave] + resumo_rtf[chave]
+        for chave in ['producao','preparacao','prep_ativa','prep_aguardando','parada','manutencao','outros']
+    }
+
+    agora = datetime.now(FUSO_BR)
+    inicios_ativos = _inicios_preparacao_ativa_home()
+    hora = agora.hour
+    saudacao = 'Bom dia' if 5 <= hora < 12 else ('Boa tarde' if 12 <= hora < 18 else 'Boa noite')
+    nome_raw = str(st.session_state.get('operador', '')).strip()
+    primeiro_nome = html.escape(nome_raw.split()[0] if nome_raw else 'Pré-Set')
+
+    com_rebolo = 0
+    for setor, maquinas in [('AFC', TODAS_AFC), ('RTF', TODAS_RTF)]:
+        for maq in maquinas:
+            st_val = str(status_dict.get(f'{setor} {maq}', 'PRODUZINDO'))
+            if '(C/ REBOLO)' in st_val.upper() and _classificar_preparacao_home(st_val):
+                com_rebolo += 1
+
+    arm_total = arm_ocup = arm_livres = 0
+    arm_afc_total = arm_afc_ocup = 0
+    arm_rtf_total = arm_rtf_ocup = 0
+    try:
+        inicializar_armarios()
+        if os.path.exists(ARQUIVO_ARMARIOS):
+            df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype=str).fillna('')
+            if not df_arm.empty:
+                status_arm = df_arm.get('Status', pd.Series('', index=df_arm.index)).astype(str).str.upper().str.strip()
+                ocup_mask = status_arm.ne('VAZIO')
+                arm_total = len(df_arm)
+                arm_ocup = int(ocup_mask.sum())
+                arm_livres = max(0, arm_total - arm_ocup)
+                armario_col = df_arm.get('Armario', pd.Series('', index=df_arm.index)).astype(str)
+                mask_afc = armario_col.str.contains('AFIADOR', case=False, na=False)
+                mask_rtf = armario_col.str.contains('RETÍF', case=False, na=False) | armario_col.str.contains('RETIF', case=False, na=False)
+                arm_afc_total = int(mask_afc.sum())
+                arm_afc_ocup = int((mask_afc & ocup_mask).sum())
+                arm_rtf_total = int(mask_rtf.sum())
+                arm_rtf_ocup = int((mask_rtf & ocup_mask).sum())
+    except Exception:
+        pass
+
+    st.markdown(textwrap.dedent(f'''
+    <div class="dash-welcome">
+        <div>
+            <div class="dash-eyebrow">Painel Pré-Set · {html.escape(st.session_state.get('turno',''))}</div>
+            <div class="dash-title">{saudacao}, {primeiro_nome}.</div>
+            <div class="dash-subtitle">Preparações, rebolos e armários que precisam da sua atenção.</div>
+        </div>
+        <div class="dash-date">{agora.strftime('%d/%m/%Y')} · {agora.strftime('%H:%M')}</div>
+    </div>
+    <div class="kpi-grid">
+        {_render_kpi('Prep. ativas', totais['prep_ativa'], '▶', '#2DD4BF', 'setup em execução')}
+        {_render_kpi('Aguardando', totais['prep_aguardando'], '◷', '#F59E0B', 'máquinas ainda em produção')}
+        {_render_kpi('Com rebolo', com_rebolo, '◉', '#60A5FA', 'setups atuais com troca de rebolo')}
+        {_render_kpi('Armários ocupados', arm_ocup, '▣', '#A78BFA', f'{arm_livres} posições livres')}
+    </div>
+    '''), unsafe_allow_html=True)
+
+    preparacoes = {'ativa': [], 'aguardando': []}
+    for setor, maquinas in [('AFC', TODAS_AFC), ('RTF', TODAS_RTF)]:
+        for maq in maquinas:
+            chave = f'{setor} {maq}'
+            st_val = status_dict.get(chave, 'PRODUZINDO')
+            tipo = _classificar_preparacao_home(st_val)
+            if not tipo:
+                continue
+            meta = estado_meta.get(chave, {})
+            if tipo == 'ativa':
+                hora_inicio = inicios_ativos.get(chave) or meta.get('hora', '')
+                mins = _minutos_status_home(hora_inicio)
+                tempo_info = None
+                ordem = -mins
+            else:
+                hora_inicio = ''
+                tempo_info = _info_programacao_home(st_val, agora)
+                ordem = tempo_info.get('ordem', 10**9)
+            preparacoes[tipo].append({
+                'setor': setor,
+                'maq': maq,
+                'status': st_val,
+                'hora': hora_inicio,
+                'operador': meta.get('operador', ''),
+                'tempo_info': tempo_info,
+                'ordem': ordem,
+            })
+
+    preparacoes['ativa'].sort(key=lambda x: (x['ordem'], x['setor'], x['maq']))
+    preparacoes['aguardando'].sort(key=lambda x: (x['ordem'], x['setor'], x['maq']))
+
+    def montar_lista_preset(tipo, limite=8):
+        itens = preparacoes[tipo]
+        if not itens:
+            txt = 'Nenhuma preparação ativa.' if tipo == 'ativa' else 'Nenhuma máquina aguardando preparação.'
+            return f'<div class="prep-empty">{txt}</div>'
+        blocos = []
+        for x in itens[:limite]:
+            blocos.append(_render_prep_item(
+                x['setor'], x['maq'], x['status'], x['hora'], x['operador'], tipo,
+                tempo_info=x.get('tempo_info')
+            ))
+        if len(itens) > limite:
+            blocos.append(f'<div class="prep-more">+ {len(itens)-limite} outra(s) máquina(s)</div>')
+        return ''.join(blocos)
+
+    html_setor = (
+        '<div class="dash-panel sector-panel">'
+        '<div class="dash-panel-title">Produção por setor</div>'
+        '<div class="dash-panel-sub">Máquinas aguardando setup continuam contabilizadas como produção</div>'
+        + _render_setor_bar('Afiação', resumo_afc)
+        + _render_setor_bar('Retífica', resumo_rtf)
+        + '</div>'
+    )
+
+    pct_arm = round((arm_ocup / arm_total) * 100) if arm_total else 0
+    pct_afc = round((arm_afc_ocup / max(1, arm_afc_total)) * 100)
+    pct_rtf = round((arm_rtf_ocup / max(1, arm_rtf_total)) * 100)
+    html_armarios = (
+        '<div class="dash-panel">'
+        '<div class="dash-panel-title">Situação dos armários</div>'
+        '<div class="dash-panel-sub">Posições com setup/ferramental armazenado</div>'
+        f'<div class="sector-row"><div class="sector-name">Afiadoras</div>'
+        f'<div class="sector-track"><div class="sector-fill" style="width:{pct_afc}%"></div></div>'
+        f'<div class="sector-pct">{arm_afc_ocup}/{arm_afc_total}</div></div>'
+        f'<div class="sector-row"><div class="sector-name">Retíficas</div>'
+        f'<div class="sector-track"><div class="sector-fill" style="width:{pct_rtf}%"></div></div>'
+        f'<div class="sector-pct">{arm_rtf_ocup}/{arm_rtf_total}</div></div>'
+        f'<div class="sector-mini" style="margin-left:0"><span>Ocupadas <b>{arm_ocup}</b></span><span>Livres <b>{arm_livres}</b></span><span>Uso <b>{pct_arm}%</b></span></div>'
+        '</div>'
+    )
+
+    html_preparacoes = (
+        '<div class="dash-panel">'
+        '<div class="dash-panel-title">Preparações agora</div>'
+        '<div class="dash-panel-sub">Prioridades atuais do Pré-Set</div>'
+        '<div class="prep-summary">'
+        f'<div class="prep-chip active">● Ativas <b>{totais["prep_ativa"]}</b></div>'
+        f'<div class="prep-chip waiting">◷ Aguardando <b>{totais["prep_aguardando"]}</b></div>'
+        '</div>'
+        f'<div class="prep-section-title"><span>▶ Preparação ativa</span><span class="prep-section-count">{totais["prep_ativa"]}</span></div>'
+        f'<div class="prep-list">{montar_lista_preset("ativa")}</div>'
+        f'<div class="prep-section-title"><span>◷ Aguardando preparação</span><span class="prep-section-count">{totais["prep_aguardando"]}</span></div>'
+        f'<div class="prep-list">{montar_lista_preset("aguardando")}</div>'
+        '</div>'
+    )
+
+    col_esq, col_dir = st.columns([0.92, 1.48], gap='medium')
+    with col_esq:
+        st.markdown(html_setor, unsafe_allow_html=True)
+        st.markdown(html_armarios, unsafe_allow_html=True)
+    with col_dir:
+        st.markdown(html_preparacoes, unsafe_allow_html=True)
+
+    st.markdown('<div class="quick-title">Acessos rápidos</div>', unsafe_allow_html=True)
+    acoes = [
+        ('🗄 Gerenciar armários', 'armarios'),
+        ('🔍 Programação do setor', 'checkup'),
+        ('💻 Painel do programador', 'programador'),
+        ('📊 Visão geral', 'visao_geral'),
+    ]
+    cols = st.columns(4)
+    for i, (rotulo, destino) in enumerate(acoes):
+        cols[i].button(rotulo, key=f'preset_dash_quick_{destino}', use_container_width=True,
+                       on_click=mudar_tela, args=(destino,))
+
+    st.markdown("<div style='margin-top:18px'></div>", unsafe_allow_html=True)
+    if st.button('🚪 Encerrar sessão', key='logout_home_preset', use_container_width=True):
+        st.session_state['logout_realizado'] = True
+        st.session_state['operador'], st.session_state['turno'], st.session_state['setor_usuario'], st.session_state['perfil'] = '', '', '', ''
+        try:
+            if COOKIE_LOGIN in (cookie_manager.cookies or {}):
+                cookie_manager.delete(COOKIE_LOGIN, key='del_auto_login_logout_preset')
+        except Exception:
+            pass
+        mudar_tela('login', forcar_rerun=True)
+
 def tela_menu():
-    """Dashboard analítico somente para o código 9999 (perfil adm + GERÊNCIA)."""
+    """Home por perfil: Gerência 9999, Pré-Set e menu clássico para os demais."""
     eh_9999 = (
         st.session_state.get('perfil') == 'adm'
         and str(st.session_state.get('setor_usuario', '')).upper() == 'GERÊNCIA'
     )
     if eh_9999:
         return _tela_menu_dashboard_9999()
+    if st.session_state.get('perfil') == 'preset':
+        return _tela_menu_dashboard_preset()
     return _tela_menu_classico()
 
 def _extrair_op_item_gerencia(status):
