@@ -13,6 +13,7 @@ import json
 import base64
 import hmac
 import hashlib
+import html
 from requests.adapters import HTTPAdapter
 import extra_streamlit_components as stx
 
@@ -981,8 +982,97 @@ CSS_APP = """
 
     /* DESKTOP GRANDE */
     @media (min-width: 1280px) {
-        .block-container { padding-top: 1.5rem !important; }
+        .block-container { padding-top: 1rem !important; }
         div[data-testid="stButton"] > button { min-height: 56px !important; }
+    }
+
+    /* =========================================================
+       TOP NAV + HOME DASHBOARD
+       ========================================================= */
+    .app-topbar {
+        position: sticky; top: .55rem; z-index: 999;
+        display: flex; align-items: center; gap: 18px;
+        width: 100%; min-height: 68px; padding: 10px 12px 10px 14px;
+        margin: 0 0 22px 0; border: 1px solid rgba(255,255,255,.10);
+        border-radius: 18px; background: rgba(20,20,28,.92);
+        backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+        box-shadow: 0 16px 45px rgba(0,0,0,.24);
+    }
+    .app-brand {display:flex;align-items:center;gap:10px;flex:0 0 auto;min-width:max-content;text-decoration:none!important;}
+    .app-brand-icon {width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,#8B5CF6,#0F766E);color:#fff;font-size:18px;box-shadow:0 8px 22px rgba(109,40,217,.28);}
+    .app-brand-copy {line-height:1.05;}
+    .app-brand-name {color:#FAFAFA;font-size:13px;font-weight:950;letter-spacing:.4px;}
+    .app-brand-sub {color:#8B8B98;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;margin-top:4px;}
+    .app-nav-scroll {display:flex;align-items:center;gap:4px;flex:1 1 auto;min-width:0;overflow-x:auto;scrollbar-width:none;padding:2px;}
+    .app-nav-scroll::-webkit-scrollbar {display:none;}
+    .app-nav-link {display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:0 13px;border-radius:11px;color:#AFAFBA!important;text-decoration:none!important;font-size:12px;font-weight:850;white-space:nowrap;border:1px solid transparent;transition:.18s ease;}
+    .app-nav-link:hover {color:#FFFFFF!important;background:rgba(255,255,255,.055);}
+    .app-nav-link.active {color:#FFFFFF!important;background:linear-gradient(135deg,rgba(139,92,246,.22),rgba(45,212,191,.10));border-color:rgba(139,92,246,.28);box-shadow:inset 0 1px 0 rgba(255,255,255,.04);}
+    .app-top-user {display:flex;align-items:center;gap:8px;flex:0 0 auto;padding:6px 9px 6px 7px;border-radius:12px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.07);}
+    .app-top-avatar {width:30px;height:30px;border-radius:10px;display:grid;place-items:center;background:rgba(139,92,246,.17);color:#C4B5FD;font-size:13px;font-weight:900;}
+    .app-top-user-name {color:#F4F4F5;font-size:11px;font-weight:850;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+    .app-top-user-meta {color:#71717A;font-size:9px;font-weight:700;margin-top:1px;}
+    .machine-search {flex:0 1 190px;min-width:150px;margin:0;}
+    .machine-search-wrap {height:40px;display:flex;align-items:center;gap:7px;padding:0 8px 0 11px;background:rgba(255,255,255,.055);border:1px solid rgba(255,255,255,.08);border-radius:11px;}
+    .machine-search-wrap:focus-within {border-color:rgba(139,92,246,.6);box-shadow:0 0 0 3px rgba(139,92,246,.10);}
+    .machine-search-wrap input {width:100%;min-width:0;height:34px;padding:0;border:0;outline:0;background:transparent!important;color:#F4F4F5!important;font-size:12px!important;font-weight:700!important;}
+    .machine-search-wrap input::placeholder {color:#73737E!important;}
+    .machine-search-wrap button {width:28px;height:28px;min-width:28px;border:0;border-radius:8px;cursor:pointer;background:rgba(139,92,246,.16);color:#C4B5FD;font-weight:900;}
+    .dash-welcome {display:flex;align-items:end;justify-content:space-between;gap:18px;margin:4px 0 16px;}
+    .dash-eyebrow {color:#8B8B98;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.9px;}
+    .dash-title {color:#F7F7FA!important;font-size:clamp(25px,3vw,38px);font-weight:950;letter-spacing:-1px;margin:3px 0 0;line-height:1.05;}
+    .dash-subtitle {color:#92929D!important;font-size:13px;margin-top:8px;}
+    .dash-date {color:#B8B8C2;font-size:11px;font-weight:800;white-space:nowrap;padding-bottom:4px;}
+    .kpi-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin:0 0 16px;}
+    .kpi-card {position:relative;overflow:hidden;min-height:132px;padding:17px;border-radius:17px;background:linear-gradient(180deg,rgba(28,28,38,.96),rgba(19,19,26,.96));border:1px solid rgba(255,255,255,.085);box-shadow:0 14px 36px rgba(0,0,0,.18);}
+    .kpi-card::after {content:'';position:absolute;width:120px;height:120px;border-radius:999px;right:-55px;top:-60px;opacity:.13;background:var(--kpi-color,#8B5CF6);filter:blur(2px);}
+    .kpi-head {display:flex;align-items:center;justify-content:space-between;gap:8px;}
+    .kpi-label {color:#A8A8B2;font-size:10px;font-weight:900;letter-spacing:.75px;text-transform:uppercase;}
+    .kpi-icon {width:31px;height:31px;display:grid;place-items:center;border-radius:10px;background:rgba(139,92,246,.10);color:var(--kpi-color);font-size:14px;}
+    .kpi-value {color:#FFFFFF;font-size:34px;font-weight:950;letter-spacing:-1.3px;line-height:1;margin-top:17px;}
+    .kpi-foot {display:flex;align-items:center;gap:6px;color:#777782;font-size:10px;font-weight:750;margin-top:8px;}
+    .kpi-dot {width:6px;height:6px;border-radius:99px;background:var(--kpi-color);box-shadow:0 0 12px var(--kpi-color);}
+    .dashboard-grid {display:grid;grid-template-columns:minmax(0,1.25fr) minmax(330px,.75fr);gap:14px;margin-top:14px;}
+    .dash-panel {background:linear-gradient(180deg,rgba(26,26,35,.94),rgba(18,18,25,.96));border:1px solid rgba(255,255,255,.085);border-radius:18px;padding:17px;box-shadow:0 14px 38px rgba(0,0,0,.17);}
+    .dash-panel-title {color:#F4F4F5;font-size:13px;font-weight:900;}
+    .dash-panel-sub {color:#777782;font-size:10px;font-weight:700;margin-top:4px;}
+    .sector-row {display:grid;grid-template-columns:82px 1fr 48px;align-items:center;gap:10px;margin-top:17px;}
+    .sector-name {color:#CFCFD6;font-size:11px;font-weight:900;}
+    .sector-track {height:9px;background:rgba(255,255,255,.055);border-radius:999px;overflow:hidden;}
+    .sector-fill {height:100%;border-radius:999px;background:linear-gradient(90deg,#8B5CF6,#2DD4BF);}
+    .sector-pct {color:#AFAFBA;font-size:10px;font-weight:850;text-align:right;}
+    .sector-mini {display:flex;gap:12px;flex-wrap:wrap;margin:8px 0 0 92px;}
+    .sector-mini span {color:#777782;font-size:9px;font-weight:750;}
+    .sector-mini b {color:#CFCFD6;}
+    .attention-list {display:flex;flex-direction:column;gap:8px;margin-top:13px;}
+    .attention-item {display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:10px;padding:9px 10px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.055);}
+    .attention-ico {width:34px;height:34px;display:grid;place-items:center;border-radius:10px;background:rgba(245,158,11,.10);}
+    .attention-machine {color:#E8E8EC;font-size:11px;font-weight:900;}
+    .attention-status {color:#7F7F8A;font-size:9px;font-weight:700;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .attention-sector {color:#A78BFA;font-size:9px;font-weight:900;padding:4px 6px;border-radius:7px;background:rgba(139,92,246,.10);}
+    .attention-empty {color:#8A8A95;font-size:11px;padding:18px 0 4px;text-align:center;}
+    .quick-title {color:#E4E4E7;font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.8px;margin:22px 0 10px;}
+    @media (max-width:1180px) {
+        .app-topbar {gap:10px;} .app-brand-sub,.app-top-user-meta {display:none;}
+        .machine-search {flex-basis:155px;min-width:130px;} .app-nav-link {padding:0 10px;}
+        .kpi-grid {grid-template-columns:repeat(2,minmax(0,1fr));} .dashboard-grid {grid-template-columns:1fr;}
+    }
+    @media (max-width:768px) {
+        .app-topbar {position:relative;top:0;display:grid;grid-template-columns:1fr auto;gap:9px;padding:10px;margin-bottom:15px;border-radius:15px;}
+        .app-brand {grid-column:1;} .app-top-user {grid-column:2;padding:5px;} .app-top-user-copy {display:none;}
+        .app-nav-scroll {grid-column:1/-1;grid-row:2;width:100%;order:3;} .app-nav-link {min-height:38px;padding:0 11px;font-size:11px;}
+        .machine-search {grid-column:1/-1;grid-row:3;width:100%;min-width:0;} .machine-search-wrap {height:42px;}
+        .dash-welcome {align-items:flex-start;margin-top:2px;} .dash-date {display:none;} .dash-title {font-size:27px;} .dash-subtitle {font-size:12px;}
+        .kpi-grid {grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;} .kpi-card {min-height:116px;padding:13px;border-radius:15px;}
+        .kpi-value {font-size:29px;margin-top:14px;} .kpi-label {font-size:9px;} .kpi-foot {font-size:9px;}
+        .dashboard-grid {gap:10px;} .dash-panel {padding:14px;border-radius:15px;}
+        .sector-row {grid-template-columns:62px 1fr 42px;gap:8px;} .sector-mini {margin-left:70px;gap:8px;}
+    }
+    @media (max-width:430px) {
+        .app-brand-name {font-size:12px;} .app-brand-icon {width:34px;height:34px;border-radius:10px;}
+        .kpi-grid {grid-template-columns:1fr 1fr;} .kpi-card {min-height:108px;} .kpi-icon {width:27px;height:27px;border-radius:8px;}
+        .kpi-value {font-size:27px;} .sector-mini {margin-left:0;padding-left:0;}
+        .attention-item {grid-template-columns:32px minmax(0,1fr);} .attention-sector {display:none;}
     }
 </style>
 """
@@ -2617,6 +2707,219 @@ def painel_controle_maquina(maq_id, setor):
                         st.success("✅ Registrado!")
                         st.rerun()
 
+def _valor_query(nome):
+    try:
+        valor = st.query_params.get(nome)
+        if isinstance(valor, list):
+            valor = valor[0] if valor else None
+        return str(valor).strip() if valor is not None else None
+    except Exception:
+        return None
+
+
+def processar_navegacao_url():
+    # Processa cliques da barra HTML e busca de máquina sem alterar o backend.
+    if not st.session_state.get('operador'):
+        return
+
+    destino = _valor_query('nav')
+    busca = _valor_query('maq')
+
+    if destino:
+        permitidos = {
+            'menu', 'visao_geral', 'checkup', 'armarios', 'equipe',
+            'hub_relatorios', 'historico', 'programador', 'editar',
+            'afc', 'rtf', 'minhas_incidencias', 'lirs', 'relatorio'
+        }
+        if destino in permitidos:
+            st.session_state['tela_atual'] = destino
+            st.session_state['maq_ativa'] = None
+        try:
+            st.query_params.clear()
+        except Exception:
+            pass
+        return
+
+    if busca:
+        termo = busca.upper().replace('MÁQUINA', '').replace('MAQUINA', '').strip()
+        termo = termo.replace('AFC ', '').replace('RTF ', '').strip()
+        perfil = st.session_state.get('perfil', '')
+        setor_user = st.session_state.get('setor_usuario', '')
+
+        setor_encontrado = None
+        if termo in TODAS_AFC:
+            setor_encontrado = 'AFC'
+        elif termo in TODAS_RTF:
+            setor_encontrado = 'RTF'
+
+        pode_abrir = (
+            perfil == 'adm' or
+            (perfil == 'preparador' and setor_user in [setor_encontrado, 'TECNICO'])
+        )
+
+        if setor_encontrado and pode_abrir:
+            st.session_state['maq_ativa'] = termo
+            st.session_state['setor_ativo'] = setor_encontrado
+            st.session_state['celula_selecionada'] = None
+            st.session_state['tela_atual'] = 'afc' if setor_encontrado == 'AFC' else 'rtf'
+        elif setor_encontrado:
+            st.session_state['tela_atual'] = 'visao_geral'
+            st.session_state['_busca_msg'] = f"Máquina {termo} encontrada em {setor_encontrado}. Seu perfil possui acesso de consulta pela Visão Geral."
+        else:
+            st.session_state['_busca_msg'] = f"Máquina '{html.escape(busca)}' não encontrada."
+
+        try:
+            st.query_params.clear()
+        except Exception:
+            pass
+
+
+def _links_topo_por_perfil():
+    perfil = st.session_state.get('perfil', '')
+    links = [
+        ('menu', '⌂', 'Início'),
+        ('visao_geral', '▦', 'Máquinas'),
+        ('checkup', '◷', 'Programação'),
+        ('hub_relatorios', '▤', 'Relatórios'),
+    ]
+    if perfil in ['adm', 'preset', 'preparador']:
+        links.append(('armarios', '▣', 'Armários'))
+    if perfil in ['adm', 'programador', 'preparador']:
+        links.append(('equipe', '◎', 'Equipe'))
+    if perfil == 'adm':
+        links.append(('historico', '↗', 'Histórico'))
+    return links
+
+
+def renderizar_topbar(tela_atual):
+    perfil = st.session_state.get('perfil', '')
+    setor = st.session_state.get('setor_usuario', '')
+    turno = st.session_state.get('turno', '')
+    nome = html.escape(str(st.session_state.get('operador', 'Usuário')))
+
+    aliases_ativos = {
+        'afc': 'visao_geral', 'rtf': 'visao_geral',
+        'minhas_incidencias': 'checkup',
+        'relatorio': 'hub_relatorios', 'lirs': 'hub_relatorios',
+    }
+    ativo = aliases_ativos.get(tela_atual, tela_atual)
+
+    links_html = []
+    for destino, icone, rotulo in _links_topo_por_perfil():
+        cls = 'app-nav-link active' if ativo == destino else 'app-nav-link'
+        links_html.append(
+            f'<a class="{cls}" href="?nav={destino}" target="_self">'
+            f'<span style="margin-right:6px;opacity:.9">{icone}</span>{rotulo}</a>'
+        )
+
+    setor_txt = 'Geral' if setor in ['GERAL', 'GERÊNCIA'] else setor.title() if setor else perfil.title()
+    inicial = nome[:1].upper() if nome else 'U'
+
+    st.markdown(f'''
+    <div class="app-topbar">
+        <a class="app-brand" href="?nav=menu" target="_self">
+            <div class="app-brand-icon">⚙</div>
+            <div class="app-brand-copy">
+                <div class="app-brand-name">AFIAÇÃO DIGITAL</div>
+                <div class="app-brand-sub">Operação em tempo real</div>
+            </div>
+        </a>
+        <div class="app-nav-scroll">{''.join(links_html)}</div>
+        <form class="machine-search" method="get" target="_self">
+            <div class="machine-search-wrap">
+                <span style="color:#777782;font-size:13px;">⌕</span>
+                <input name="maq" autocomplete="off" placeholder="Buscar máquina..." />
+                <button type="submit" aria-label="Buscar">→</button>
+            </div>
+        </form>
+        <div class="app-top-user">
+            <div class="app-top-avatar">{inicial}</div>
+            <div class="app-top-user-copy">
+                <div class="app-top-user-name">{nome}</div>
+                <div class="app-top-user-meta">{html.escape(turno)} · {html.escape(setor_txt)}</div>
+            </div>
+        </div>
+    </div>
+    ''', unsafe_allow_html=True)
+
+    msg = st.session_state.pop('_busca_msg', None)
+    if msg:
+        st.info(msg)
+
+
+def _classificar_status_home(status):
+    up = str(status).upper()
+    if 'MANUTENÇÃO' in up or 'MANUTENCAO' in up:
+        return 'manutencao'
+    if up.startswith('PARADA') or ' PARADA' in up:
+        return 'parada'
+    if any(k in up for k in ['PREPARAÇÃO', 'PREPARACAO', 'PREPARANDO', 'SEQUÊNCIA', 'SEQUENCIA', 'AGUARDANDO PREPARADOR']):
+        return 'preparacao'
+    if 'PRODUZINDO' in up:
+        return 'producao'
+    return 'outros'
+
+
+def _resumo_setor_home(status_dict, setor, maquinas):
+    r = {'producao':0, 'preparacao':0, 'parada':0, 'manutencao':0, 'outros':0, 'total':len(maquinas)}
+    for m in maquinas:
+        st_val = status_dict.get(f'{setor} {m}', 'PRODUZINDO')
+        r[_classificar_status_home(st_val)] += 1
+    return r
+
+
+def _render_kpi(label, valor, icone, cor, detalhe):
+    return f'''
+    <div class="kpi-card" style="--kpi-color:{cor}">
+        <div class="kpi-head"><div class="kpi-label">{label}</div><div class="kpi-icon">{icone}</div></div>
+        <div class="kpi-value">{valor}</div>
+        <div class="kpi-foot"><span class="kpi-dot"></span>{detalhe}</div>
+    </div>
+    '''
+
+
+def _render_setor_bar(nome, resumo):
+    total = max(1, resumo['total'])
+    prod = resumo['producao']
+    pct = round((prod / total) * 100)
+    return f'''
+        <div class="sector-row">
+            <div class="sector-name">{nome}</div>
+            <div class="sector-track"><div class="sector-fill" style="width:{pct}%"></div></div>
+            <div class="sector-pct">{pct}%</div>
+        </div>
+        <div class="sector-mini">
+            <span>Produção <b>{prod}</b></span>
+            <span>Prep. <b>{resumo['preparacao']}</b></span>
+            <span>Parada <b>{resumo['parada']}</b></span>
+            <span>Manut. <b>{resumo['manutencao']}</b></span>
+        </div>
+    '''
+
+
+def _acoes_rapidas_home(perfil):
+    itens = []
+    if perfil == 'adm':
+        itens = [
+            ('💻 Painel do Programador', 'programador'), ('⚙️ Módulo Afiação', 'afc'),
+            ('⚙️ Módulo Retífica', 'rtf'), ('✏️ Banco de Dados', 'editar')
+        ]
+    elif perfil == 'preset':
+        itens = [('💻 Painel do Programador', 'programador')]
+    elif perfil == 'programador':
+        itens = [('💻 Painel do Programador', 'programador')]
+    elif perfil == 'preparador':
+        setor = st.session_state.get('setor_usuario')
+        if setor in ['AFC', 'TECNICO']:
+            itens.append(('⚙️ Módulo Afiação', 'afc'))
+        if setor in ['RTF', 'TECNICO']:
+            itens.append(('⚙️ Módulo Retífica', 'rtf'))
+        itens.extend([('⚡ Minhas Incidências', 'minhas_incidencias'), ('✏️ Corrigir Apontamentos', 'editar')])
+    else:
+        itens = [('✏️ Corrigir Apontamentos', 'editar')]
+    return itens
+
+
 def tela_login():
     st.markdown("""
     <div class="login-hero">
@@ -2716,76 +3019,93 @@ def tela_hub_relatorios():
 def tela_menu():
     exibir_alertas_preset()
     exibir_alertas_preparador()
-    perfil = st.session_state['perfil']
-    if perfil == 'adm': setor_txt = "Gerência"
-    elif st.session_state['setor_usuario'] == 'TECNICO': setor_txt = "Técnico (Geral)"
-    elif perfil == 'preset': setor_txt = "Pré-Set"
-    elif perfil == 'programador': setor_txt = "Programação CNC"
-    else: setor_txt = 'Afiação' if st.session_state['setor_usuario']=='AFC' else 'Retífica'
-    
-    nome_exibicao = str(st.session_state['operador']).strip()
-    st.markdown(f"""
-    <div class="user-shell">
-        <div class="user-left">
-            <div class="user-avatar">👤</div>
-            <div style="min-width:0;">
-                <div class="user-kicker">Sessão ativa</div>
-                <div class="user-name">{nome_exibicao}</div>
-                <div class="user-meta">{st.session_state['turno']} • {setor_txt}</div>
-            </div>
+
+    status_dict = ler_status_atual()
+    resumo_afc = _resumo_setor_home(status_dict, 'AFC', TODAS_AFC)
+    resumo_rtf = _resumo_setor_home(status_dict, 'RTF', TODAS_RTF)
+    totais = {chave: resumo_afc[chave] + resumo_rtf[chave] for chave in ['producao','preparacao','parada','manutencao','outros']}
+    total_maquinas = len(TODAS_AFC) + len(TODAS_RTF)
+
+    agora = datetime.now(FUSO_BR)
+    hora = agora.hour
+    saudacao = 'Bom dia' if 5 <= hora < 12 else ('Boa tarde' if 12 <= hora < 18 else 'Boa noite')
+    nome_raw = str(st.session_state.get('operador', '')).strip()
+    primeiro_nome = html.escape(nome_raw.split()[0] if nome_raw else 'Usuário')
+
+    st.markdown(f'''
+    <div class="dash-welcome">
+        <div>
+            <div class="dash-eyebrow">Painel operacional · {html.escape(st.session_state.get('turno',''))}</div>
+            <div class="dash-title">{saudacao}, {primeiro_nome}.</div>
+            <div class="dash-subtitle">Aqui está o panorama atual da Afiação e Retífica.</div>
         </div>
-        <div class="live-badge">● Online</div>
+        <div class="dash-date">{agora.strftime('%d/%m/%Y')} · {agora.strftime('%H:%M')}</div>
     </div>
-    <div class="menu-section-title">Acesso rápido</div>
-    """, unsafe_allow_html=True)
-    
-    if perfil == 'adm':
-        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
-        botao_navegar("💻 PAINEL DO PROGRAMADOR", 'programador', use_container_width=True)
-        botao_navegar("⚙️ ACESSAR MÓDULO AFIAÇÃO", 'afc', use_container_width=True)
-        botao_navegar("⚙ ACESSAR MÓDULO RETÍFICA", 'rtf', use_container_width=True)
-        botao_navegar("🗄️ GERENCIAR ARMÁRIOS", 'armarios', use_container_width=True)
-        botao_navegar("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', use_container_width=True)
-        botao_navegar("👥 CONTROLE DE EQUIPE", 'equipe', use_container_width=True)
-        botao_navegar("📋 RELATÓRIOS E LIRS", 'hub_relatorios', use_container_width=True)
-        botao_navegar("📊 HISTÓRICOS E EXPORTAÇÕES", 'historico', use_container_width=True)
-        botao_navegar("✏️ GERENCIAR BANCO DE DADOS", 'editar', use_container_width=True)
-    elif perfil == 'preset':
-        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
-        botao_navegar("💻 PAINEL DO PROGRAMADOR", 'programador', use_container_width=True)
-        botao_navegar("🗄 GERENCIAR ARMÁRIOS", 'armarios', use_container_width=True)
-        botao_navegar("🔍 PROGRAMAÇÃO DO SETOR", 'checkup', use_container_width=True)
-    elif perfil == 'programador':
-        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
-        botao_navegar("💻 PAINEL DO PROGRAMADOR", 'programador', use_container_width=True, type="primary")
-        botao_navegar("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', use_container_width=True)
-        botao_navegar("👥 CONTROLE DE EQUIPE", 'equipe', use_container_width=True)
-    elif perfil == 'preparador':
-        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
-        if st.session_state['setor_usuario'] in ['AFC', 'TECNICO']:
-            botao_navegar("⚙️ ACESSAR MÓDULO AFIAÇÃO", 'afc', use_container_width=True)
-        if st.session_state['setor_usuario'] in ['RTF', 'TECNICO']:
-            botao_navegar("⚙ ACESSAR MÓDULO RETÍFICA", 'rtf', use_container_width=True)
-        botao_navegar("🗄️ VISÃO DOS ARMÁRIOS", 'armarios', use_container_width=True)
-        botao_navegar("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', use_container_width=True)
-        botao_navegar("⚡ MINHAS INCIDÊNCIAS", 'minhas_incidencias', use_container_width=True)
-        botao_navegar("👥 CONTROLE DE EQUIPE", 'equipe', use_container_width=True)
-        botao_navegar("📋 RELATÓRIOS E LIRS", 'hub_relatorios', use_container_width=True)
-        botao_navegar("✏️ CORREÇÃO DE APONTAMENTOS", 'editar', use_container_width=True)
-    else:
-        botao_navegar("📊 VISÃO GERAL DE FÁBRICA", 'visao_geral', use_container_width=True, type="primary")
-        botao_navegar("🔍 PROGRAMAÇÃO E INCIDÊNCIAS", 'checkup', use_container_width=True)
-        botao_navegar("📋 RELATÓRIOS E LIRS", 'hub_relatorios', use_container_width=True)
-        botao_navegar("✏️ CORREÇÃO DE APONTAMENTOS", 'editar', use_container_width=True)
-    st.markdown("<div style='margin-top: 20px;'></div>", unsafe_allow_html=True)
-    if st.button("🚪 Encerramento de Sessão (Logout)", use_container_width=True):
+    <div class="kpi-grid">
+        {_render_kpi('Produzindo', totais['producao'], '▶', '#2DD4BF', f'de {total_maquinas} máquinas')}
+        {_render_kpi('Preparações', totais['preparacao'], '⚙', '#F59E0B', 'em preparação / aguardando')}
+        {_render_kpi('Paradas', totais['parada'], '■', '#EF4444', 'requerem acompanhamento')}
+        {_render_kpi('Manutenção', totais['manutencao'], '⌁', '#8B5CF6', 'máquinas em manutenção')}
+    </div>
+    ''', unsafe_allow_html=True)
+
+    atencao = []
+    prioridade = {'manutencao':0, 'parada':1, 'preparacao':2, 'outros':3}
+    for setor, maquinas in [('AFC', TODAS_AFC), ('RTF', TODAS_RTF)]:
+        for m in maquinas:
+            st_val = status_dict.get(f'{setor} {m}', 'PRODUZINDO')
+            classe = _classificar_status_home(st_val)
+            if classe != 'producao':
+                atencao.append((prioridade.get(classe,9), setor, m, st_val, classe))
+    atencao.sort(key=lambda x: (x[0], x[1], x[2]))
+
+    itens_html = []
+    icon_map = {'manutencao':'🛠','parada':'●','preparacao':'⚙','outros':'!'}
+    for _, setor, maq, st_val, classe in atencao[:7]:
+        status_curto = html.escape(str(st_val).split('[')[0].strip())
+        itens_html.append(f'''
+        <div class="attention-item">
+            <div class="attention-ico">{icon_map.get(classe,'!')}</div>
+            <div style="min-width:0">
+                <div class="attention-machine">Máquina {html.escape(maq)}</div>
+                <div class="attention-status">{status_curto}</div>
+            </div>
+            <div class="attention-sector">{setor}</div>
+        </div>''')
+    if not itens_html:
+        itens_html.append('<div class="attention-empty">✓ Nenhuma máquina exige atenção agora.</div>')
+
+    st.markdown(f'''
+    <div class="dashboard-grid">
+        <div class="dash-panel">
+            <div class="dash-panel-title">Desempenho por setor</div>
+            <div class="dash-panel-sub">Percentual de máquinas em produção agora</div>
+            {_render_setor_bar('Afiação', resumo_afc)}
+            {_render_setor_bar('Retífica', resumo_rtf)}
+        </div>
+        <div class="dash-panel">
+            <div class="dash-panel-title">Atenção agora</div>
+            <div class="dash-panel-sub">Preparações, paradas e manutenções prioritárias</div>
+            <div class="attention-list">{''.join(itens_html)}</div>
+        </div>
+    </div>
+    ''', unsafe_allow_html=True)
+
+    perfil = st.session_state.get('perfil', '')
+    acoes = _acoes_rapidas_home(perfil)
+    if acoes:
+        st.markdown('<div class="quick-title">Acessos rápidos</div>', unsafe_allow_html=True)
+        cols = st.columns(min(len(acoes),4))
+        for i, (rotulo, destino) in enumerate(acoes):
+            cols[i % len(cols)].button(rotulo, key=f'home_quick_{destino}', use_container_width=True, on_click=mudar_tela, args=(destino,))
+
+    st.markdown("<div style='margin-top:18px'></div>", unsafe_allow_html=True)
+    if st.button("🚪 Encerrar sessão", key='logout_home', use_container_width=True):
         st.session_state['logout_realizado'] = True
         st.session_state['operador'], st.session_state['turno'], st.session_state['setor_usuario'], st.session_state['perfil'] = '', '', '', ''
         try:
-            # Remove o cookie novo de auto-login.
             if COOKIE_LOGIN in (cookie_manager.cookies or {}):
                 cookie_manager.delete(COOKIE_LOGIN, key="del_auto_login_logout")
-            # Limpa também cookies da versão anterior, caso ainda existam.
             for nome_cookie, chave in [
                 ("salvar_acesso", "del_salvar_acesso_antigo"),
                 ("user_logado", "del_logado_antigo"),
@@ -2793,11 +3113,15 @@ def tela_menu():
                 ("user_setor", "del_setor_antigo"),
                 ("user_perfil", "del_perfil_antigo"),
             ]:
-                if nome_cookie in (cookie_manager.cookies or {}):
-                    cookie_manager.delete(nome_cookie, key=chave)
+                try:
+                    if nome_cookie in (cookie_manager.cookies or {}):
+                        cookie_manager.delete(nome_cookie, key=chave)
+                except Exception:
+                    pass
         except Exception:
             pass
         mudar_tela('login', forcar_rerun=True)
+
 
 def tela_visao_geral():
     botao_navegar("⬅️ Voltar ao Menu", 'menu')
@@ -4214,7 +4538,11 @@ def tela_programador():
     render_grid_setor_prog(lista_rtf, "RETÍFICA (RTF)")
 
 # --- ROTEAMENTO DE TELAS ---
+processar_navegacao_url()
 tela = st.session_state['tela_atual']
+
+if tela != 'login' and st.session_state.get('operador'):
+    renderizar_topbar(tela)
 
 if tela == 'login': tela_login()
 elif tela == 'menu': tela_menu()
