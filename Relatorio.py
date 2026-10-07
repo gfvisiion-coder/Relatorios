@@ -1138,6 +1138,30 @@ CSS_APP = """
     .prep-time span {display:block;color:#6F6F79;font-size:8px;font-weight:750;margin-bottom:1px;}
     .prep-empty {padding:13px 8px;color:#777782;font-size:10px;text-align:center;border:1px dashed rgba(255,255,255,.07);border-radius:11px;}
     .prep-more {color:#777782;font-size:9px;font-weight:750;text-align:center;padding-top:6px;}
+    /* Desempenho mensal de setups */
+    .setup-month-panel {margin-top:14px;background:linear-gradient(180deg,rgba(26,26,35,.94),rgba(18,18,25,.96));border:1px solid rgba(255,255,255,.085);border-radius:18px;padding:17px;box-shadow:0 14px 38px rgba(0,0,0,.17);}
+    .setup-month-top {display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:13px;}
+    .setup-month-title {color:#F4F4F5;font-size:13px;font-weight:900;}
+    .setup-month-sub {color:#777782;font-size:10px;font-weight:700;margin-top:4px;}
+    .setup-month-badge {flex:0 0 auto;padding:6px 9px;border-radius:10px;background:rgba(139,92,246,.09);border:1px solid rgba(139,92,246,.18);color:#C4B5FD;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.45px;}
+    .setup-sector-summary {display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-bottom:10px;}
+    .setup-sector-pill {display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 11px;border-radius:12px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.055);}
+    .setup-sector-pill span {color:#888893;font-size:9px;font-weight:800;}
+    .setup-sector-pill b {color:#E9E9ED;font-size:10px;font-weight:900;}
+    .setup-month-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;}
+    .setup-metric-card {position:relative;overflow:hidden;padding:13px;border-radius:14px;background:rgba(255,255,255,.035);border:1px solid rgba(255,255,255,.06);min-height:118px;}
+    .setup-metric-card::after {content:'';position:absolute;right:-32px;top:-34px;width:80px;height:80px;border-radius:99px;background:var(--setup-color);opacity:.10;}
+    .setup-metric-head {display:flex;align-items:center;justify-content:space-between;gap:8px;color:#9B9BA6;font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.45px;}
+    .setup-metric-head b {color:var(--setup-color);font-size:15px;}
+    .setup-metric-main {display:flex;align-items:baseline;gap:7px;margin-top:12px;}
+    .setup-metric-main strong {color:#FFFFFF;font-size:27px;font-weight:950;line-height:1;}
+    .setup-metric-main span {color:#74747F;font-size:8px;font-weight:750;}
+    .setup-metric-average {display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:13px;padding-top:9px;border-top:1px solid rgba(255,255,255,.055);}
+    .setup-metric-average span {color:#70707B;font-size:8px;font-weight:750;}
+    .setup-metric-average b {color:var(--setup-color);font-size:11px;font-weight:950;white-space:nowrap;}
+    @media (max-width:1180px) {.setup-month-grid {grid-template-columns:repeat(2,minmax(0,1fr));}}
+    @media (max-width:520px) {.setup-month-top {display:block;} .setup-month-badge {display:inline-block;margin-top:8px;} .setup-sector-summary {grid-template-columns:1fr;} .setup-month-grid {grid-template-columns:1fr 1fr;gap:7px;} .setup-metric-card {padding:11px;min-height:112px;} .setup-metric-main strong {font-size:24px;} .setup-metric-average {display:block;} .setup-metric-average b {display:block;margin-top:3px;}}
+
     @media (max-width:768px) {
         .st-key-topbar_native {position:relative;top:0;padding:9px;border-radius:15px;}
         .st-key-topbar_native div[data-testid="stHorizontalBlock"] {gap:.5rem!important;}
@@ -2901,7 +2925,7 @@ def renderizar_topbar(tela_atual):
 
 
 def _classificar_preparacao_home(status):
-    """Separa preparação EXECUTANDO de preparação AGUARDANDO."""
+    """Separa preparação EXECUTANDO de preparação apenas PROGRAMADA/AGUARDANDO."""
     up = str(status).strip().upper()
     if up.startswith('PREPARANDO'):
         return 'ativa'
@@ -2928,20 +2952,39 @@ def _classificar_status_home(status):
 
 
 def _resumo_setor_home(status_dict, setor, maquinas):
+    """Resumo operacional da Home.
+
+    Preparação aguardando é programação futura: a máquina continua em produção.
+    Ela só sai do KPI de produção em PREPARANDO, PARADA ou MANUTENÇÃO.
+    """
     r = {
         'producao':0, 'preparacao':0, 'prep_ativa':0, 'prep_aguardando':0,
         'parada':0, 'manutencao':0, 'outros':0, 'total':len(maquinas)
     }
     for m in maquinas:
         st_val = status_dict.get(f'{setor} {m}', 'PRODUZINDO')
-        classe = _classificar_status_home(st_val)
-        r[classe] += 1
-        if classe == 'preparacao':
-            detalhe = _classificar_preparacao_home(st_val)
-            if detalhe == 'ativa':
-                r['prep_ativa'] += 1
-            else:
-                r['prep_aguardando'] += 1
+        up = str(st_val).upper()
+        prep = _classificar_preparacao_home(st_val)
+
+        if 'MANUTENÇÃO' in up or 'MANUTENCAO' in up:
+            r['manutencao'] += 1
+            continue
+        if up.startswith('PARADA') or ' PARADA' in up:
+            r['parada'] += 1
+            continue
+        if prep == 'ativa':
+            r['preparacao'] += 1
+            r['prep_ativa'] += 1
+            continue
+        if prep == 'aguardando':
+            r['preparacao'] += 1
+            r['prep_aguardando'] += 1
+            r['producao'] += 1
+            continue
+
+        r['producao'] += 1
+        if 'PRODUZINDO' not in up:
+            r['outros'] += 1
     return r
 
 
@@ -3005,7 +3048,7 @@ def _estado_atual_home():
 
 
 def _minutos_status_home(hora_inicio):
-    """Calcula há quanto tempo o estado atual começou (até 24h, pois o banco guarda HH:MM)."""
+    """Calcula há quanto tempo um estado ATIVO começou usando HH:MM."""
     try:
         h = datetime.strptime(str(hora_inicio).strip(), '%H:%M').time()
         agora = datetime.now(FUSO_BR)
@@ -3027,9 +3070,97 @@ def _tempo_curto_home(mins):
     return f'{h}h {m:02d}m' if m else f'{h}h'
 
 
-def _render_prep_item(setor, maq, status, hora_inicio, operador, tipo):
-    mins = _minutos_status_home(hora_inicio)
-    tempo = _tempo_curto_home(mins)
+def _extrair_hora_programada_home(status):
+    """Lê a hora PROGRAMADA do status. Não usa a hora em que o status foi salvo."""
+    txt = str(status or '')
+    for padrao in (
+        r'\[AGENDADO:\s*(\d{1,2}:\d{2})\]',
+        r'AGENDADA\s+PARA\s+(\d{1,2}:\d{2})',
+    ):
+        m = re.search(padrao, txt, flags=re.IGNORECASE)
+        if m:
+            try:
+                return datetime.strptime(m.group(1), '%H:%M').strftime('%H:%M')
+            except Exception:
+                pass
+    return ''
+
+
+def _info_programacao_home(status, agora=None):
+    """Retorna a programação como 'em X' ou 'atrasada X'.
+
+    A referência é o DIA LÓGICO do turno do app. Assim 06:30/14:30/22:30 são
+    posicionados no dia correto, inclusive durante o 3º turno após meia-noite.
+    """
+    hora = _extrair_hora_programada_home(status)
+    if not hora:
+        return {'hora':'', 'prefixo':'', 'tempo':'Sem horário', 'delta':None, 'ordem':10**9}
+    try:
+        agora = agora or datetime.now(FUSO_BR)
+        h = datetime.strptime(hora, '%H:%M').time()
+        data_logica_str, _ = get_turno_logico(agora)
+        data_logica = datetime.strptime(data_logica_str, '%d/%m/%Y').date()
+        alvo = datetime.combine(data_logica, h, tzinfo=FUSO_BR)
+
+        # Horários da madrugada pertencem ao 3º turno iniciado no dia lógico.
+        turno_prog = obter_turno_por_horario(hora)
+        if turno_prog == '3° TURNO' and h < dtime(6, 30):
+            alvo += timedelta(days=1)
+
+        delta = int((alvo - agora).total_seconds() // 60)
+        # Se ficou mais de 12h para trás, trata como a próxima ocorrência do
+        # horário. É apenas uma proteção porque o status não guarda a data.
+        if delta < -(12 * 60):
+            alvo += timedelta(days=1)
+            delta = int((alvo - agora).total_seconds() // 60)
+
+        if delta > 0:
+            return {'hora':hora, 'prefixo':f'programada {hora}', 'tempo':f'em {_tempo_curto_home(delta)}', 'delta':delta, 'ordem':delta}
+        if delta < 0:
+            atraso = abs(delta)
+            return {'hora':hora, 'prefixo':f'programada {hora}', 'tempo':f'atrasada {_tempo_curto_home(atraso)}', 'delta':delta, 'ordem':-100000-atraso}
+        return {'hora':hora, 'prefixo':f'programada {hora}', 'tempo':'agora', 'delta':0, 'ordem':-100000}
+    except Exception:
+        return {'hora':hora, 'prefixo':f'programada {hora}', 'tempo':'—', 'delta':None, 'ordem':10**9}
+
+
+def _inicios_preparacao_ativa_home():
+    """Primeiro PREPARANDO do ciclo ativo, sem reiniciar ao trocar preparador."""
+    try:
+        df = pd.read_csv(ARQUIVO_DADOS)
+    except Exception:
+        return {}
+    if df.empty or 'Maquina' not in df.columns:
+        return {}
+    saida = {}
+    for maq, dfm in df.groupby('Maquina', sort=False):
+        inicio = ''
+        ativo = False
+        for _, row in dfm.iterrows():
+            st_up = str(row.get('Status', '')).strip().upper()
+            if st_up.startswith('PREPARANDO'):
+                if not ativo:
+                    inicio = str(row.get('Hora', '') or '').strip()
+                    ativo = True
+            elif (
+                st_up.startswith('PRODUZINDO') or st_up.startswith('PARADA') or
+                st_up.startswith('MANUTENÇÃO') or st_up.startswith('MANUTENCAO')
+            ):
+                inicio = ''
+                ativo = False
+        if ativo and inicio:
+            saida[str(maq).strip()] = inicio
+    return saida
+
+
+def _render_prep_item(setor, maq, status, hora_inicio, operador, tipo, tempo_info=None):
+    if tipo == 'ativa':
+        tempo = _tempo_curto_home(_minutos_status_home(hora_inicio))
+        prefixo = 'há'
+    else:
+        info = tempo_info or _info_programacao_home(status)
+        tempo = info.get('tempo', 'Sem horário')
+        prefixo = info.get('prefixo', '')
     status_curto = html.escape(str(status).split('[')[0].strip())
     op = html.escape(str(operador).strip()) if operador else ''
     meta = html.escape(setor)
@@ -3037,15 +3168,175 @@ def _render_prep_item(setor, maq, status, hora_inicio, operador, tipo):
         meta += f' · {op}'
     classe = 'active' if tipo == 'ativa' else 'waiting'
     icone = '▶' if tipo == 'ativa' else '◷'
-    return f'''<div class="prep-item {classe}">
+    return f"""<div class="prep-item {classe}">
 <div class="prep-ico">{icone}</div>
 <div style="min-width:0">
 <div class="prep-machine">Máquina {html.escape(maq)}</div>
 <div class="prep-status">{status_curto}</div>
 <div class="prep-meta">{meta}</div>
 </div>
-<div class="prep-time"><span>há</span>{tempo}</div>
-</div>'''
+<div class="prep-time"><span>{html.escape(str(prefixo))}</span>{html.escape(str(tempo))}</div>
+</div>"""
+
+
+def _normalizar_setup_home(txt):
+    return unicodedata.normalize('NFKD', str(txt or '').upper()).encode('ASCII', 'ignore').decode('ASCII')
+
+
+def _categoria_setup_home(setor, status):
+    """Classificação pedida para o desempenho mensal."""
+    up = _normalizar_setup_home(status)
+    setor = str(setor or '').upper()
+    if setor == 'RTF':
+        if 'GUIA' in up:
+            return 'rtf_guia'
+        if 'HASTE' in up:
+            return 'rtf_haste'
+    elif setor == 'AFC':
+        if 'SEQUENCIA' in up:
+            return 'afc_sequencia'
+        if 'PREPARACAO' in up:
+            return 'afc_preparacao'
+    return None
+
+
+def _resultado_turso_df(result):
+    cols = [c.get('name') for c in result.get('cols', [])]
+    rows = [[_turso_decode(v) for v in row] for row in result.get('rows', [])]
+    return pd.DataFrame(rows, columns=cols)
+
+
+def _datetime_evento_setup_home(data_str, hora_str, turno=''):
+    try:
+        base = datetime.strptime(str(data_str).strip(), '%d/%m/%Y')
+        h = datetime.strptime(str(hora_str).strip(), '%H:%M')
+        dt = datetime(base.year, base.month, base.day, h.hour, h.minute, tzinfo=FUSO_BR)
+        if str(turno).strip() == '3° TURNO' and h.hour < 7:
+            dt += timedelta(days=1)
+        return dt
+    except Exception:
+        return None
+
+
+def _metricas_setups_mes_home(agora=None):
+    """Quantidade e tempo médio dos SETUPS CONCLUÍDOS no mês atual."""
+    agora = agora or datetime.now(FUSO_BR)
+    primeiro_mes = datetime(agora.year, agora.month, 1, tzinfo=FUSO_BR)
+    mes_anterior = (primeiro_mes - timedelta(days=1)).strftime('%m/%Y')
+    mes_atual = primeiro_mes.strftime('%m/%Y')
+    partes = []
+    try:
+        if tabela_existe(ARQUIVO_HISTORICO_EVENTOS):
+            tab = _quote_identifier(ARQUIVO_HISTORICO_EVENTOS)
+            result = turso_request(
+                f"""SELECT rowid AS "_ord", "Setor", "Maquina", "Status", "Hora", "Data_Registro", "Turno_Registro"
+                    FROM {tab}
+                    WHERE substr("Data_Registro", 4, 7) IN (?, ?)""",
+                [mes_anterior, mes_atual], True
+            )
+            dfh = _resultado_turso_df(result)
+            if not dfh.empty:
+                dfh['_fonte'] = 'hist'
+                partes.append(dfh)
+    except Exception:
+        pass
+    try:
+        if tabela_existe(ARQUIVO_DADOS):
+            tab = _quote_identifier(ARQUIVO_DADOS)
+            result = turso_request(
+                f"""SELECT rowid AS "_ord", "Setor", "Maquina", "Status", "Hora" FROM {tab} ORDER BY rowid""",
+                want_rows=True
+            )
+            dfc = _resultado_turso_df(result)
+            if not dfc.empty:
+                data_logica, turno_logico = get_turno_logico()
+                dfc['Data_Registro'] = data_logica
+                dfc['Turno_Registro'] = turno_logico
+                dfc['_fonte'] = 'atual'
+                partes.append(dfc)
+    except Exception:
+        pass
+    chaves = ['rtf_guia','rtf_haste','afc_preparacao','afc_sequencia']
+    saida = {k:{'qtd':0, 'media':0, 'duracoes':[]} for k in chaves}
+    if not partes:
+        return saida
+    df = pd.concat(partes, ignore_index=True, sort=False)
+    for c in ['Setor','Maquina','Status','Hora','Data_Registro','Turno_Registro']:
+        if c not in df.columns:
+            df[c] = ''
+        df[c] = df[c].fillna('').astype(str)
+    df = df.drop_duplicates(subset=['Setor','Maquina','Status','Hora','Data_Registro'], keep='last').copy()
+    df['_dt'] = [
+        _datetime_evento_setup_home(d, h, t)
+        for d, h, t in zip(df['Data_Registro'], df['Hora'], df['Turno_Registro'])
+    ]
+    df = df[df['_dt'].notna()].copy()
+    if df.empty:
+        return saida
+    if '_ord' not in df.columns:
+        df['_ord'] = 0
+    df['_ord'] = pd.to_numeric(df['_ord'], errors='coerce').fillna(0)
+    df = df.sort_values(['Maquina','_dt','_ord'], kind='stable')
+    registros = []
+    for maq, dfm in df.groupby('Maquina', sort=False):
+        categoria_pendente = None
+        categoria_ativa = None
+        inicio_ativo = None
+        for _, row in dfm.iterrows():
+            setor = str(row['Setor']).upper().strip()
+            status = str(row['Status'])
+            up = _normalizar_setup_home(status).strip()
+            dt = row['_dt']
+            if up.startswith('PREPARACAO') or up.startswith('SEQUENCIA') or up.startswith('AGUARDANDO'):
+                cat = _categoria_setup_home(setor, status)
+                if cat:
+                    categoria_pendente = cat
+                continue
+            if up.startswith('PREPARANDO'):
+                if 'TROCA DE REBOLO ADIANTADA' in up:
+                    continue
+                if inicio_ativo is None:
+                    inicio_ativo = dt
+                    categoria_ativa = categoria_pendente or _categoria_setup_home(setor, status)
+                continue
+            if up.startswith('PRODUZINDO'):
+                if inicio_ativo is not None and categoria_ativa in saida:
+                    dur = int((dt - inicio_ativo).total_seconds() // 60)
+                    if 0 <= dur <= 12 * 60 and dt.year == agora.year and dt.month == agora.month:
+                        registros.append((categoria_ativa, dur))
+                inicio_ativo = None
+                categoria_ativa = None
+                categoria_pendente = None
+                continue
+            if up.startswith('PARADA') or up.startswith('MANUTENCAO'):
+                inicio_ativo = None
+                categoria_ativa = None
+                categoria_pendente = None
+    for cat, dur in registros:
+        saida[cat]['duracoes'].append(dur)
+    for cat in chaves:
+        durs = saida[cat]['duracoes']
+        saida[cat]['qtd'] = len(durs)
+        saida[cat]['media'] = round(sum(durs) / len(durs)) if durs else 0
+    return saida
+
+
+def _render_setup_metric_card(titulo, dados, icone, cor):
+    qtd = int(dados.get('qtd', 0))
+    media = int(dados.get('media', 0))
+    tempo = _tempo_curto_home(media) if qtd else '—'
+    return f"""<div class="setup-metric-card" style="--setup-color:{cor}">
+<div class="setup-metric-head"><span>{html.escape(titulo)}</span><b>{icone}</b></div>
+<div class="setup-metric-main"><strong>{qtd}</strong><span>setups concluídos</span></div>
+<div class="setup-metric-average"><span>Tempo médio no mês</span><b>{tempo}</b></div>
+</div>"""
+
+
+def _media_setor_setup_home(metricas, chaves):
+    durs = []
+    for chave in chaves:
+        durs.extend(metricas.get(chave, {}).get('duracoes', []))
+    return (len(durs), round(sum(durs)/len(durs)) if durs else 0)
 
 
 def _acoes_rapidas_home(perfil):
@@ -3180,6 +3471,8 @@ def tela_menu():
     total_maquinas = len(TODAS_AFC) + len(TODAS_RTF)
 
     agora = datetime.now(FUSO_BR)
+    metricas_mes = _metricas_setups_mes_home(agora)
+    inicios_ativos = _inicios_preparacao_ativa_home()
     hora = agora.hour
     saudacao = 'Bom dia' if 5 <= hora < 12 else ('Boa tarde' if 12 <= hora < 18 else 'Boa noite')
     nome_raw = str(st.session_state.get('operador', '')).strip()
@@ -3211,8 +3504,16 @@ def tela_menu():
             if not tipo:
                 continue
             meta = estado_meta.get(chave, {})
-            hora_inicio = meta.get('hora', '')
-            mins = _minutos_status_home(hora_inicio)
+            if tipo == 'ativa':
+                hora_inicio = inicios_ativos.get(chave) or meta.get('hora', '')
+                mins = _minutos_status_home(hora_inicio)
+                tempo_info = None
+                ordem = -mins  # mais antigas primeiro
+            else:
+                hora_inicio = ''
+                mins = 0
+                tempo_info = _info_programacao_home(st_val, agora)
+                ordem = tempo_info.get('ordem', 10**9)
             preparacoes[tipo].append({
                 'setor': setor,
                 'maq': maq,
@@ -3220,10 +3521,13 @@ def tela_menu():
                 'hora': hora_inicio,
                 'operador': meta.get('operador', ''),
                 'mins': mins,
+                'tempo_info': tempo_info,
+                'ordem': ordem,
             })
 
-    preparacoes['ativa'].sort(key=lambda x: (-x['mins'], x['setor'], x['maq']))
-    preparacoes['aguardando'].sort(key=lambda x: (-x['mins'], x['setor'], x['maq']))
+    preparacoes['ativa'].sort(key=lambda x: (x['ordem'], x['setor'], x['maq']))
+    # Atrasadas primeiro; depois as próximas programações; sem horário ficam no fim.
+    preparacoes['aguardando'].sort(key=lambda x: (x['ordem'], x['setor'], x['maq']))
 
     def montar_lista(tipo, limite=6):
         itens = preparacoes[tipo]
@@ -3231,7 +3535,10 @@ def tela_menu():
             txt = 'Nenhuma preparação ativa.' if tipo == 'ativa' else 'Nenhuma máquina aguardando preparação.'
             return f'<div class="prep-empty">{txt}</div>'
         html_itens = ''.join(
-            _render_prep_item(x['setor'], x['maq'], x['status'], x['hora'], x['operador'], tipo)
+            _render_prep_item(
+                x['setor'], x['maq'], x['status'], x['hora'], x['operador'], tipo,
+                tempo_info=x.get('tempo_info')
+            )
             for x in itens[:limite]
         )
         if len(itens) > limite:
@@ -3241,8 +3548,8 @@ def tela_menu():
     st.markdown(textwrap.dedent(f'''
     <div class="dashboard-grid">
         <div class="dash-panel">
-            <div class="dash-panel-title">Desempenho por setor</div>
-            <div class="dash-panel-sub">Percentual de máquinas em produção e situação das preparações</div>
+            <div class="dash-panel-title">Produção por setor</div>
+            <div class="dash-panel-sub">Máquinas aguardando setup continuam contabilizadas como produção</div>
             {_render_setor_bar('Afiação', resumo_afc)}
             {_render_setor_bar('Retífica', resumo_rtf)}
         </div>
@@ -3257,6 +3564,37 @@ def tela_menu():
             <div class="prep-list">{montar_lista('ativa')}</div>
             <div class="prep-section-title"><span>◷ Aguardando preparação</span><span class="prep-section-count">{totais['prep_aguardando']}</span></div>
             <div class="prep-list">{montar_lista('aguardando')}</div>
+        </div>
+    </div>
+    '''), unsafe_allow_html=True)
+
+    meses_pt = {
+        1:'Janeiro',2:'Fevereiro',3:'Março',4:'Abril',5:'Maio',6:'Junho',
+        7:'Julho',8:'Agosto',9:'Setembro',10:'Outubro',11:'Novembro',12:'Dezembro'
+    }
+    qtd_rtf, media_rtf = _media_setor_setup_home(metricas_mes, ['rtf_guia','rtf_haste'])
+    qtd_afc, media_afc = _media_setor_setup_home(metricas_mes, ['afc_preparacao','afc_sequencia'])
+    media_rtf_txt = _tempo_curto_home(media_rtf) if qtd_rtf else '—'
+    media_afc_txt = _tempo_curto_home(media_afc) if qtd_afc else '—'
+
+    st.markdown(textwrap.dedent(f'''
+    <div class="setup-month-panel">
+        <div class="setup-month-top">
+            <div>
+                <div class="setup-month-title">Desempenho mensal de setups</div>
+                <div class="setup-month-sub">Quantidade concluída e média do tempo em preparação ativa (PREPARANDO → PRODUZINDO)</div>
+            </div>
+            <div class="setup-month-badge">{meses_pt.get(agora.month, agora.strftime('%m'))} / {agora.year}</div>
+        </div>
+        <div class="setup-sector-summary">
+            <div class="setup-sector-pill"><span>Retífica</span><b>{qtd_rtf} setups · média {media_rtf_txt}</b></div>
+            <div class="setup-sector-pill"><span>Afiação</span><b>{qtd_afc} setups · média {media_afc_txt}</b></div>
+        </div>
+        <div class="setup-month-grid">
+            {_render_setup_metric_card('Retífica · Guia', metricas_mes['rtf_guia'], 'G', '#60A5FA')}
+            {_render_setup_metric_card('Retífica · Haste', metricas_mes['rtf_haste'], 'H', '#A78BFA')}
+            {_render_setup_metric_card('Afiação · Preparação', metricas_mes['afc_preparacao'], 'P', '#2DD4BF')}
+            {_render_setup_metric_card('Afiação · Sequência', metricas_mes['afc_sequencia'], 'S', '#F59E0B')}
         </div>
     </div>
     '''), unsafe_allow_html=True)
