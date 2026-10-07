@@ -4881,6 +4881,62 @@ def tela_equipe():
         df_eq = pd.read_csv(ARQUIVO_EQUIPE)
         if not df_eq.empty: st.dataframe(df_eq, use_container_width=True, hide_index=True)
 
+def _normalizar_hora_edicao(valor):
+    """Normaliza valores vindos do data_editor para HH:MM."""
+    try:
+        if pd.isna(valor):
+            return ""
+    except Exception:
+        pass
+    if isinstance(valor, dtime):
+        return valor.strftime("%H:%M")
+    txt = str(valor).strip()
+    m = re.search(r"(?<!\d)(\d{1,2}):(\d{2})(?::\d{2})?(?!\d)", txt)
+    if m:
+        try:
+            h = int(m.group(1)); minuto = int(m.group(2))
+            if 0 <= h <= 23 and 0 <= minuto <= 59:
+                return f"{h:02d}:{minuto:02d}"
+        except Exception:
+            pass
+    return txt
+
+
+def _sincronizar_hora_escrita_status(status, hora_nova):
+    """Atualiza a hora escrita no Status quando o registro é uma programação.
+
+    A coluna Hora é a fonte editável na tela Correção de Apontamentos. Alguns
+    status também carregam a programação dentro do próprio texto; sem sincronizar
+    os dois, a interface continuava mostrando o horário antigo.
+    """
+    status = str(status or "")
+    hora_nova = _normalizar_hora_edicao(hora_nova)
+    if not re.fullmatch(r"\d{2}:\d{2}", hora_nova or ""):
+        return status
+
+    # Em PREPARANDO, Hora representa o início real do setup; [AGENDADO] continua
+    # sendo a programação original e não deve ser sobrescrita ao corrigir o início.
+    if _normalizar_setup_home(status).startswith("PREPARANDO"):
+        return status
+
+    status = re.sub(
+        r"(?i)(AGENDADA\s+PARA\s+)\d{1,2}:\d{2}",
+        lambda m: m.group(1) + hora_nova,
+        status,
+    )
+    status = re.sub(
+        r"(?i)(\[AGENDADO:\s*)\d{1,2}:\d{2}(\s*\])",
+        lambda m: m.group(1) + hora_nova + m.group(2),
+        status,
+    )
+    status = re.sub(
+        r"(?i)(\[FIM\s+PREVISTO:\s*)\d{1,2}:\d{2}(\s*\])",
+        lambda m: m.group(1) + hora_nova + m.group(2),
+        status,
+    )
+    return status
+
+
 def tela_editar():
     botao_navegar("⬅️️ Voltar ao Menu", 'menu')
     st.markdown("#### ✏️ Correção de Apontamentos")
@@ -4916,11 +4972,26 @@ def tela_editar():
             if indices_apagados: df_maq = df_maq.drop(index=indices_apagados)
             
             for idx, row in df_editado.iterrows():
+                hora_nova = _normalizar_hora_edicao(row.get('Hora', ''))
+                status_novo = str(row.get('Status', ''))
+
                 if idx in df_maq.index:
-                    df_maq.at[idx, 'Status'] = str(row['Status'])
-                    df_maq.at[idx, 'Hora'] = str(row['Hora']).strip()
+                    hora_antiga = _normalizar_hora_edicao(df_maq.at[idx, 'Hora'])
+                    # Se o usuário mudou a coluna Hora, sincroniza também qualquer
+                    # horário programado que esteja escrito dentro do Status.
+                    if hora_nova != hora_antiga:
+                        status_novo = _sincronizar_hora_escrita_status(status_novo, hora_nova)
+                    df_maq.at[idx, 'Status'] = status_novo
+                    df_maq.at[idx, 'Hora'] = hora_nova
                 else:
-                    nova_linha = pd.DataFrame([{"Setor": row.get('Setor', ''), "Maquina": row.get('Maquina', ''), "Operador": row.get('Operador', ''), "Status": str(row.get('Status', '')), "Hora": str(row.get('Hora', '')).strip()}])
+                    status_novo = _sincronizar_hora_escrita_status(status_novo, hora_nova)
+                    nova_linha = pd.DataFrame([{
+                        "Setor": row.get('Setor', ''),
+                        "Maquina": row.get('Maquina', ''),
+                        "Operador": row.get('Operador', ''),
+                        "Status": status_novo,
+                        "Hora": hora_nova,
+                    }])
                     df_maq = pd.concat([df_maq, nova_linha], ignore_index=True)
             df_maq.to_csv(ARQUIVO_DADOS, index=False)
             st.success("✨ Banco de dados atualizado com sucesso!")
