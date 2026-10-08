@@ -5132,83 +5132,195 @@ def tela_relatorio():
 
 
 # =============================================================
-# REDESIGN V10.4 — ARMÁRIOS / GAVETAS DE ORDEM
+# REDESIGN V10.5 — ARMÁRIOS MAIS LIMPOS / LEGÍVEIS
 # Somente apresentação. A persistência e as regras existentes continuam iguais.
 # =============================================================
 CSS_ARMARIOS_V104 = r"""
 <style>
+    /* V10.5 — Armários mais limpos e legíveis */
     .armario-hero {
-        display:flex;align-items:flex-end;justify-content:space-between;gap:14px;
-        padding:17px 18px;margin:4px 0 13px;border-radius:18px;
+        display:flex;align-items:center;justify-content:space-between;gap:18px;
+        padding:20px 22px;margin:6px 0 18px;border-radius:19px;
         background:linear-gradient(135deg,rgba(139,92,246,.12),rgba(45,212,191,.055));
         border:1px solid rgba(139,92,246,.20);box-shadow:0 14px 38px rgba(0,0,0,.15);
     }
-    .armario-hero-kicker {font-size:9px;font-weight:900;letter-spacing:.9px;text-transform:uppercase;color:#A78BFA;}
-    .armario-hero-title {font-size:22px;font-weight:950;color:#F4F4F5;margin-top:3px;letter-spacing:-.45px;}
-    .armario-hero-sub {font-size:10px;font-weight:700;color:#858590;margin-top:4px;}
-    .armario-hero-live {font-size:9px;font-weight:900;color:#5EEAD4;padding:6px 9px;border-radius:999px;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.16);white-space:nowrap;}
+    .armario-hero-kicker {
+        font-size:11px;font-weight:900;letter-spacing:.8px;text-transform:uppercase;color:#A78BFA;
+    }
+    .armario-hero-title {
+        font-size:27px;font-weight:950;color:#F4F4F5;margin-top:4px;letter-spacing:-.55px;
+    }
+    .armario-hero-sub {
+        font-size:13px;font-weight:700;color:#9A9AA5;margin-top:7px;line-height:1.45;
+    }
+    .armario-hero-live {
+        font-size:11px;font-weight:900;color:#5EEAD4;padding:8px 11px;border-radius:999px;
+        background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.16);white-space:nowrap;
+    }
 
-    .armario-summary-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:0 0 13px;}
-    .armario-summary-card {padding:12px 13px;border-radius:14px;background:rgba(24,24,33,.94);border:1px solid rgba(255,255,255,.075);box-shadow:0 8px 22px rgba(0,0,0,.12);}
-    .armario-summary-label {font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:.65px;color:#73737E;}
-    .armario-summary-value {font-size:23px;line-height:1;font-weight:950;color:#F4F4F5;margin-top:7px;}
-    .armario-summary-foot {font-size:8px;font-weight:750;color:#696974;margin-top:5px;}
-    .armario-summary-card.ok {border-top:2px solid #2DD4BF;}
-    .armario-summary-card.free {border-top:2px solid #EF4444;}
-    .armario-summary-card.op {border-top:2px solid #60A5FA;}
-    .armario-summary-card.wait {border-top:2px solid #F59E0B;}
+    /* Resumo reduzido: só o que importa */
+    .armario-summary-grid {
+        display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:0 0 18px;
+    }
+    .armario-summary-card {
+        padding:16px 17px;border-radius:15px;background:rgba(24,24,33,.94);
+        border:1px solid rgba(255,255,255,.075);box-shadow:0 8px 22px rgba(0,0,0,.12);
+    }
+    .armario-summary-label {
+        font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.6px;color:#92929D;
+    }
+    .armario-summary-value {
+        font-size:30px;line-height:1;font-weight:950;color:#F4F4F5;margin-top:9px;
+    }
+    .armario-summary-foot {
+        font-size:11px;font-weight:750;color:#858590;margin-top:7px;
+    }
+    .armario-summary-card.ok {border-top:3px solid #2DD4BF;}
+    .armario-summary-card.free {border-top:3px solid #EF4444;}
+    .armario-summary-card.wait {border-top:3px solid #F59E0B;}
 
-    .armario-panel-head {padding:12px 13px 10px;margin:3px 0 8px;border-radius:13px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.065);}
-    .armario-panel-top {display:flex;align-items:center;justify-content:space-between;gap:10px;}
-    .armario-panel-name {font-size:12px;font-weight:950;color:#EDEDF1;}
-    .armario-panel-count {font-size:9px;font-weight:900;color:#AFAFBA;white-space:nowrap;}
-    .armario-progress {height:6px;border-radius:999px;background:rgba(255,255,255,.055);overflow:hidden;margin-top:8px;}
-    .armario-progress-fill {height:100%;border-radius:999px;background:linear-gradient(90deg,#8B5CF6,#2DD4BF);}
-    .armario-panel-meta {display:flex;gap:10px;flex-wrap:wrap;margin-top:7px;font-size:8px;font-weight:800;color:#71717C;}
-    .armario-panel-meta b {color:#CFCFD6;}
+    /* Cabeçalho de cada armário */
+    .armario-panel-head {
+        padding:16px 17px 14px;margin:9px 0 13px;border-radius:15px;
+        background:rgba(255,255,255,.028);border:1px solid rgba(255,255,255,.07);
+    }
+    .armario-panel-top {
+        display:flex;align-items:center;justify-content:space-between;gap:14px;
+    }
+    .armario-panel-name {
+        font-size:16px;font-weight:950;color:#F1F1F4;
+    }
+    .armario-panel-count {
+        font-size:13px;font-weight:900;color:#C3C3CB;white-space:nowrap;
+    }
+    .armario-progress {
+        height:8px;border-radius:999px;background:rgba(255,255,255,.06);overflow:hidden;margin-top:12px;
+    }
+    .armario-progress-fill {
+        height:100%;border-radius:999px;background:linear-gradient(90deg,#8B5CF6,#2DD4BF);
+    }
 
-    .armario-legend {display:flex;gap:7px;flex-wrap:wrap;margin:9px 0 13px;}
-    .armario-legend span {display:inline-flex;align-items:center;gap:5px;font-size:8px;font-weight:850;color:#8A8A95;padding:5px 7px;border-radius:999px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.055);}
+    .armario-legend {
+        display:flex;gap:9px;flex-wrap:wrap;margin:13px 0 19px;
+    }
+    .armario-legend span {
+        display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:850;color:#A4A4AE;
+        padding:7px 9px;border-radius:999px;background:rgba(255,255,255,.028);
+        border:1px solid rgba(255,255,255,.06);
+    }
 
-    /* Cartões clicáveis das gavetas */
+    /* Cartões: 3 linhas de informação, fonte maior */
     [class*="st-key-armcard_"] div[data-testid="stButton"] > button,
     [class*="st-key-armcard_"] button {
-        min-height:104px !important;height:104px !important;
-        padding:9px 7px !important;border-radius:14px !important;
-        white-space:pre-line !important;line-height:1.26 !important;
+        min-height:118px !important;height:118px !important;
+        padding:16px 15px !important;border-radius:15px !important;
+        white-space:pre-line !important;line-height:1.48 !important;
         text-align:left !important;justify-content:flex-start !important;align-items:flex-start !important;
-        font-size:10px !important;font-weight:850 !important;
+        font-size:14px !important;font-weight:850 !important;
         box-shadow:0 8px 20px rgba(0,0,0,.13) !important;
         overflow:hidden !important;
     }
-    [class*="st-key-armcard_"] button p {white-space:pre-line !important;text-align:left !important;line-height:1.26 !important;width:100% !important;}
+    [class*="st-key-armcard_"] button p {
+        white-space:pre-line !important;text-align:left !important;line-height:1.48 !important;width:100% !important;
+        font-size:14px !important;
+    }
 
-    [class*="st-key-armcard_vazio_"] button {background:rgba(239,68,68,.055)!important;border:1px solid rgba(239,68,68,.22)!important;color:#FCA5A5!important;}
-    [class*="st-key-armcard_op_"] button,[class*="st-key-armcard_ocupado_"] button {background:rgba(45,212,191,.055)!important;border:1px solid rgba(45,212,191,.20)!important;color:#D5FFFA!important;}
-    [class*="st-key-armcard_jagura_"] button {background:rgba(245,158,11,.065)!important;border:1px solid rgba(245,158,11,.24)!important;color:#FCD34D!important;}
-    [class*="st-key-armcard_almox_"] button {background:rgba(96,165,250,.065)!important;border:1px solid rgba(96,165,250,.24)!important;color:#BFDBFE!important;}
-    [class*="st-key-armcard_pcp_"] button {background:rgba(167,139,250,.065)!important;border:1px solid rgba(167,139,250,.24)!important;color:#DDD6FE!important;}
-    [class*="st-key-armcard_prep_"] button {background:rgba(249,115,22,.065)!important;border:1px solid rgba(249,115,22,.24)!important;color:#FED7AA!important;}
-    [class*="st-key-armcard_seq_"] button {background:rgba(217,119,6,.07)!important;border:1px solid rgba(217,119,6,.26)!important;color:#FDE68A!important;}
-    [class*="st-key-armcard_"] button:hover {transform:translateY(-2px)!important;filter:brightness(1.07);}
+    [class*="st-key-armcard_vazio_"] button {
+        background:rgba(239,68,68,.055)!important;border:1px solid rgba(239,68,68,.24)!important;color:#FCA5A5!important;
+    }
+    [class*="st-key-armcard_op_"] button,
+    [class*="st-key-armcard_ocupado_"] button {
+        background:rgba(45,212,191,.055)!important;border:1px solid rgba(45,212,191,.22)!important;color:#D5FFFA!important;
+    }
+    [class*="st-key-armcard_jagura_"] button {
+        background:rgba(245,158,11,.07)!important;border:1px solid rgba(245,158,11,.26)!important;color:#FCD34D!important;
+    }
+    [class*="st-key-armcard_almox_"] button {
+        background:rgba(96,165,250,.07)!important;border:1px solid rgba(96,165,250,.26)!important;color:#BFDBFE!important;
+    }
+    [class*="st-key-armcard_pcp_"] button {
+        background:rgba(167,139,250,.07)!important;border:1px solid rgba(167,139,250,.26)!important;color:#DDD6FE!important;
+    }
+    [class*="st-key-armcard_prep_"] button {
+        background:rgba(249,115,22,.07)!important;border:1px solid rgba(249,115,22,.26)!important;color:#FED7AA!important;
+    }
+    [class*="st-key-armcard_seq_"] button {
+        background:rgba(217,119,6,.075)!important;border:1px solid rgba(217,119,6,.28)!important;color:#FDE68A!important;
+    }
+    [class*="st-key-armcard_"] button:hover {
+        transform:translateY(-2px)!important;filter:brightness(1.07);
+    }
 
-    .armario-selected {padding:15px 16px;margin:4px 0 15px;border-radius:16px;background:linear-gradient(135deg,rgba(45,212,191,.08),rgba(139,92,246,.07));border:1px solid rgba(45,212,191,.17);}
-    .armario-selected-top {display:flex;align-items:center;justify-content:space-between;gap:12px;}
-    .armario-selected-title {font-size:15px;font-weight:950;color:#F4F4F5;}
-    .armario-selected-sub {font-size:9px;color:#7C7C87;font-weight:750;margin-top:3px;}
-    .armario-selected-status {font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.5px;color:#5EEAD4;border:1px solid rgba(45,212,191,.18);background:rgba(45,212,191,.06);padding:5px 8px;border-radius:999px;}
-    .armario-selected-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:11px;}
-    .armario-selected-box {padding:8px 9px;border-radius:10px;background:rgba(0,0,0,.15);border:1px solid rgba(255,255,255,.05);}
-    .armario-selected-box span {display:block;font-size:7px;font-weight:900;text-transform:uppercase;letter-spacing:.55px;color:#6F6F7A;}
-    .armario-selected-box b {display:block;font-size:10px;color:#D8D8DE;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    /* Detalhe aparece só depois do clique */
+    .armario-selected {
+        padding:19px 20px;margin:6px 0 18px;border-radius:17px;
+        background:linear-gradient(135deg,rgba(45,212,191,.08),rgba(139,92,246,.07));
+        border:1px solid rgba(45,212,191,.17);
+    }
+    .armario-selected-top {
+        display:flex;align-items:center;justify-content:space-between;gap:14px;
+    }
+    .armario-selected-title {
+        font-size:20px;font-weight:950;color:#F4F4F5;
+    }
+    .armario-selected-sub {
+        font-size:12px;color:#9898A3;font-weight:750;margin-top:5px;
+    }
+    .armario-selected-status {
+        font-size:10px;font-weight:950;text-transform:uppercase;letter-spacing:.5px;color:#5EEAD4;
+        border:1px solid rgba(45,212,191,.18);background:rgba(45,212,191,.06);
+        padding:7px 10px;border-radius:999px;
+    }
+    .armario-selected-grid {
+        display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:14px;
+    }
+    .armario-selected-box {
+        padding:12px 13px;border-radius:11px;background:rgba(0,0,0,.16);border:1px solid rgba(255,255,255,.055);
+    }
+    .armario-selected-box span {
+        display:block;font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.55px;color:#81818C;
+    }
+    .armario-selected-box b {
+        display:block;font-size:14px;color:#E4E4E8;margin-top:5px;white-space:normal;overflow-wrap:anywhere;
+    }
 
-    @media (max-width:768px) {
-        .armario-summary-grid {grid-template-columns:1fr 1fr;gap:7px;}
-        .armario-hero {align-items:flex-start;padding:14px;}.armario-hero-title{font-size:19px}.armario-hero-live{display:none;}
-        .armario-selected-grid {grid-template-columns:1fr 1fr;}
-        [class*="st-key-armgrid_"] div[data-testid="stHorizontalBlock"] {gap:.55rem!important;flex-wrap:wrap!important;}
-        [class*="st-key-armgrid_"] div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {min-width:calc(50% - .4rem)!important;flex:1 1 calc(50% - .4rem)!important;}
-        [class*="st-key-armcard_"] div[data-testid="stButton"] > button,[class*="st-key-armcard_"] button {min-height:96px!important;height:96px!important;font-size:9px!important;}
+    /* Desktop: 3 por linha */
+    [class*="st-key-armgrid_"] div[data-testid="stHorizontalBlock"] {
+        gap:1rem!important;
+    }
+
+    /* Tablet: 2 por linha */
+    @media (max-width:1050px) {
+        .armario-summary-grid {grid-template-columns:1fr 1fr 1fr;}
+        [class*="st-key-armgrid_"] div[data-testid="stHorizontalBlock"] {
+            gap:.85rem!important;flex-wrap:wrap!important;
+        }
+        [class*="st-key-armgrid_"] div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+            min-width:calc(50% - .5rem)!important;flex:1 1 calc(50% - .5rem)!important;
+        }
+    }
+
+    /* Celular: 1 por linha e letras grandes */
+    @media (max-width:650px) {
+        .armario-summary-grid {grid-template-columns:1fr;gap:9px;}
+        .armario-hero {align-items:flex-start;padding:17px;}
+        .armario-hero-title {font-size:23px;}
+        .armario-hero-sub {font-size:13px;}
+        .armario-hero-live {display:none;}
+        .armario-panel-name {font-size:15px;}
+        .armario-panel-count {font-size:12px;}
+        .armario-selected-grid {grid-template-columns:1fr;}
+        [class*="st-key-armgrid_"] div[data-testid="stHorizontalBlock"] {
+            gap:.75rem!important;flex-wrap:wrap!important;
+        }
+        [class*="st-key-armgrid_"] div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+            min-width:100%!important;flex:1 1 100%!important;
+        }
+        [class*="st-key-armcard_"] div[data-testid="stButton"] > button,
+        [class*="st-key-armcard_"] button {
+            min-height:112px!important;height:112px!important;font-size:15px!important;padding:16px!important;
+        }
+        [class*="st-key-armcard_"] button p {font-size:15px!important;}
     }
 </style>
 """
@@ -5252,6 +5364,7 @@ def tela_armarios():
                 <div class='armario-selected-box'><span>OP</span><b>{html.escape(_op_vis)}</b></div>
                 <div class='armario-selected-box'><span>Item</span><b>{html.escape(_item_vis)}</b></div>
                 <div class='armario-selected-box'><span>Rebolo</span><b>{html.escape(_reb_vis)}</b></div>
+                <div class='armario-selected-box'><span>Observação</span><b>{html.escape(str(obs_sel).replace('nan','').strip() or '—')}</b></div>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -5385,10 +5498,9 @@ def tela_armarios():
             <div class='armario-hero-live'>● DADOS ATUAIS</div>
         </div>
         <div class='armario-summary-grid'>
-            <div class='armario-summary-card ok'><div class='armario-summary-label'>Ocupadas</div><div class='armario-summary-value'>{ocupadas_total}</div><div class='armario-summary-foot'>{round(ocupadas_total/total_total*100)}% das posições</div></div>
+            <div class='armario-summary-card ok'><div class='armario-summary-label'>Ocupadas</div><div class='armario-summary-value'>{ocupadas_total}</div><div class='armario-summary-foot'>de {len(df_vis)} posições</div></div>
             <div class='armario-summary-card free'><div class='armario-summary-label'>Livres</div><div class='armario-summary-value'>{livres_total}</div><div class='armario-summary-foot'>disponíveis agora</div></div>
-            <div class='armario-summary-card op'><div class='armario-summary-label'>Com OP</div><div class='armario-summary-value'>{com_op_total}</div><div class='armario-summary-foot'>ordens identificadas</div></div>
-            <div class='armario-summary-card wait'><div class='armario-summary-label'>Pendências</div><div class='armario-summary-value'>{pendencias_total}</div><div class='armario-summary-foot'>Jagura / Almox. / PCP / Prep.</div></div>
+            <div class='armario-summary-card wait'><div class='armario-summary-label'>Pendências</div><div class='armario-summary-value'>{pendencias_total}</div><div class='armario-summary-foot'>itens que precisam de atenção</div></div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -5458,17 +5570,19 @@ def tela_armarios():
 
             st.markdown(f"""
             <div class='armario-panel-head'>
-                <div class='armario-panel-top'><div class='armario-panel-name'>📦 {html.escape(arm)}</div><div class='armario-panel-count'>{ocupados}/{total_gavetas} ocupadas</div></div>
+                <div class='armario-panel-top'>
+                    <div class='armario-panel-name'>📦 {html.escape(arm)}</div>
+                    <div class='armario-panel-count'>{ocupados} de {total_gavetas} ocupadas</div>
+                </div>
                 <div class='armario-progress'><div class='armario-progress-fill' style='width:{pct}%'></div></div>
-                <div class='armario-panel-meta'><span>Com OP <b>{com_op}</b></span><span>Pendências <b>{pend}</b></span><span>Ocupação <b>{pct}%</b></span></div>
             </div>
             """, unsafe_allow_html=True)
 
             gavetas = df_exibir_arm.to_dict('records')
-            for linha in range(0, len(gavetas), 4):
+            for linha in range(0, len(gavetas), 3):
                 with st.container(key=f'armgrid_{arm_idx}_{linha}'):
-                    cols_gaveta = st.columns(4)
-                    for c in range(4):
+                    cols_gaveta = st.columns(3)
+                    for c in range(3):
                         if linha + c >= len(gavetas):
                             continue
                         gav = gavetas[linha + c]
@@ -5478,14 +5592,11 @@ def tela_armarios():
                         status = str(gav.get('Status',''))
                         visual_key, ico, situacao = _visual_gaveta(gav)
                         linha_op = f'OP {op_f}' if op_f else 'SEM OP'
-                        linha_item = f'ITEM {item_f}' if item_f else 'ITEM —'
-                        btn_label = f'{ico}  MÁQ {num}\n{linha_op}\n{linha_item}\n{situacao}'
-                        help_txt = f"{arm} · Máquina {num}\nOP: {op_f or '-'}\nItem: {item_f or '-'}\nStatus: {status or '-'}\nObservação: {str(gav.get('Observacao','') or '-') }"
+                        btn_label = f'{ico}  MÁQ {num}\n{linha_op}\n{situacao}'
                         if cols_gaveta[c].button(
                             btn_label,
                             key=f'armcard_{visual_key}_{arm_idx}_{linha}_{c}',
                             use_container_width=True,
-                            help=help_txt,
                         ):
                             if st.session_state['perfil'] in ['preset', 'adm']:
                                 st.session_state['gaveta_selecionada'] = {
