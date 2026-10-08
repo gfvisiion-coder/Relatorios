@@ -1414,6 +1414,52 @@ CSS_APP = """
         .prep-time {min-width:55px;font-size:10px;}
     }
 
+
+    /* V11.3 - ajuste final do menu no celular: botões com respiro real */
+    @media (max-width:768px) {
+        .st-key-topbar_nav_native {
+            margin: 0 -2px 16px -2px !important;
+            padding: 3px 10px 8px !important;
+            overflow-x: auto !important;
+            overflow-y: hidden !important;
+            scrollbar-width: none !important;
+        }
+        .st-key-topbar_nav_native::-webkit-scrollbar { display:none !important; }
+        .st-key-topbar_nav_native div[data-testid="stHorizontalBlock"] {
+            display:flex !important;
+            flex-wrap:nowrap !important;
+            align-items:center !important;
+            gap:12px !important;
+            min-width:max-content !important;
+            padding:0 4px !important;
+        }
+        .st-key-topbar_nav_native div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+            flex:0 0 116px !important;
+            width:116px !important;
+            min-width:116px !important;
+            max-width:116px !important;
+            margin:0 !important;
+            padding:0 !important;
+        }
+        .st-key-topbar_nav_native div[data-testid="stButton"] {
+            width:116px !important;
+            margin:0 !important;
+            padding:0 !important;
+        }
+        .st-key-topbar_nav_native div[data-testid="stButton"] > button {
+            box-sizing:border-box !important;
+            width:116px !important;
+            min-width:116px !important;
+            max-width:116px !important;
+            height:42px !important;
+            min-height:42px !important;
+            margin:0 !important;
+            padding:0 9px !important;
+            border-radius:12px !important;
+            font-size:10px !important;
+        }
+    }
+
 </style>
 """
 st.markdown(CSS_APP, unsafe_allow_html=True)
