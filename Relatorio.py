@@ -5132,7 +5132,7 @@ def tela_relatorio():
 
 
 # =============================================================
-# REDESIGN V10.6 — ARMÁRIOS LIMPOS COM POSIÇÕES FÍSICAS FIXAS
+# REDESIGN V10.7 — ARMÁRIOS MENORES COM POSIÇÕES FÍSICAS FIXAS
 # Somente apresentação. A persistência e as regras existentes continuam iguais.
 # =============================================================
 CSS_ARMARIOS_V104 = r"""
@@ -5212,17 +5212,17 @@ CSS_ARMARIOS_V104 = r"""
     /* Cartões: 3 linhas de informação, fonte maior */
     [class*="st-key-armcard_"] div[data-testid="stButton"] > button,
     [class*="st-key-armcard_"] button {
-        min-height:118px !important;height:118px !important;
-        padding:16px 15px !important;border-radius:15px !important;
-        white-space:pre-line !important;line-height:1.48 !important;
+        min-height:102px !important;height:102px !important;
+        padding:12px 12px !important;border-radius:14px !important;
+        white-space:pre-line !important;line-height:1.38 !important;
         text-align:left !important;justify-content:flex-start !important;align-items:flex-start !important;
-        font-size:14px !important;font-weight:850 !important;
+        font-size:13px !important;font-weight:850 !important;
         box-shadow:0 8px 20px rgba(0,0,0,.13) !important;
         overflow:hidden !important;
     }
     [class*="st-key-armcard_"] button p {
-        white-space:pre-line !important;text-align:left !important;line-height:1.48 !important;width:100% !important;
-        font-size:14px !important;
+        white-space:pre-line !important;text-align:left !important;line-height:1.38 !important;width:100% !important;
+        font-size:13px !important;
     }
 
     [class*="st-key-armcard_vazio_"] button {
@@ -5292,22 +5292,22 @@ CSS_ARMARIOS_V104 = r"""
         scrollbar-width:thin;
     }
     [class*="st-key-armgrid_"] div[data-testid="stHorizontalBlock"] {
-        gap:.9rem!important;
+        gap:.6rem!important;
         flex-wrap:nowrap!important;
-        min-width:760px!important;
+        min-width:680px!important;
     }
     [class*="st-key-armgrid_"] div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
-        min-width:175px!important;
+        min-width:155px!important;
         flex:1 1 0!important;
     }
 
     @media (max-width:1050px) {
         .armario-summary-grid {grid-template-columns:1fr 1fr 1fr;}
         [class*="st-key-armgrid_"] div[data-testid="stHorizontalBlock"] {
-            min-width:720px!important;
+            min-width:660px!important;
         }
         [class*="st-key-armgrid_"] div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
-            min-width:165px!important;
+            min-width:150px!important;
         }
     }
 
@@ -5323,20 +5323,20 @@ CSS_ARMARIOS_V104 = r"""
 
         /* No celular não reordena: mantém as 4 posições e permite deslizar para os lados. */
         [class*="st-key-armgrid_"] div[data-testid="stHorizontalBlock"] {
-            min-width:700px!important;
-            gap:.7rem!important;
+            min-width:640px!important;
+            gap:.6rem!important;
             flex-wrap:nowrap!important;
         }
         [class*="st-key-armgrid_"] div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
-            min-width:160px!important;
-            flex:0 0 160px!important;
+            min-width:145px!important;
+            flex:0 0 145px!important;
         }
         [class*="st-key-armcard_"] div[data-testid="stButton"] > button,
         [class*="st-key-armcard_"] button {
-            min-height:112px!important;height:112px!important;
-            font-size:14px!important;padding:14px!important;
+            min-height:100px!important;height:100px!important;
+            font-size:13px!important;padding:12px!important;
         }
-        [class*="st-key-armcard_"] button p {font-size:14px!important;}
+        [class*="st-key-armcard_"] button p {font-size:13px!important;}
     }
 </style>
 """
