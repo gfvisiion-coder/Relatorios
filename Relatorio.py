@@ -5130,6 +5130,90 @@ def tela_relatorio():
             st.success("✨ Turno encerrado manualmente! O banco de dados foi limpo e está pronto para continuar.")
             st.rerun()
 
+
+# =============================================================
+# REDESIGN V10.4 — ARMÁRIOS / GAVETAS DE ORDEM
+# Somente apresentação. A persistência e as regras existentes continuam iguais.
+# =============================================================
+CSS_ARMARIOS_V104 = r"""
+<style>
+    .armario-hero {
+        display:flex;align-items:flex-end;justify-content:space-between;gap:14px;
+        padding:17px 18px;margin:4px 0 13px;border-radius:18px;
+        background:linear-gradient(135deg,rgba(139,92,246,.12),rgba(45,212,191,.055));
+        border:1px solid rgba(139,92,246,.20);box-shadow:0 14px 38px rgba(0,0,0,.15);
+    }
+    .armario-hero-kicker {font-size:9px;font-weight:900;letter-spacing:.9px;text-transform:uppercase;color:#A78BFA;}
+    .armario-hero-title {font-size:22px;font-weight:950;color:#F4F4F5;margin-top:3px;letter-spacing:-.45px;}
+    .armario-hero-sub {font-size:10px;font-weight:700;color:#858590;margin-top:4px;}
+    .armario-hero-live {font-size:9px;font-weight:900;color:#5EEAD4;padding:6px 9px;border-radius:999px;background:rgba(45,212,191,.08);border:1px solid rgba(45,212,191,.16);white-space:nowrap;}
+
+    .armario-summary-grid {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin:0 0 13px;}
+    .armario-summary-card {padding:12px 13px;border-radius:14px;background:rgba(24,24,33,.94);border:1px solid rgba(255,255,255,.075);box-shadow:0 8px 22px rgba(0,0,0,.12);}
+    .armario-summary-label {font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:.65px;color:#73737E;}
+    .armario-summary-value {font-size:23px;line-height:1;font-weight:950;color:#F4F4F5;margin-top:7px;}
+    .armario-summary-foot {font-size:8px;font-weight:750;color:#696974;margin-top:5px;}
+    .armario-summary-card.ok {border-top:2px solid #2DD4BF;}
+    .armario-summary-card.free {border-top:2px solid #EF4444;}
+    .armario-summary-card.op {border-top:2px solid #60A5FA;}
+    .armario-summary-card.wait {border-top:2px solid #F59E0B;}
+
+    .armario-panel-head {padding:12px 13px 10px;margin:3px 0 8px;border-radius:13px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.065);}
+    .armario-panel-top {display:flex;align-items:center;justify-content:space-between;gap:10px;}
+    .armario-panel-name {font-size:12px;font-weight:950;color:#EDEDF1;}
+    .armario-panel-count {font-size:9px;font-weight:900;color:#AFAFBA;white-space:nowrap;}
+    .armario-progress {height:6px;border-radius:999px;background:rgba(255,255,255,.055);overflow:hidden;margin-top:8px;}
+    .armario-progress-fill {height:100%;border-radius:999px;background:linear-gradient(90deg,#8B5CF6,#2DD4BF);}
+    .armario-panel-meta {display:flex;gap:10px;flex-wrap:wrap;margin-top:7px;font-size:8px;font-weight:800;color:#71717C;}
+    .armario-panel-meta b {color:#CFCFD6;}
+
+    .armario-legend {display:flex;gap:7px;flex-wrap:wrap;margin:9px 0 13px;}
+    .armario-legend span {display:inline-flex;align-items:center;gap:5px;font-size:8px;font-weight:850;color:#8A8A95;padding:5px 7px;border-radius:999px;background:rgba(255,255,255,.025);border:1px solid rgba(255,255,255,.055);}
+
+    /* Cartões clicáveis das gavetas */
+    [class*="st-key-armcard_"] div[data-testid="stButton"] > button,
+    [class*="st-key-armcard_"] button {
+        min-height:104px !important;height:104px !important;
+        padding:9px 7px !important;border-radius:14px !important;
+        white-space:pre-line !important;line-height:1.26 !important;
+        text-align:left !important;justify-content:flex-start !important;align-items:flex-start !important;
+        font-size:10px !important;font-weight:850 !important;
+        box-shadow:0 8px 20px rgba(0,0,0,.13) !important;
+        overflow:hidden !important;
+    }
+    [class*="st-key-armcard_"] button p {white-space:pre-line !important;text-align:left !important;line-height:1.26 !important;width:100% !important;}
+
+    [class*="st-key-armcard_vazio_"] button {background:rgba(239,68,68,.055)!important;border:1px solid rgba(239,68,68,.22)!important;color:#FCA5A5!important;}
+    [class*="st-key-armcard_op_"] button,[class*="st-key-armcard_ocupado_"] button {background:rgba(45,212,191,.055)!important;border:1px solid rgba(45,212,191,.20)!important;color:#D5FFFA!important;}
+    [class*="st-key-armcard_jagura_"] button {background:rgba(245,158,11,.065)!important;border:1px solid rgba(245,158,11,.24)!important;color:#FCD34D!important;}
+    [class*="st-key-armcard_almox_"] button {background:rgba(96,165,250,.065)!important;border:1px solid rgba(96,165,250,.24)!important;color:#BFDBFE!important;}
+    [class*="st-key-armcard_pcp_"] button {background:rgba(167,139,250,.065)!important;border:1px solid rgba(167,139,250,.24)!important;color:#DDD6FE!important;}
+    [class*="st-key-armcard_prep_"] button {background:rgba(249,115,22,.065)!important;border:1px solid rgba(249,115,22,.24)!important;color:#FED7AA!important;}
+    [class*="st-key-armcard_seq_"] button {background:rgba(217,119,6,.07)!important;border:1px solid rgba(217,119,6,.26)!important;color:#FDE68A!important;}
+    [class*="st-key-armcard_"] button:hover {transform:translateY(-2px)!important;filter:brightness(1.07);}
+
+    .armario-selected {padding:15px 16px;margin:4px 0 15px;border-radius:16px;background:linear-gradient(135deg,rgba(45,212,191,.08),rgba(139,92,246,.07));border:1px solid rgba(45,212,191,.17);}
+    .armario-selected-top {display:flex;align-items:center;justify-content:space-between;gap:12px;}
+    .armario-selected-title {font-size:15px;font-weight:950;color:#F4F4F5;}
+    .armario-selected-sub {font-size:9px;color:#7C7C87;font-weight:750;margin-top:3px;}
+    .armario-selected-status {font-size:8px;font-weight:950;text-transform:uppercase;letter-spacing:.5px;color:#5EEAD4;border:1px solid rgba(45,212,191,.18);background:rgba(45,212,191,.06);padding:5px 8px;border-radius:999px;}
+    .armario-selected-grid {display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px;margin-top:11px;}
+    .armario-selected-box {padding:8px 9px;border-radius:10px;background:rgba(0,0,0,.15);border:1px solid rgba(255,255,255,.05);}
+    .armario-selected-box span {display:block;font-size:7px;font-weight:900;text-transform:uppercase;letter-spacing:.55px;color:#6F6F7A;}
+    .armario-selected-box b {display:block;font-size:10px;color:#D8D8DE;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+
+    @media (max-width:768px) {
+        .armario-summary-grid {grid-template-columns:1fr 1fr;gap:7px;}
+        .armario-hero {align-items:flex-start;padding:14px;}.armario-hero-title{font-size:19px}.armario-hero-live{display:none;}
+        .armario-selected-grid {grid-template-columns:1fr 1fr;}
+        [class*="st-key-armgrid_"] div[data-testid="stHorizontalBlock"] {gap:.55rem!important;flex-wrap:wrap!important;}
+        [class*="st-key-armgrid_"] div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {min-width:calc(50% - .4rem)!important;flex:1 1 calc(50% - .4rem)!important;}
+        [class*="st-key-armcard_"] div[data-testid="stButton"] > button,[class*="st-key-armcard_"] button {min-height:96px!important;height:96px!important;font-size:9px!important;}
+    }
+</style>
+"""
+st.markdown(CSS_ARMARIOS_V104, unsafe_allow_html=True)
+
 def tela_armarios():
     exibir_alertas_preset()
     botao_navegar("⬅️ Voltar ao Menu", 'menu')
@@ -5151,9 +5235,24 @@ def tela_armarios():
         obs_sel = gaveta.get('observacao', '')
         rebolo_sel = gaveta.get('rebolo', '')
         
+        _op_vis = str(op_sel).replace('nan', '').replace('.0', '').strip() or '—'
+        _item_vis = str(item_sel).replace('nan', '').replace('.0', '').strip() or '—'
+        _reb_vis = str(rebolo_sel).replace('nan', '').strip() or '—'
+        _status_vis = 'LIVRE' if str(status_sel).upper() == 'VAZIO' else str(status_sel).upper()
         st.markdown(f"""
-        <div style='background: #18181B; padding: 15px; border-radius: 10px; border-left: 4px solid #14B8A6; margin-bottom: 20px;'>
-            <h4 style='margin:0; color: #2DD4BF;'>⚙ Gerenciar: {arm_sel} - MÁQUINA {pos_sel}</h4>
+        <div class='armario-selected'>
+            <div class='armario-selected-top'>
+                <div>
+                    <div class='armario-selected-title'>Gaveta da máquina {html.escape(str(pos_sel))}</div>
+                    <div class='armario-selected-sub'>{html.escape(str(arm_sel))}</div>
+                </div>
+                <div class='armario-selected-status'>{html.escape(_status_vis)}</div>
+            </div>
+            <div class='armario-selected-grid'>
+                <div class='armario-selected-box'><span>OP</span><b>{html.escape(_op_vis)}</b></div>
+                <div class='armario-selected-box'><span>Item</span><b>{html.escape(_item_vis)}</b></div>
+                <div class='armario-selected-box'><span>Rebolo</span><b>{html.escape(_reb_vis)}</b></div>
+            </div>
         </div>
         """, unsafe_allow_html=True)
         
@@ -5260,59 +5359,156 @@ def tela_armarios():
     aba1, aba2, aba3, aba4, aba5, aba6 = st.tabs(["👁️ Visão Física", "➕ Alimentar", "🔔 Histórico", "🔄 Troca de Rebolo", "🔙 Devoluções", "✏️ Edição Lote"])
 
     with aba1:
-        st.markdown("<p style='font-size: 13px; color: #A1A1AA;'>Visão estrutural. <b>Clique diretamente na gaveta</b> para alimentar (guardar) ou corrigir a OP.</p>", unsafe_allow_html=True)
-        armarios_lista = ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"]
-        
-        for row_idx in range(0, len(armarios_lista), 2):
-            c1, c2 = st.columns(2)
-            colunas_ui = [c1, c2]
-            for col_i in range(2):
-                if row_idx + col_i < len(armarios_lista):
-                    arm = armarios_lista[row_idx + col_i]
-                    col_ui = colunas_ui[col_i]
-                    df_filtrado = df_arm[df_arm['Armario'] == arm].copy()
-                    df_filtrado['Posicao_Int'] = pd.to_numeric(df_filtrado['Posicao'], errors='coerce')
-                    df_filtrado = df_filtrado.sort_values(by='Posicao_Int')
-                    
-                    ocupados = len(df_filtrado[df_filtrado['Status'] != 'VAZIO'])
-                    total_gavetas = len(df_filtrado)
-                    
-                    with col_ui.container(border=True):
-                        st.markdown(f"<h5 style='text-align: center; color: #2DD4BF; margin-bottom: 15px;'>📦 {arm} <br><span style='font-size: 12px; color: #A1A1AA;'>({ocupados}/{total_gavetas} ocupados)</span></h5>", unsafe_allow_html=True)
-                        gavetas = df_filtrado.to_dict('records')
-                        
-                        for linha in range(0, total_gavetas, 4):
-                            cols_gaveta = st.columns(4)
-                            for c in range(4):
-                                if linha + c < total_gavetas:
-                                    gav = gavetas[linha + c]
-                                    num = gav['Posicao']
-                                    status = gav['Status']
-                                    obs_val = str(gav.get('Observacao', '')).upper()
-                                    op_f = str(gav.get('Ordem', '')).replace('.0', '').replace('nan', '')
-                                    
-                                    obs_upper = obs_val.upper()
-                                    if status == 'VAZIO':
-                                        if "JAGURA" in obs_upper: btn_label = f"🟨 MAQ {num}\nAG. JAG."
-                                        elif "ALMOXARIFADO" in obs_upper: btn_label = f"🟦 MAQ {num}\nALMOX."
-                                        elif "PCP" in obs_upper: btn_label = f"🟪 MAQ {num}\nPCP"
-                                        elif "PREPARAÇÃO" in obs_upper or "PREPARACAO" in obs_upper: btn_label = f"🟧 MAQ {num}\nPREP."
-                                        elif "SEQUÊNCIA" in obs_upper or "SEQUENCIA" in obs_upper: btn_label = f"🟫 MAQ {num}\nSEQ."
-                                        else: btn_label = f"🟥 MAQ {num}\nVAZIO"
-                                    else:
-                                        if op_f: btn_label = f"🟩 MAQ {num}\nOP: {op_f}"
-                                        elif "JAGURA" in obs_upper: btn_label = f"🟨 MAQ {num}\nJAGURA"
-                                        elif "ALMOXARIFADO" in obs_upper: btn_label = f"🟦 MAQ {num}\nALMOX."
-                                        elif "PCP" in obs_upper: btn_label = f"🟪 MAQ {num}\nPCP"
-                                        elif "PREPARAÇÃO" in obs_upper or "PREPARACAO" in obs_upper: btn_label = f"🟧 MAQ {num}\nPREP."
-                                        elif "SEQUÊNCIA" in obs_upper or "SEQUENCIA" in obs_upper: btn_label = f"🟫 MAQ {num}\nSEQ."
-                                        else: btn_label = f"🟩 MAQ {num}\nOCUPADO"
-                                    
-                                    if cols_gaveta[c].button(btn_label, key=f"btn_gav_{arm}_{num}", use_container_width=True):
-                                        if st.session_state['perfil'] in ['preset', 'adm']:
-                                            st.session_state['gaveta_selecionada'] = {'armario': arm, 'posicao': num, 'status': status, 'ordem': gav.get('Ordem', ''), 'item': gav.get('Item', ''), 'observacao': gav.get('Observacao', ''), 'rebolo': gav.get('Rebolo', '')}
-                                            st.rerun()
-                                        else: st.error("⚠ Apenas Pré-Set e ADM podem gerenciar gavetas!")
+        # ---------------------- VISÃO FÍSICA REDESENHADA ----------------------
+        df_vis = df_arm.fillna('').copy()
+        for _c in ['Ordem','Item','Status','Observacao','Rebolo','Armario','Posicao','Data_Hora']:
+            if _c not in df_vis.columns:
+                df_vis[_c] = ''
+            df_vis[_c] = df_vis[_c].astype(str).replace('nan', '')
+
+        status_norm = df_vis['Status'].str.strip().str.upper()
+        obs_norm = df_vis['Observacao'].str.upper()
+        op_norm = df_vis['Ordem'].str.replace('.0', '', regex=False).str.strip()
+        ocupadas_total = int((status_norm != 'VAZIO').sum())
+        livres_total = int((status_norm == 'VAZIO').sum())
+        com_op_total = int((op_norm != '').sum())
+        pendencias_total = int(obs_norm.str.contains('JAGURA|ALMOXARIFADO|PCP|PREPARA|SEQU', regex=True, na=False).sum())
+        total_total = max(1, len(df_vis))
+
+        st.markdown(f"""
+        <div class='armario-hero'>
+            <div>
+                <div class='armario-hero-kicker'>Pré-Set · controle visual</div>
+                <div class='armario-hero-title'>Armários de ordens e setups</div>
+                <div class='armario-hero-sub'>Clique em uma gaveta para consultar, alimentar ou corrigir. As cores mostram a situação de cada posição.</div>
+            </div>
+            <div class='armario-hero-live'>● DADOS ATUAIS</div>
+        </div>
+        <div class='armario-summary-grid'>
+            <div class='armario-summary-card ok'><div class='armario-summary-label'>Ocupadas</div><div class='armario-summary-value'>{ocupadas_total}</div><div class='armario-summary-foot'>{round(ocupadas_total/total_total*100)}% das posições</div></div>
+            <div class='armario-summary-card free'><div class='armario-summary-label'>Livres</div><div class='armario-summary-value'>{livres_total}</div><div class='armario-summary-foot'>disponíveis agora</div></div>
+            <div class='armario-summary-card op'><div class='armario-summary-label'>Com OP</div><div class='armario-summary-value'>{com_op_total}</div><div class='armario-summary-foot'>ordens identificadas</div></div>
+            <div class='armario-summary-card wait'><div class='armario-summary-label'>Pendências</div><div class='armario-summary-value'>{pendencias_total}</div><div class='armario-summary-foot'>Jagura / Almox. / PCP / Prep.</div></div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        cf1, cf2 = st.columns([1, 1.65])
+        filtro_arm = cf1.radio('Visualizar:', ['Todos', 'Afiadoras', 'Retíficas'], horizontal=True, key='arm_visual_filtro')
+        busca_arm = cf2.text_input('Buscar no armário:', placeholder='Máquina, OP ou item...', key='arm_visual_busca')
+
+        st.markdown("""
+        <div class='armario-legend'>
+            <span>🟩 OP / ocupado</span><span>🟥 livre</span><span>🟨 Jagura</span>
+            <span>🟦 Almoxarifado</span><span>🟪 PCP</span><span>🟧 Preparação</span><span>🟫 Sequência</span>
+        </div>
+        """, unsafe_allow_html=True)
+
+        armarios_lista = ['Afiadoras 04 a 28', 'Afiadoras 29 a 41', 'Retíficas 05 a 28', 'Retíficas 29 a 42']
+        if filtro_arm == 'Afiadoras':
+            armarios_lista = [a for a in armarios_lista if a.startswith('Afiadoras')]
+        elif filtro_arm == 'Retíficas':
+            armarios_lista = [a for a in armarios_lista if a.startswith('Retíficas')]
+
+        busca_limpa = str(busca_arm or '').strip().lower()
+
+        def _visual_gaveta(gav):
+            status = str(gav.get('Status', '') or '').strip().upper()
+            obs = str(gav.get('Observacao', '') or '').strip().upper()
+            op = str(gav.get('Ordem', '') or '').replace('.0','').replace('nan','').strip()
+            item = str(gav.get('Item', '') or '').replace('.0','').replace('nan','').strip()
+            if 'JAGURA' in obs:
+                return 'jagura', '🟨', 'AG. JAGURA'
+            if 'ALMOXARIFADO' in obs:
+                return 'almox', '🟦', 'ALMOXARIFADO'
+            if 'PCP' in obs:
+                return 'pcp', '🟪', 'AG. PCP'
+            if 'PREPARAÇÃO' in obs or 'PREPARACAO' in obs:
+                return 'prep', '🟧', 'EM PREPARAÇÃO'
+            if 'SEQUÊNCIA' in obs or 'SEQUENCIA' in obs:
+                return 'seq', '🟫', 'EM SEQUÊNCIA'
+            if status == 'VAZIO':
+                return 'vazio', '🟥', 'LIVRE'
+            if op:
+                return 'op', '🟩', 'AG. MÁQUINA' if status == 'AGUARDANDO MÁQUINA' else 'COM OP'
+            return 'ocupado', '🟩', status if status else 'OCUPADO'
+
+        for arm_idx, arm in enumerate(armarios_lista):
+            df_filtrado = df_vis[df_vis['Armario'] == arm].copy()
+            df_filtrado['Posicao_Int'] = pd.to_numeric(df_filtrado['Posicao'], errors='coerce')
+            df_filtrado = df_filtrado.sort_values(by='Posicao_Int')
+
+            if busca_limpa:
+                mask_busca = (
+                    df_filtrado['Posicao'].str.lower().str.contains(busca_limpa, regex=False, na=False) |
+                    df_filtrado['Ordem'].str.lower().str.contains(busca_limpa, regex=False, na=False) |
+                    df_filtrado['Item'].str.lower().str.contains(busca_limpa, regex=False, na=False)
+                )
+                df_exibir_arm = df_filtrado[mask_busca].copy()
+            else:
+                df_exibir_arm = df_filtrado.copy()
+
+            if df_exibir_arm.empty and busca_limpa:
+                continue
+
+            total_gavetas = len(df_filtrado)
+            ocupados = int((df_filtrado['Status'].str.strip().str.upper() != 'VAZIO').sum())
+            com_op = int((df_filtrado['Ordem'].str.strip() != '').sum())
+            pend = int(df_filtrado['Observacao'].str.upper().str.contains('JAGURA|ALMOXARIFADO|PCP|PREPARA|SEQU', regex=True, na=False).sum())
+            pct = round((ocupados / max(1,total_gavetas)) * 100)
+
+            st.markdown(f"""
+            <div class='armario-panel-head'>
+                <div class='armario-panel-top'><div class='armario-panel-name'>📦 {html.escape(arm)}</div><div class='armario-panel-count'>{ocupados}/{total_gavetas} ocupadas</div></div>
+                <div class='armario-progress'><div class='armario-progress-fill' style='width:{pct}%'></div></div>
+                <div class='armario-panel-meta'><span>Com OP <b>{com_op}</b></span><span>Pendências <b>{pend}</b></span><span>Ocupação <b>{pct}%</b></span></div>
+            </div>
+            """, unsafe_allow_html=True)
+
+            gavetas = df_exibir_arm.to_dict('records')
+            for linha in range(0, len(gavetas), 4):
+                with st.container(key=f'armgrid_{arm_idx}_{linha}'):
+                    cols_gaveta = st.columns(4)
+                    for c in range(4):
+                        if linha + c >= len(gavetas):
+                            continue
+                        gav = gavetas[linha + c]
+                        num = str(gav.get('Posicao','')).replace('.0','')
+                        op_f = str(gav.get('Ordem','')).replace('.0','').replace('nan','').strip()
+                        item_f = str(gav.get('Item','')).replace('.0','').replace('nan','').strip()
+                        status = str(gav.get('Status',''))
+                        visual_key, ico, situacao = _visual_gaveta(gav)
+                        linha_op = f'OP {op_f}' if op_f else 'SEM OP'
+                        linha_item = f'ITEM {item_f}' if item_f else 'ITEM —'
+                        btn_label = f'{ico}  MÁQ {num}\n{linha_op}\n{linha_item}\n{situacao}'
+                        help_txt = f"{arm} · Máquina {num}\nOP: {op_f or '-'}\nItem: {item_f or '-'}\nStatus: {status or '-'}\nObservação: {str(gav.get('Observacao','') or '-') }"
+                        if cols_gaveta[c].button(
+                            btn_label,
+                            key=f'armcard_{visual_key}_{arm_idx}_{linha}_{c}',
+                            use_container_width=True,
+                            help=help_txt,
+                        ):
+                            if st.session_state['perfil'] in ['preset', 'adm']:
+                                st.session_state['gaveta_selecionada'] = {
+                                    'armario': arm,
+                                    'posicao': num,
+                                    'status': status,
+                                    'ordem': gav.get('Ordem', ''),
+                                    'item': gav.get('Item', ''),
+                                    'observacao': gav.get('Observacao', ''),
+                                    'rebolo': gav.get('Rebolo', '')
+                                }
+                                st.rerun()
+                            else:
+                                st.error('⚠ Apenas Pré-Set e ADM podem gerenciar gavetas!')
+
+        if busca_limpa and not any(
+            (
+                df_vis[df_vis['Armario'] == arm]['Posicao'].str.lower().str.contains(busca_limpa, regex=False, na=False) |
+                df_vis[df_vis['Armario'] == arm]['Ordem'].str.lower().str.contains(busca_limpa, regex=False, na=False) |
+                df_vis[df_vis['Armario'] == arm]['Item'].str.lower().str.contains(busca_limpa, regex=False, na=False)
+            ).any() for arm in armarios_lista
+        ):
+            st.info('Nenhuma gaveta encontrada para essa busca.')
 
     with aba2:
         if st.session_state['perfil'] in ['preset', 'adm']:
