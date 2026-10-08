@@ -792,16 +792,19 @@ CSS_APP = """
         padding: 18px 12px 6px;
     }
     .login-logo {
-        width: 72px;
-        height: 72px;
+        width: min(430px, 86vw);
         margin: 0 auto 18px;
-        border-radius: 22px;
-        display: grid;
-        place-items: center;
-        font-size: 34px;
-        background: linear-gradient(145deg, rgba(139,92,246,.24), rgba(45,212,191,.12));
-        border: 1px solid rgba(255,255,255,.11);
-        box-shadow: 0 18px 55px rgba(109,40,217,.24), inset 0 1px 0 rgba(255,255,255,.08);
+        display:flex;
+        justify-content:center;
+        align-items:center;
+    }
+    .login-logo img {
+        width: 100%;
+        max-width: 360px;
+        height: auto;
+        display: block;
+        border-radius: 16px;
+        box-shadow: 0 18px 55px rgba(0,0,0,.16);
     }
     .login-title {
         margin: 0;
@@ -964,7 +967,7 @@ CSS_APP = """
         input, select, textarea { font-size: 16px !important; } /* evita zoom automático no iPhone */
 
         .login-hero { margin-top: 4vh; padding-top: 8px; }
-        .login-logo { width:64px; height:64px; border-radius:20px; font-size:30px; margin-bottom:15px; }
+        .login-logo { width:min(340px, 84vw); margin-bottom:15px; }
         .login-title { font-size: 30px; }
         .login-subtitle { font-size: 13px; padding: 0 10px; }
 
@@ -1085,15 +1088,23 @@ CSS_APP = """
     .st-key-topbar_native {
         position: sticky; top: .55rem; z-index: 999;
         padding: 10px 12px 8px; margin: 0 0 8px 0;
-        border: 1px solid rgba(255,255,255,.10); border-radius: 18px;
-        background: rgba(20,20,28,.94);
+        border: 1px solid rgba(255,255,255,.10); border-radius: 20px;
+        background: linear-gradient(135deg, rgba(18,18,27,.96), rgba(15,18,28,.94));
         backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
         box-shadow: 0 16px 45px rgba(0,0,0,.24);
     }
-    .native-brand {display:flex;align-items:center;gap:10px;min-height:42px;}
-    .native-brand-icon {width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:linear-gradient(135deg,#8B5CF6,#0F766E);color:#fff;font-size:18px;box-shadow:0 8px 22px rgba(109,40,217,.28);}
-    .native-brand-name {color:#FAFAFA;font-size:13px;font-weight:950;letter-spacing:.4px;line-height:1.05;}
-    .native-brand-sub {color:#8B8B98;font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.7px;margin-top:4px;}
+    .native-brand {display:flex;align-items:center;gap:12px;min-height:54px;}
+    .native-brand-icon {
+        width:54px;height:54px;border-radius:17px;display:flex;align-items:center;justify-content:center;
+        background:linear-gradient(145deg, rgba(255,255,255,.09), rgba(255,255,255,.03));
+        border:1px solid rgba(255,255,255,.10);overflow:hidden;padding:6px;
+        box-shadow:0 14px 34px rgba(0,0,0,.24), inset 0 1px 0 rgba(255,255,255,.06);
+        flex: 0 0 54px;
+    }
+    .native-brand-icon img {width:100%;height:100%;object-fit:contain;display:block;border-radius:12px;}
+    .native-brand-copy {display:flex;flex-direction:column;justify-content:center;min-width:0;}
+    .native-brand-name {color:#FAFAFA;font-size:15px;font-weight:950;letter-spacing:.42px;line-height:1.05;}
+    .native-brand-sub {color:#8B8B98;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.72px;margin-top:4px;}
     .native-user {display:flex;align-items:center;justify-content:flex-end;gap:8px;min-height:42px;}
     .native-user-avatar {width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:rgba(139,92,246,.17);color:#C4B5FD;font-size:13px;font-weight:900;}
     .native-user-name {color:#F4F4F5;font-size:11px;font-weight:850;max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right;}
@@ -1201,9 +1212,13 @@ CSS_APP = """
     @media (max-width:520px) {.setup-month-top {display:block;} .setup-month-badge {display:inline-block;margin-top:8px;} .setup-sector-summary {grid-template-columns:1fr;} .setup-month-grid {grid-template-columns:1fr 1fr;gap:7px;} .setup-metric-card {padding:11px;min-height:112px;} .setup-metric-main strong {font-size:24px;} .setup-metric-average {display:block;} .setup-metric-average b {display:block;margin-top:3px;}}
 
     @media (max-width:768px) {
-        .st-key-topbar_native {position:relative;top:0;padding:9px;border-radius:15px;}
+        .st-key-topbar_native {position:relative;top:0;padding:9px;border-radius:16px;}
         .st-key-topbar_native div[data-testid="stHorizontalBlock"] {gap:.5rem!important;}
         .st-key-topbar_native div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {min-width:min(100%,220px)!important;}
+        .native-brand {min-height:48px;gap:10px;}
+        .native-brand-icon {width:46px;height:46px;border-radius:14px;padding:5px;flex:0 0 46px;}
+        .native-brand-name {font-size:13px;}
+        .native-brand-sub {font-size:9px;}
         .native-user {justify-content:flex-start;}
         .native-user-name,.native-user-meta {text-align:left;}
         .st-key-topbar_nav_native {margin-bottom:14px;}
@@ -2441,7 +2456,7 @@ def painel_controle_maquina(maq_id, setor):
         if setor == 'RTF':
             with st.expander("🔄 Alterar Tipo CNC desta Máquina"):
                 c_tipo1, c_tipo2 = st.columns([3, 2])
-                novo_tipo = c_tipo1.selectbox("Definir como:", ["RTF_CNC3 (Normal)", "RTF_CNC2 (Facetadora)", "RTF_CNC1 (Centerless)"], index=0)
+                novo_tipo = c_tipo1.selectbox("Definir como:", ["RTF_CNC3 (Normal)", "RTF_CNC2 (Facetados)", "RTF_CNC1 (Centerless)"], index=0)
                 if c_tipo2.button("💾 Salvar Tipo", use_container_width=True):
                     tipo_limpo = novo_tipo.split(" ")[0]
                     set_tipo_cnc(maq_id, tipo_limpo)
@@ -3100,8 +3115,8 @@ def renderizar_topbar(tela_atual):
 
         c_brand.markdown(
             f'''<div class="native-brand">
-<div class="native-brand-icon">⚙</div>
-<div><div class="native-brand-name">AFIAÇÃO DIGITAL</div><div class="native-brand-sub">Operação em tempo real</div></div>
+<div class="native-brand-icon"><img src="data:image/png;base64,{LOGO_NEODENT_B64}" alt="Neodent"></div>
+<div class="native-brand-copy"><div class="native-brand-name">AFIAÇÃO DIGITAL</div><div class="native-brand-sub">Operação em tempo real · Neodent</div></div>
 </div>''',
             unsafe_allow_html=True
         )
@@ -3585,12 +3600,12 @@ def _acoes_rapidas_home(perfil):
 
 
 def tela_login():
-    st.markdown(textwrap.dedent("""
+    st.markdown(textwrap.dedent(f"""
     <div class="login-hero">
-        <div class="login-logo">⚙️</div>
+        <div class="login-logo"><img src="data:image/png;base64,{LOGO_NEODENT_B64}" alt="Neodent"></div>
         <div class="login-title">AFIAÇÃO DIGITAL</div>
         <p class="login-subtitle">Controle operacional de produção, preparação e ocorrências em uma única experiência.</p>
-        <div class="login-pill">● Sistema operacional online</div>
+        <div class="login-pill">● Sistema operacional online · Neodent</div>
     </div>
     """), unsafe_allow_html=True)
     with st.container():
@@ -4221,7 +4236,7 @@ def _mapa_processo_rodando_rtf(status_dict):
     for maq in TODAS_RTF:
         tipo_cnc = tipos_cnc.get(maq, 'RTF_CNC3')
         if tipo_cnc == 'RTF_CNC2':
-            ativo[maq] = 'FACETADORA'
+            ativo[maq] = 'FACETADO'
         elif tipo_cnc == 'RTF_CNC1':
             ativo[maq] = 'HASTE'
 
@@ -4234,7 +4249,7 @@ def _mapa_processo_rodando_rtf(status_dict):
                 continue
             maq = maq_full.replace('RTF ', '', 1).strip()
             if tipos_cnc.get(maq, 'RTF_CNC3') == 'RTF_CNC2':
-                ativo[maq] = 'FACETADORA'
+                ativo[maq] = 'FACETADO'
                 continue
             st_raw = str(row.get('Status', ''))
             st_up = _normalizar_setup_home(st_raw)
@@ -4277,7 +4292,7 @@ def _mapa_processo_rodando_rtf(status_dict):
 
     for maq in TODAS_RTF:
         if tipos_cnc.get(maq, 'RTF_CNC3') == 'RTF_CNC2':
-            ativo[maq] = 'FACETADORA'
+            ativo[maq] = 'FACETADO'
             continue
         if maq not in ativo:
             atual_st = status_dict.get(f'RTF {maq}', '')
@@ -4365,7 +4380,7 @@ def tela_visao_geral():
             ('Afiadoras', afiadoras, 'AFC', '#8B5CF6'),
             ('Retífica Haste', ret_haste, 'RTF', '#A78BFA'),
             ('Retífica Guia', ret_guia, 'RTF', '#60A5FA'),
-            ('Facetadoras', facetadoras, 'RTF', '#2DD4BF'),
+            ('Facetados', facetadoras, 'RTF', '#2DD4BF'),
         ]
 
         def resumo_status(lista, setor):
@@ -4404,7 +4419,7 @@ def tela_visao_geral():
         {_render_grupo_gerencia('Afiadoras', afiadoras, 'AFC', status_dict, '#8B5CF6')}
         {_render_grupo_gerencia('Retífica Haste', ret_haste, 'RTF', status_dict, '#A78BFA')}
         {_render_grupo_gerencia('Retífica Guia', ret_guia, 'RTF', status_dict, '#60A5FA')}
-        {_render_grupo_gerencia('Facetadoras', facetadoras, 'RTF', status_dict, '#2DD4BF')}
+        {_render_grupo_gerencia('Facetados', facetadoras, 'RTF', status_dict, '#2DD4BF')}
         '''
         st.markdown(textwrap.dedent(conteudo), unsafe_allow_html=True)
         return
@@ -4711,7 +4726,7 @@ def tela_checkup():
             if setor_foco == 'RTF':
                 st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
                 st.button("⚫ Centerless (CNC1)", use_container_width=True, on_click=definir_estado, args=('fila_prev_sel', 'centerless'))
-                st.button("🟤 Facetadoras (CNC2)", use_container_width=True, on_click=definir_estado, args=('fila_prev_sel', 'facetadoras'))
+                st.button("🟤 Facetados (CNC2)", use_container_width=True, on_click=definir_estado, args=('fila_prev_sel', 'facetadoras'))
         else:
             st.button("⬅️ Voltar para seleção de Fila", key="voltar_fila_prev", on_click=definir_estado, args=('fila_prev_sel', None))
             maquinas_foco = []
@@ -4905,7 +4920,7 @@ def tela_rtf():
         st.button("📍 Fila 4", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'fila_4'))
         st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
         st.button("⚫ Centerless (CNC1)", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'centerless'))
-        st.button("🟤 Facetadoras (CNC2)", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'facetadoras'))
+        st.button("🟤 Facetados (CNC2)", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'facetadoras'))
     else:
         st.button("⬅️ Trocar de Fila / Setor", on_click=definir_estados, args=({'celula_selecionada': None, 'maq_ativa': None},))
         st.divider()
@@ -4921,7 +4936,7 @@ def tela_equipe():
     st.markdown("#### 👥 Gestão de Equipe")
     with st.container():
         with st.form("form_equipe", clear_on_submit=True):
-            tipo = st.radio("Selecione o Motivo:", ["Ausência / Falta", "Treinamento", "Férias / Atestado"], horizontal=True)
+            tipo = st.radio("Selecione o Motivo:", ["Ausência / Falta", "Treinamento", "Férias", "Atestado"], horizontal=True)
             nome = st.text_input("Nome do Colaborador:")
             if st.form_submit_button("💾 REGISTRAR COLABORADOR", type="primary"):
                 if nome:
@@ -5901,7 +5916,7 @@ def tela_lirs():
             if setor == 'RTF':
                 st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
                 st.button("⚫ Centerless (CNC1)", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'centerless'))
-                st.button("🟤 Facetadoras (CNC2)", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'facetadoras'))
+                st.button("🟤 Facetados (CNC2)", use_container_width=True, on_click=definir_estado, args=('celula_selecionada', 'facetadoras'))
         else:
             st.button("⬅️ Voltar à Seleção de Fila", on_click=definir_estados, args=({'celula_selecionada': None, 'lirs_maq_ativa': None},))
             
