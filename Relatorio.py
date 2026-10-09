@@ -4626,6 +4626,126 @@ def _extrair_op_item_gerencia(status):
     return op, item
 
 
+
+def _status_com_op_item_editado(status, nova_op, novo_item):
+    """Troca somente OP/Item do status, preservando estado, motivo e agendamentos."""
+    status = str(status or '').strip()
+    nova_op = str(nova_op or '').strip().upper().replace('.0', '').lstrip('0')
+    novo_item = str(novo_item or '').strip().upper().replace('.0', '').lstrip('0')
+
+    if re.search(r'\[Novo Item:', status, flags=re.IGNORECASE):
+        marcador_item = 'Novo Item'
+    elif re.search(r'\[Item Atual:', status, flags=re.IGNORECASE):
+        marcador_item = 'Item Atual'
+    elif re.search(r'\[Item:', status, flags=re.IGNORECASE):
+        marcador_item = 'Item'
+    else:
+        up = _normalizar_setup_home(status)
+        if up.startswith('PREPARANDO'):
+            marcador_item = 'Novo Item'
+        elif _eh_aguardando_setup_home(status):
+            marcador_item = 'Item Atual'
+        else:
+            marcador_item = 'Item'
+
+    status = re.sub(r'\s*\[Ordem:\s*[^\]]*\]', '', status, flags=re.IGNORECASE)
+    status = re.sub(r'\s*\[(?:Novo Item|Item Atual|Item):\s*[^\]]*\]', '', status, flags=re.IGNORECASE)
+    status = re.sub(r'\s{2,}', ' ', status).strip()
+
+    if nova_op:
+        status += f' [Ordem: {nova_op}]'
+    if novo_item:
+        status += f' [{marcador_item}: {novo_item}]'
+    return status.strip()
+
+
+def _salvar_op_item_maquina(setor, maq, nova_op, novo_item):
+    """Corrige OP/Item no último registro sem alterar a Hora do apontamento."""
+    setor = str(setor or '').strip().upper()
+    maq = str(maq or '').strip()
+    maq_full = f'{setor} {maq}'
+    info = obter_info_maquina(maq, setor)
+    if not info:
+        raise RuntimeError(f'Não foi encontrado apontamento atual para {maq_full}.')
+
+    status_atual = str(info.get('Status', '') or '')
+    status_novo = _status_com_op_item_editado(status_atual, nova_op, novo_item)
+    if status_novo == status_atual:
+        return status_novo
+
+    tabela = _quote_identifier(ARQUIVO_DADOS)
+    sql_base = (
+        f'UPDATE {tabela} SET "Status"=? '
+        f'WHERE rowid=(SELECT rowid FROM {tabela} WHERE "Maquina"=? ORDER BY rowid DESC LIMIT 1)'
+    )
+    turso_request(sql_base, [status_novo, maq_full], False)
+
+    _garantir_estado_maquinas()
+    sql_estado = f'UPDATE {_quote_identifier("__estado_maquinas")} SET "Status"=? WHERE "Maquina"=?'
+    turso_request(sql_estado, [status_novo, maq_full], False)
+    _invalidar_cache_turso(ARQUIVO_DADOS)
+    return status_novo
+
+
+def _painel_edicao_op_item_maquinas():
+    """Ação rápida da tela Máquinas, exclusiva da gerência/administração."""
+    if st.session_state.get('perfil') != 'adm':
+        return
+
+    if 'editar_op_item_maquinas_aberto' not in st.session_state:
+        st.session_state['editar_op_item_maquinas_aberto'] = False
+
+    c_btn, c_hint = st.columns([1.15, 3.85])
+    if c_btn.button('✏️ Editar OP / Item', key='btn_abrir_edicao_op_item_maquinas', use_container_width=True):
+        st.session_state['editar_op_item_maquinas_aberto'] = not st.session_state['editar_op_item_maquinas_aberto']
+        st.rerun()
+    c_hint.caption('Correção rápida sem alterar o horário ou o estado atual da máquina.')
+
+    if not st.session_state.get('editar_op_item_maquinas_aberto'):
+        return
+
+    opcoes = [f'AFC {m}' for m in ordenar_maquinas(TODAS_AFC)] + [f'RTF {m}' for m in ordenar_maquinas(TODAS_RTF)]
+    if not opcoes:
+        st.warning('Nenhuma máquina disponível para edição.')
+        return
+
+    with st.container(border=True):
+        st.markdown('##### ✏️ Corrigir Ordem e Item da Máquina')
+        maquina_full = st.selectbox('Máquina:', opcoes, key='edit_op_item_maquina_sel')
+        setor_sel, maq_sel = maquina_full.split(' ', 1)
+        info = obter_info_maquina(maq_sel, setor_sel)
+        status_atual = str(info.get('Status', '') if info else '')
+        op_atual, item_atual = _extrair_op_item_gerencia(status_atual)
+        op_atual = '' if op_atual == '-' else op_atual
+        item_atual = '' if item_atual == '-' else item_atual
+
+        estado_txt, _ = _estado_gerencial_maquina(status_atual)
+        st.caption(f'Estado atual: {estado_txt} — o horário do apontamento será mantido.')
+
+        with st.form(f'form_editar_op_item_{setor_sel}_{maq_sel}'):
+            c1, c2 = st.columns(2)
+            nova_op = c1.text_input('Ordem (OP):', value=op_atual, placeholder='Ex: 5010857107')
+            novo_item = c2.text_input('Item:', value=item_atual, placeholder='Ex: 319997')
+            b1, b2 = st.columns([1, 1])
+            salvar = b1.form_submit_button('💾 Salvar OP / Item', type='primary', use_container_width=True)
+            cancelar = b2.form_submit_button('Cancelar', use_container_width=True)
+
+            if salvar:
+                if not nova_op.strip() or not novo_item.strip():
+                    st.error('⚠️ Informe a Ordem e o Item.')
+                else:
+                    try:
+                        _salvar_op_item_maquina(setor_sel, maq_sel, nova_op, novo_item)
+                        st.session_state['editar_op_item_maquinas_aberto'] = False
+                        st.success(f'✅ Máquina {maq_sel}: OP e Item atualizados sem alterar o horário.')
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f'Erro ao atualizar OP/Item: {exc}')
+            if cancelar:
+                st.session_state['editar_op_item_maquinas_aberto'] = False
+                st.rerun()
+
+
 def _tipo_explicito_rtf(status):
     up = _normalizar_setup_home(status)
     if '[PROCESSO: GUIA]' in up or 'PREPARACAO - GUIA' in up or ' GUIA' in up:
@@ -4775,6 +4895,7 @@ def _render_grupo_gerencia(nome, maquinas, setor, status_dict, cor):
 def tela_visao_geral():
     botao_navegar("⬅️ Voltar ao Menu", 'menu')
     status_dict = ler_status_atual()
+    _painel_edicao_op_item_maquinas()
 
     if (st.session_state.get('perfil') == 'adm' and str(st.session_state.get('setor_usuario', '')).upper() == 'GERÊNCIA'):
         mapa_rtf = _mapa_processo_rodando_rtf(status_dict)
