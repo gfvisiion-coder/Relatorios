@@ -4121,23 +4121,32 @@ def _tela_menu_dashboard_9999():
     nome_raw = str(st.session_state.get('operador', '')).strip()
     primeiro_nome = html.escape(nome_raw.split()[0] if nome_raw else 'Usuário')
 
-    st.markdown(textwrap.dedent(f'''
-    <div class="dash-welcome">
-        <div>
-            <div class="dash-eyebrow">Painel operacional · {html.escape(st.session_state.get('turno',''))}</div>
-            <div class="dash-title">{saudacao}, {primeiro_nome}.</div>
-            <div class="dash-subtitle">Aqui está o panorama atual da Afiação e Retífica.</div>
-        </div>
-        <div class="dash-date">{agora.strftime('%d/%m/%Y')} · {agora.strftime('%H:%M')}</div>
-    </div>
-    {_render_interrupcoes_home(status_dict, estado_meta)}
-    <div class="kpi-grid">
-        {_render_kpi('Produzindo', totais['producao'], '▶', '#2DD4BF', f'de {total_maquinas} máquinas')}
-        {_render_prep_kpi(totais['prep_ativa'], totais['prep_aguardando'])}
-        {_render_kpi('Paradas', totais['parada'], '■', '#EF4444', 'requerem acompanhamento')}
-        {_render_kpi('Manutenção', totais['manutencao'], '⌁', '#8B5CF6', 'máquinas em manutenção')}
-    </div>
-    '''), unsafe_allow_html=True)
+    # Renderização separada: evita o Streamlit interpretar HTML indentado como bloco de código.
+    html_boas_vindas = (
+        '<div class="dash-welcome">'
+        '<div>'
+        f'<div class="dash-eyebrow">Painel operacional · {html.escape(st.session_state.get("turno", ""))}</div>'
+        f'<div class="dash-title">{saudacao}, {primeiro_nome}.</div>'
+        '<div class="dash-subtitle">Aqui está o panorama atual da Afiação e Retífica.</div>'
+        '</div>'
+        f'<div class="dash-date">{agora.strftime("%d/%m/%Y")} · {agora.strftime("%H:%M")}</div>'
+        '</div>'
+    )
+    st.markdown(html_boas_vindas, unsafe_allow_html=True)
+
+    html_interrupcoes = _render_interrupcoes_home(status_dict, estado_meta)
+    if html_interrupcoes:
+        st.markdown(html_interrupcoes, unsafe_allow_html=True)
+
+    html_kpis = (
+        '<div class="kpi-grid">'
+        + _render_kpi('Produzindo', totais['producao'], '▶', '#2DD4BF', f'de {total_maquinas} máquinas')
+        + _render_prep_kpi(totais['prep_ativa'], totais['prep_aguardando'])
+        + _render_kpi('Paradas', totais['parada'], '■', '#EF4444', 'requerem acompanhamento')
+        + _render_kpi('Manutenção', totais['manutencao'], '⌁', '#8B5CF6', 'máquinas em manutenção')
+        + '</div>'
+    )
+    st.markdown(html_kpis, unsafe_allow_html=True)
 
     preparacoes = {'ativa': [], 'aguardando': []}
     for setor, maquinas in [('AFC', TODAS_AFC), ('RTF', TODAS_RTF)]:
@@ -4443,23 +4452,32 @@ def _tela_menu_dashboard_preset():
     except Exception:
         pass
 
-    st.markdown(textwrap.dedent(f'''
-    <div class="dash-welcome">
-        <div>
-            <div class="dash-eyebrow">Painel Pré-Set · {html.escape(st.session_state.get('turno',''))}</div>
-            <div class="dash-title">{saudacao}, {primeiro_nome}.</div>
-            <div class="dash-subtitle">Preparações, rebolos e armários que precisam da sua atenção.</div>
-        </div>
-        <div class="dash-date">{agora.strftime('%d/%m/%Y')} · {agora.strftime('%H:%M')}</div>
-    </div>
-    {_render_interrupcoes_home(status_dict, estado_meta)}
-    <div class="kpi-grid">
-        {_render_kpi('Prep. ativas', totais['prep_ativa'], '▶', '#2DD4BF', 'setup em execução')}
-        {_render_kpi('Aguardando', totais['prep_aguardando'], '◷', '#F59E0B', 'máquinas ainda em produção')}
-        {_render_kpi('Com rebolo', com_rebolo, '◉', '#60A5FA', 'setups atuais com troca de rebolo')}
-        {_render_kpi('Armários ocupados', arm_ocup, '▣', '#A78BFA', f'{arm_livres} posições livres')}
-    </div>
-    '''), unsafe_allow_html=True)
+    # Renderização separada: evita o Streamlit interpretar HTML indentado como bloco de código.
+    html_boas_vindas = (
+        '<div class="dash-welcome">'
+        '<div>'
+        f'<div class="dash-eyebrow">Painel Pré-Set · {html.escape(st.session_state.get("turno", ""))}</div>'
+        f'<div class="dash-title">{saudacao}, {primeiro_nome}.</div>'
+        '<div class="dash-subtitle">Preparações, rebolos e armários que precisam da sua atenção.</div>'
+        '</div>'
+        f'<div class="dash-date">{agora.strftime("%d/%m/%Y")} · {agora.strftime("%H:%M")}</div>'
+        '</div>'
+    )
+    st.markdown(html_boas_vindas, unsafe_allow_html=True)
+
+    html_interrupcoes = _render_interrupcoes_home(status_dict, estado_meta)
+    if html_interrupcoes:
+        st.markdown(html_interrupcoes, unsafe_allow_html=True)
+
+    html_kpis = (
+        '<div class="kpi-grid">'
+        + _render_kpi('Prep. ativas', totais['prep_ativa'], '▶', '#2DD4BF', 'setup em execução')
+        + _render_kpi('Aguardando', totais['prep_aguardando'], '◷', '#F59E0B', 'máquinas ainda em produção')
+        + _render_kpi('Com rebolo', com_rebolo, '◉', '#60A5FA', 'setups atuais com troca de rebolo')
+        + _render_kpi('Armários ocupados', arm_ocup, '▣', '#A78BFA', f'{arm_livres} posições livres')
+        + '</div>'
+    )
+    st.markdown(html_kpis, unsafe_allow_html=True)
 
     preparacoes = {'ativa': [], 'aguardando': []}
     for setor, maquinas in [('AFC', TODAS_AFC), ('RTF', TODAS_RTF)]:
