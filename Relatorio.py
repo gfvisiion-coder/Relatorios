@@ -1310,6 +1310,66 @@ CSS_APP = """
         .prep-time {min-width:55px;font-size:10px;}
     }
 
+    /* ALERTA OPERACIONAL — máquinas paradas / manutenção */
+    .stop-alert {
+        margin:0 0 16px;
+        padding:14px;
+        border-radius:17px;
+        border:1px solid rgba(239,68,68,.30);
+        background:linear-gradient(135deg,rgba(127,29,29,.28),rgba(54,20,38,.28) 48%,rgba(88,28,135,.20));
+        box-shadow:0 16px 38px rgba(127,29,29,.16), inset 0 1px 0 rgba(255,255,255,.035);
+    }
+    .stop-alert-head {
+        display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:11px;
+    }
+    .stop-alert-title-wrap {display:flex;align-items:center;gap:10px;min-width:0;}
+    .stop-alert-icon {
+        width:38px;height:38px;min-width:38px;border-radius:12px;display:grid;place-items:center;
+        background:rgba(239,68,68,.14);border:1px solid rgba(239,68,68,.24);font-size:17px;
+        box-shadow:0 0 22px rgba(239,68,68,.10);
+    }
+    .stop-alert-title {color:#FFF1F2;font-size:14px;font-weight:950;letter-spacing:.2px;}
+    .stop-alert-sub {color:#FCA5A5;font-size:10px;font-weight:750;margin-top:3px;}
+    .stop-alert-count {
+        flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;min-width:34px;height:30px;padding:0 10px;
+        border-radius:999px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.08);
+        color:#FFF;font-size:12px;font-weight:950;
+    }
+    .stop-alert-list {
+        display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px;
+        max-height:340px;overflow-y:auto;padding-right:3px;scrollbar-width:thin;
+    }
+    .stop-alert-item {
+        display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;
+        padding:11px 12px;border-radius:13px;background:rgba(12,12,18,.56);border:1px solid rgba(255,255,255,.07);
+    }
+    .stop-alert-item.parada {border-left:4px solid #EF4444;}
+    .stop-alert-item.manutencao {border-left:4px solid #A855F7;}
+    .stop-alert-badge {
+        min-width:84px;text-align:center;padding:6px 8px;border-radius:9px;font-size:9px;font-weight:950;
+        text-transform:uppercase;letter-spacing:.45px;
+    }
+    .stop-alert-item.parada .stop-alert-badge {color:#FECACA;background:rgba(239,68,68,.13);border:1px solid rgba(239,68,68,.18);}
+    .stop-alert-item.manutencao .stop-alert-badge {color:#E9D5FF;background:rgba(168,85,247,.13);border:1px solid rgba(168,85,247,.18);}
+    .stop-alert-machine {color:#FFFFFF;font-size:14px;font-weight:950;line-height:1.1;}
+    .stop-alert-reason {color:#D4D4D8;font-size:11px;font-weight:700;margin-top:4px;line-height:1.35;overflow-wrap:anywhere;}
+    .stop-alert-time {min-width:70px;text-align:right;color:#F4F4F5;font-size:11px;font-weight:900;white-space:nowrap;}
+    .stop-alert-time span {display:block;color:#A1A1AA;font-size:8px;font-weight:750;margin-bottom:2px;text-transform:uppercase;letter-spacing:.3px;}
+    @media (max-width:900px) {
+        .stop-alert-list {grid-template-columns:1fr;max-height:390px;}
+    }
+    @media (max-width:520px) {
+        .stop-alert {padding:11px;border-radius:14px;margin-bottom:12px;}
+        .stop-alert-head {align-items:flex-start;}
+        .stop-alert-title {font-size:13px;}
+        .stop-alert-sub {font-size:9px;}
+        .stop-alert-item {grid-template-columns:1fr auto;gap:8px;padding:10px;}
+        .stop-alert-badge {grid-column:1/-1;justify-self:start;min-width:0;}
+        .stop-alert-machine {font-size:13px;}
+        .stop-alert-reason {font-size:10px;}
+        .stop-alert-time {font-size:10px;min-width:60px;}
+    }
+
     /* Preparações - Home */
     .prep-kpi-breakdown {display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:12px;}
     .prep-kpi-mini {padding:7px 8px;border-radius:10px;background:rgba(255,255,255,.045);border:1px solid rgba(255,255,255,.055);}
@@ -3516,6 +3576,120 @@ def _estado_atual_home():
     return saida
 
 
+
+def _extrair_motivo_interrupcao_home(status):
+    """Extrai somente o motivo humano de PARADA/MANUTENÇÃO, removendo tags técnicas."""
+    txt = str(status or '').strip()
+    if not txt:
+        return 'Sem motivo informado'
+
+    m = re.search(r'Motivo\s*:\s*(.*)', txt, flags=re.IGNORECASE)
+    if m:
+        motivo = m.group(1).strip()
+    else:
+        motivo = re.sub(
+            r'^\s*(?:PARADA|MANUTENÇÃO|MANUTENCAO)\s*(?:-|:)?\s*',
+            '', txt, flags=re.IGNORECASE
+        ).strip()
+
+    # Tags operacionais que não fazem parte do motivo. A tag de operador faltante
+    # é preservada, pois é informação útil para entender a parada.
+    tags_tecnicas = [
+        'Ordem', 'Item', 'Item Atual', 'Novo Item', 'Prep', 'Prep. Sugerido',
+        'Prog', 'AGENDADO', 'Fim Previsto', 'Obs'
+    ]
+    for tag in tags_tecnicas:
+        motivo = re.sub(
+            rf'\s*\[{re.escape(tag)}\s*:\s*.*?\]', '', motivo,
+            flags=re.IGNORECASE
+        )
+
+    motivo = re.sub(r'\s{2,}', ' ', motivo).strip(' -|')
+    return motivo or 'Sem motivo informado'
+
+
+def _interrupcoes_home(status_dict, estado_meta):
+    """Lista máquinas atualmente em PARADA ou MANUTENÇÃO para o dashboard."""
+    itens = []
+    for setor, maquinas in [('AFC', TODAS_AFC), ('RTF', TODAS_RTF)]:
+        for maq in maquinas:
+            chave = f'{setor} {maq}'
+            status = str(status_dict.get(chave, 'PRODUZINDO') or '')
+            up = status.strip().upper()
+            if 'MANUTENÇÃO' in up or 'MANUTENCAO' in up:
+                tipo = 'manutencao'
+                rotulo = 'MANUTENÇÃO'
+                prioridade = 1
+            elif up.startswith('PARADA') or ' PARADA' in up:
+                tipo = 'parada'
+                rotulo = 'PARADA'
+                prioridade = 0
+            else:
+                continue
+
+            meta = estado_meta.get(chave, {}) or {}
+            hora_inicio = str(meta.get('hora', '') or '').strip()
+            mins = _minutos_status_home(hora_inicio) if hora_inicio else 0
+            itens.append({
+                'setor': setor,
+                'maq': str(maq),
+                'maquina': chave,
+                'tipo': tipo,
+                'rotulo': rotulo,
+                'motivo': _extrair_motivo_interrupcao_home(status),
+                'hora': hora_inicio,
+                'mins': mins,
+                'prioridade': prioridade,
+            })
+
+    # Paradas primeiro; dentro de cada grupo, as mais antigas primeiro.
+    itens.sort(key=lambda x: (x['prioridade'], -x['mins'], x['setor'], x['maq']))
+    return itens
+
+
+def _render_interrupcoes_home(status_dict, estado_meta):
+    itens = _interrupcoes_home(status_dict, estado_meta)
+    if not itens:
+        return ''
+
+    qtd_parada = sum(1 for x in itens if x['tipo'] == 'parada')
+    qtd_manut = sum(1 for x in itens if x['tipo'] == 'manutencao')
+    detalhes = []
+    if qtd_parada:
+        detalhes.append(f'{qtd_parada} parada' + ('s' if qtd_parada != 1 else ''))
+    if qtd_manut:
+        detalhes.append(f'{qtd_manut} em manutenção')
+
+    cards = []
+    for x in itens:
+        hora = html.escape(x['hora']) if x['hora'] else '—'
+        tempo = _tempo_curto_home(x['mins']) if x['hora'] else 'Sem horário'
+        cards.append(
+            f'<div class="stop-alert-item {x["tipo"]}">'
+            f'<div class="stop-alert-badge">{html.escape(x["rotulo"])}</div>'
+            '<div>'
+            f'<div class="stop-alert-machine">{html.escape(x["maquina"])}</div>'
+            f'<div class="stop-alert-reason">{html.escape(x["motivo"])}</div>'
+            '</div>'
+            f'<div class="stop-alert-time"><span>desde {hora}</span>há {html.escape(tempo)}</div>'
+            '</div>'
+        )
+
+    return (
+        '<div class="stop-alert">'
+        '<div class="stop-alert-head">'
+        '<div class="stop-alert-title-wrap">'
+        '<div class="stop-alert-icon">⚠</div>'
+        '<div>'
+        '<div class="stop-alert-title">ATENÇÃO · MÁQUINAS FORA DE PRODUÇÃO</div>'
+        f'<div class="stop-alert-sub">{" · ".join(detalhes)} — verifique máquina e motivo</div>'
+        '</div></div>'
+        f'<div class="stop-alert-count">{len(itens)}</div>'
+        '</div>'
+        f'<div class="stop-alert-list">{"".join(cards)}</div>'
+        '</div>'
+    )
+
 def _minutos_status_home(hora_inicio):
     """Calcula há quanto tempo um estado ATIVO começou usando HH:MM."""
     try:
@@ -3956,6 +4130,7 @@ def _tela_menu_dashboard_9999():
         </div>
         <div class="dash-date">{agora.strftime('%d/%m/%Y')} · {agora.strftime('%H:%M')}</div>
     </div>
+    {_render_interrupcoes_home(status_dict, estado_meta)}
     <div class="kpi-grid">
         {_render_kpi('Produzindo', totais['producao'], '▶', '#2DD4BF', f'de {total_maquinas} máquinas')}
         {_render_prep_kpi(totais['prep_ativa'], totais['prep_aguardando'])}
@@ -4277,6 +4452,7 @@ def _tela_menu_dashboard_preset():
         </div>
         <div class="dash-date">{agora.strftime('%d/%m/%Y')} · {agora.strftime('%H:%M')}</div>
     </div>
+    {_render_interrupcoes_home(status_dict, estado_meta)}
     <div class="kpi-grid">
         {_render_kpi('Prep. ativas', totais['prep_ativa'], '▶', '#2DD4BF', 'setup em execução')}
         {_render_kpi('Aguardando', totais['prep_aguardando'], '◷', '#F59E0B', 'máquinas ainda em produção')}
