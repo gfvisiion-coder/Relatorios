@@ -1520,6 +1520,45 @@ CSS_APP = """
         }
     }
 
+    /* V11.7 - botão global de logout no canto superior direito */
+    .st-key-topbar_native .st-key-topbar_user_row div[data-testid="stHorizontalBlock"] {
+        display:flex !important; flex-wrap:nowrap !important; align-items:center !important;
+        gap:7px !important; width:100% !important;
+    }
+    .st-key-topbar_native .st-key-topbar_user_row div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:first-child {
+        flex:1 1 auto !important; width:auto !important; min-width:0 !important; max-width:none !important;
+    }
+    .st-key-topbar_native .st-key-topbar_user_row div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:last-child {
+        flex:0 0 42px !important; width:42px !important; min-width:42px !important; max-width:42px !important;
+    }
+    .st-key-topbar_native .st-key-topbar_user_row div[data-testid="stButton"],
+    .st-key-topbar_native .st-key-topbar_user_row div[data-testid="stButton"] > button {
+        width:42px !important; min-width:42px !important; max-width:42px !important;
+        height:42px !important; min-height:42px !important; margin:0 !important;
+    }
+    .st-key-topbar_native .st-key-topbar_user_row div[data-testid="stButton"] > button {
+        padding:0 !important; border-radius:12px !important;
+        border:1px solid rgba(239,68,68,.28) !important;
+        background:rgba(239,68,68,.09) !important; color:#FCA5A5 !important;
+        font-size:20px !important; font-weight:900 !important; box-shadow:none !important;
+    }
+    .st-key-topbar_native .st-key-topbar_user_row div[data-testid="stButton"] > button:hover {
+        background:rgba(239,68,68,.18) !important; border-color:rgba(239,68,68,.48) !important; color:#FFF !important;
+    }
+    @media (max-width:768px) {
+        .st-key-topbar_native .st-key-topbar_user_row div[data-testid="stHorizontalBlock"] {
+            display:flex !important; flex-wrap:nowrap !important; gap:8px !important;
+        }
+        .st-key-topbar_native .st-key-topbar_user_row div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"]:last-child {
+            flex:0 0 44px !important; width:44px !important; min-width:44px !important; max-width:44px !important;
+        }
+        .st-key-topbar_native .st-key-topbar_user_row div[data-testid="stButton"],
+        .st-key-topbar_native .st-key-topbar_user_row div[data-testid="stButton"] > button {
+            width:44px !important; min-width:44px !important; max-width:44px !important;
+            height:44px !important; min-height:44px !important;
+        }
+    }
+
 </style>
 """
 st.markdown(CSS_APP, unsafe_allow_html=True)
@@ -2399,14 +2438,23 @@ def exibir_alertas_preset():
                         except: pass
                         
                     if hora_alvo:
-                        h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M").replace(year=agora_dt.year, month=agora_dt.month, day=agora_dt.day, tzinfo=FUSO_BR)
+                        m_hora = re.search(r'(?<!\d)(?:[01]?\d|2[0-3]):[0-5]\d(?!\d)', str(hora_alvo))
+                        if not m_hora:
+                            continue
+                        hora_alvo = m_hora.group(0)
+                        try:
+                            h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M").replace(
+                                year=agora_dt.year, month=agora_dt.month, day=agora_dt.day, tzinfo=FUSO_BR
+                            )
+                        except (ValueError, TypeError):
+                            continue
                         if h_alvo_dt < agora_dt and (agora_dt - h_alvo_dt).total_seconds() > 12 * 3600:
                             h_alvo_dt += timedelta(days=1)
                         elif h_alvo_dt > agora_dt and (h_alvo_dt - agora_dt).total_seconds() > 12 * 3600:
                             h_alvo_dt -= timedelta(days=1)
-                        
+
                         delta_mins = int((h_alvo_dt - agora_dt).total_seconds() / 60)
-                        
+
                         if -120 <= delta_mins <= 180:
                             setor_maq = maq_id_full.split(" ")[0]
                             maq_num_only = maq_id_full.split(" ")[1]
@@ -2470,12 +2518,23 @@ def exibir_alertas_preparador():
                 except: pass
                 
             if hora_alvo:
-                h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M").replace(year=agora_dt.year, month=agora_dt.month, day=agora_dt.day, tzinfo=FUSO_BR)
-                if h_alvo_dt < agora_dt and (agora_dt - h_alvo_dt).total_seconds() > 12 * 3600: h_alvo_dt += timedelta(days=1)
-                elif h_alvo_dt > agora_dt and (h_alvo_dt - agora_dt).total_seconds() > 12 * 3600: h_alvo_dt -= timedelta(days=1)
-                
+                m_hora = re.search(r'(?<!\d)(?:[01]?\d|2[0-3]):[0-5]\d(?!\d)', str(hora_alvo))
+                if not m_hora:
+                    continue
+                hora_alvo = m_hora.group(0)
+                try:
+                    h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M").replace(
+                        year=agora_dt.year, month=agora_dt.month, day=agora_dt.day, tzinfo=FUSO_BR
+                    )
+                except (ValueError, TypeError):
+                    continue
+                if h_alvo_dt < agora_dt and (agora_dt - h_alvo_dt).total_seconds() > 12 * 3600:
+                    h_alvo_dt += timedelta(days=1)
+                elif h_alvo_dt > agora_dt and (h_alvo_dt - agora_dt).total_seconds() > 12 * 3600:
+                    h_alvo_dt -= timedelta(days=1)
+
                 delta_mins = int((h_alvo_dt - agora_dt).total_seconds() / 60)
-                
+
                 if -120 <= delta_mins <= 30:
                     alertas_tempo.append({'maquina': maq, 'hora': hora_alvo, 'delta': delta_mins})
 
@@ -3385,6 +3444,35 @@ def _links_topo_por_perfil():
     return links
 
 
+
+def _encerrar_sessao_topbar():
+    st.session_state['logout_realizado'] = True
+    st.session_state['operador'] = ''
+    st.session_state['turno'] = ''
+    st.session_state['setor_usuario'] = ''
+    st.session_state['perfil'] = ''
+    st.session_state['maq_ativa'] = None
+    st.session_state['celula_selecionada'] = None
+    try:
+        if COOKIE_LOGIN in (cookie_manager.cookies or {}):
+            cookie_manager.delete(COOKIE_LOGIN, key='del_auto_login_topbar')
+        for nome_cookie, chave in [
+            ('salvar_acesso', 'del_salvar_acesso_topbar'),
+            ('user_logado', 'del_logado_topbar'),
+            ('user_turno', 'del_turno_topbar'),
+            ('user_setor', 'del_setor_topbar'),
+            ('user_perfil', 'del_perfil_topbar'),
+        ]:
+            try:
+                if nome_cookie in (cookie_manager.cookies or {}):
+                    cookie_manager.delete(nome_cookie, key=chave)
+            except Exception:
+                pass
+    except Exception:
+        pass
+    mudar_tela('login', forcar_rerun=True)
+
+
 def renderizar_topbar(tela_atual):
     """Barra nativa do Streamlit: não recarrega a página nem perde a sessão."""
     perfil = st.session_state.get('perfil', '')
@@ -3422,13 +3510,19 @@ def renderizar_topbar(tela_atual):
                 on_change=_buscar_maquina_topbar,
             )
 
-        c_user.markdown(
-            f'''<div class="native-user">
+        with c_user:
+            with st.container(key='topbar_user_row'):
+                c_info, c_logout = st.columns([4.6, 1.0])
+                c_info.markdown(
+                    f'''<div class="native-user">
 <div><div class="native-user-name">{nome}</div><div class="native-user-meta">{html.escape(turno)} · {html.escape(setor_txt)}</div></div>
 <div class="native-user-avatar">{inicial}</div>
 </div>''',
-            unsafe_allow_html=True
-        )
+                    unsafe_allow_html=True
+                )
+                if c_logout.button('⎋', key='topbar_logout_btn', help='Encerrar sessão', use_container_width=True):
+                    _encerrar_sessao_topbar()
+
 
     links = _links_topo_por_perfil()
     with st.container(key='topbar_nav_native'):
