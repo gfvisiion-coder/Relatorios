@@ -1752,6 +1752,70 @@ CSS_APP = """
         }
     }
 
+    /* V11.12 - override final do botão de logout com ícone vermelho */
+    .st-key-topbar_logout_btn {
+        display:flex !important;
+        align-items:center !important;
+        justify-content:center !important;
+        margin-top:6px !important;
+    }
+    .st-key-topbar_logout_btn div[data-testid="stButton"] {
+        width:38px !important;
+        height:38px !important;
+        margin:0 !important;
+    }
+    .st-key-topbar_logout_btn button {
+        width:38px !important; min-width:38px !important; max-width:38px !important;
+        height:38px !important; min-height:38px !important; max-height:38px !important;
+        padding:0 !important; margin:0 !important;
+        border-radius:11px !important;
+        border:1px solid rgba(239,68,68,.18) !important;
+        background-color: rgba(255,255,255,.02) !important;
+        background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='none' stroke='%23ff1d25' stroke-width='7' stroke-linecap='round' stroke-linejoin='round' d='M24 8H10a2 2 0 0 0-2 2v44a2 2 0 0 0 2 2h14'/%3E%3Cpath fill='%23ff1d25' d='M30 20v10H18v8h12v10l20-14z'/%3E%3C/svg%3E") !important;
+        background-repeat:no-repeat !important;
+        background-position:center !important;
+        background-size:26px 26px !important;
+        box-shadow:none !important;
+        color:transparent !important;
+        -webkit-text-fill-color: transparent !important;
+        font-size:0 !important; line-height:0 !important;
+        text-indent:-9999px !important;
+        overflow:hidden !important;
+        transform:none !important;
+    }
+    .st-key-topbar_logout_btn button p,
+    .st-key-topbar_logout_btn button span,
+    .st-key-topbar_logout_btn button div {
+        opacity:0 !important;
+        font-size:0 !important;
+        color:transparent !important;
+        -webkit-text-fill-color: transparent !important;
+    }
+    .st-key-topbar_logout_btn button::before,
+    .st-key-topbar_logout_btn button::after {
+        content:none !important;
+        display:none !important;
+    }
+    .st-key-topbar_logout_btn button:hover {
+        background-color: rgba(239,68,68,.08) !important;
+        background-image: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cpath fill='none' stroke='%23ff1d25' stroke-width='7' stroke-linecap='round' stroke-linejoin='round' d='M24 8H10a2 2 0 0 0-2 2v44a2 2 0 0 0 2 2h14'/%3E%3Cpath fill='%23ff1d25' d='M30 20v10H18v8h12v10l20-14z'/%3E%3C/svg%3E") !important;
+        background-repeat:no-repeat !important;
+        background-position:center !important;
+        background-size:27px 27px !important;
+        border-color: rgba(239,68,68,.28) !important;
+        transform:none !important;
+    }
+    @media (max-width:768px) {
+        .st-key-topbar_logout_btn { margin-top:8px !important; }
+        .st-key-topbar_logout_btn div[data-testid="stButton"] { width:36px !important; height:36px !important; }
+        .st-key-topbar_logout_btn button {
+            width:36px !important; min-width:36px !important; max-width:36px !important;
+            height:36px !important; min-height:36px !important; max-height:36px !important;
+            background-size:24px 24px !important;
+            border-radius:10px !important;
+        }
+    }
+
 </style>
 """
 st.markdown(CSS_APP, unsafe_allow_html=True)
@@ -3705,7 +3769,7 @@ def renderizar_topbar(tela_atual):
 
         with c_user:
             with st.container(key='topbar_user_row'):
-                c_info, c_logout = st.columns([4.6, 1.0])
+                c_info, c_logout = st.columns([4.8, 0.7])
                 c_info.markdown(
                     f'''<div class="native-user">
 <div><div class="native-user-name">{nome}</div><div class="native-user-meta">{html.escape(turno)} · {html.escape(setor_txt)}</div></div>
