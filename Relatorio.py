@@ -1429,6 +1429,8 @@ CSS_APP = """
     .mgr-data-box b {display:block;color:#DCDCE2;font-size:9px;font-weight:900;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .mgr-next {margin-top:7px;color:#7E7E89;font-size:8px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
     .mgr-next b {color:#F59E0B;}
+    .mgr-rebolo-line {margin-top:7px;padding:6px 8px;border-radius:9px;background:rgba(96,165,250,.07);border:1px solid rgba(96,165,250,.12);color:#8F8F99;font-size:8px;font-weight:750;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    .mgr-rebolo-line b {color:#BAE6FD;font-weight:900;}
     .mgr-empty {padding:18px 6px;text-align:center;color:#73737E;font-size:10px;border:1px dashed rgba(255,255,255,.07);border-radius:11px;}
     @media (max-width:1280px) {.mgr-machine-grid {grid-template-columns:repeat(3,minmax(0,1fr));}}
     @media (max-width:980px) {.mgr-summary {grid-template-columns:repeat(2,minmax(0,1fr));}.mgr-machine-grid {grid-template-columns:repeat(2,minmax(0,1fr));}}
@@ -4858,6 +4860,62 @@ def _painel_edicao_op_item_maquinas():
                 st.rerun()
 
 
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _mapa_rebolos_por_item_maquinas():
+    """Mapa ITEM -> (rebolo 1, rebolo 2) para exibição na tela Máquinas."""
+    mapa = {}
+    if not os.path.exists(ARQUIVO_REBOLOS):
+        return mapa
+    try:
+        df = pd.read_excel(ARQUIVO_REBOLOS, sheet_name='Banco De Rebolos', engine='openpyxl')
+        df.columns = [
+            unicodedata.normalize('NFKD', str(c).upper()).encode('ASCII', 'ignore').decode('ASCII')
+            .replace(' ', '').replace("\n", '').strip()
+            for c in df.columns
+        ]
+        if 'ITEM' not in df.columns:
+            return mapa
+        for _, row in df.iterrows():
+            item = str(row.get('ITEM', '')).strip().upper()
+            item = re.sub(r'\.0$', '', item).lstrip('0')
+            if not item or item.lower() in ['nan', 'none']:
+                continue
+            reb1 = str(row.get('REBOLO', row.get('REBOLO1', ''))).strip()
+            reb2 = str(row.get('REBOLO2', '')).strip()
+            if reb1.lower() in ['nan', 'none', '']:
+                reb1 = '-'
+            if reb2.lower() in ['nan', 'none', '']:
+                reb2 = '-'
+            mapa[item] = (reb1, reb2)
+    except Exception:
+        return {}
+    return mapa
+
+
+def _rebolos_do_item_maquina(item):
+    item_norm = str(item or '').strip().upper()
+    item_norm = re.sub(r'\.0$', '', item_norm).lstrip('0')
+    if not item_norm or item_norm in ['-', 'NAN', 'NONE']:
+        return '-', '-'
+    mapa = _mapa_rebolos_por_item_maquinas()
+    if item_norm in mapa:
+        return mapa[item_norm]
+    for chave, valor in mapa.items():
+        if item_norm in chave or chave in item_norm:
+            return valor
+    return '-', '-'
+
+
+def _html_rebolos_maquina(item):
+    reb1, reb2 = _rebolos_do_item_maquina(item)
+    if reb1 == '-' and reb2 == '-':
+        return '<div class="mgr-rebolo-line">🛞 Rebolo: <b>não cadastrado</b></div>'
+    valores = [r for r in (reb1, reb2) if r and r != '-']
+    txt = ' / '.join(html.escape(str(r)) for r in valores) if valores else 'não cadastrado'
+    return f'<div class="mgr-rebolo-line">🛞 Rebolo: <b>{txt}</b></div>'
+
+
 def _tipo_explicito_rtf(status):
     up = _normalizar_setup_home(status)
     if '[PROCESSO: GUIA]' in up or 'PREPARACAO - GUIA' in up or ' GUIA' in up:
@@ -4992,6 +5050,7 @@ def _render_grupo_gerencia(nome, maquinas, setor, status_dict, cor):
                 <div class="mgr-data-box"><span>Item rodando</span><b>{html.escape(str(item))}</b></div>
                 <div class="mgr-data-box"><span>OP</span><b>{html.escape(str(op))}</b></div>
             </div>
+            {_html_rebolos_maquina(item)}
             {prox_html}
         </div>''')
     corpo = ''.join(cards) if cards else '<div class="mgr-empty">Nenhuma máquina nesta categoria.</div>'
@@ -5081,12 +5140,16 @@ def tela_visao_geral():
             st_val = status_dict.get(f"{prefixo} {m}", "PRODUZINDO")
             icone = get_status_icon(st_val)
             op_rodando, item_rodando = _extrair_op_item_gerencia(st_val)
+            reb1_rodando, reb2_rodando = _rebolos_do_item_maquina(item_rodando)
+            rebolos_validos = [r for r in (reb1_rodando, reb2_rodando) if r and r != '-']
+            rebolos_txt = ' / '.join(html.escape(str(r)) for r in rebolos_validos) if rebolos_validos else 'não cadastrado'
             bloco = f'''<div style="background-color:#18181B;padding:10px;border-radius:8px;margin-bottom:8px;border:1px solid #27272A;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
                     <span style="font-size:14px;font-weight:bold;color:#2DD4BF;">{icone} Máquina {m}</span>
                     <span style="font-size:12px;color:#A1A1AA;background:#27272A;padding:2px 8px;border-radius:4px;">{st_val.split('[')[0].strip()}</span>
                 </div>
                 <div style="margin-top:6px;font-size:13px;color:#F4F4F5;">📦 Item: <b>{item_rodando}</b> | 📋 OP: <b>{op_rodando}</b></div>
+                <div style="margin-top:5px;font-size:12px;color:#A1A1AA;">🛞 Rebolo(s): <b style="color:#BAE6FD;">{rebolos_txt}</b></div>
             </div>'''
             st.markdown(bloco, unsafe_allow_html=True)
         st.markdown("<div style='margin-top:15px;'></div>", unsafe_allow_html=True)
@@ -5109,6 +5172,7 @@ def tela_checkup():
     perfil = st.session_state['perfil']
     setor_atual = st.session_state['setor_usuario']
     turno_vigente_real = turno_atual_horario()
+    mapa_processo_rtf_preset = _mapa_processo_rodando_rtf(status_dict) if perfil == 'preset' else {}
     
     if setor_atual in ['TECNICO', 'GERAL', 'GERÊNCIA', 'PRESET', 'PROGRAMACAO'] or perfil == 'adm': 
         setores_alvo = [("AFC", TODAS_AFC), ("RTF", TODAS_RTF)]
@@ -5195,16 +5259,27 @@ def tela_checkup():
                         is_seq = "SEQUÊNCIA" in st_m.upper() or "SEQUENCIA" in st_m.upper()
                         is_prep = "PREPARAÇÃO" in st_m.upper() or "PREPARACAO" in st_m.upper() or "PREPARANDO" in st_m.upper()
                         is_preparando = "PREPARANDO" in st_m.upper()
-                        is_guia = "GUIA" in st_m.upper()
-                        
+
+                        processo_rtf = None
+                        if setor_m == "RTF":
+                            processo_rtf = _tipo_explicito_rtf(st_m)
+                            if is_preparando and not processo_rtf:
+                                processo_rtf = mapa_processo_rtf_preset.get(maq_m)
+                        is_guia = (processo_rtf == "GUIA") or ("GUIA" in st_m.upper())
+
                         tipo_setup = "Outro (Parada/Manut.)"
                         if is_seq:
                             tipo_setup = "Sequência"
                         elif is_prep:
-                            if "HASTE" in st_m.upper(): tipo_setup = "Preparação - HASTE"
-                            elif is_guia: tipo_setup = "Preparação - GUIA"
-                            else: tipo_setup = "Preparação"
-                            
+                            if setor_m == "RTF" and processo_rtf in ["HASTE", "GUIA", "FACETADO"]:
+                                tipo_setup = f"Preparação - {processo_rtf}"
+                            elif "HASTE" in st_m.upper():
+                                tipo_setup = "Preparação - HASTE"
+                            elif is_guia:
+                                tipo_setup = "Preparação - GUIA"
+                            else:
+                                tipo_setup = "Preparação"
+
                         tem_rebolo = "SIM" if "(C/ REBOLO)" in st_m.upper() else "NÃO"
 
                         h_alvo = "Imediato / Na Fila"
@@ -5284,8 +5359,11 @@ def tela_checkup():
                             bg_color, bd_color = "#FECACA", "#DC2626" 
                             cabecalho_maq = f"🔴 {setor_m} {maq_m} (PARADA)"
                         elif is_preparando:
-                            bg_color, bd_color = "#F472B6", "#BE185D" 
-                            cabecalho_maq = f"⚙ {setor_m} {maq_m} (PREPARANDO)"
+                            bg_color, bd_color = "#FDBA74", "#EA580C"
+                            if setor_m == "RTF" and processo_rtf in ["HASTE", "GUIA", "FACETADO"]:
+                                cabecalho_maq = f"⚙ {setor_m} {maq_m} (PREPARANDO {processo_rtf})"
+                            else:
+                                cabecalho_maq = f"⚙ {setor_m} {maq_m} (PREPARANDO)"
                             titulo_tempo = "⏳ Tempo de Setup:"
                             valor_tempo = "0 min"
                             info_maq = obter_info_maquina(maq_m, setor_m)
