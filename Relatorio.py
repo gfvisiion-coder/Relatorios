@@ -2261,6 +2261,36 @@ def _info_ultimo_backup_armarios():
     return info
 
 
+def _criar_backup_manual_armarios():
+    """Salva manualmente o estado atual completo dos armários.
+
+    Permitido para Pré-Set e Administração. Não altera o estado atual.
+    """
+    perfil = str(st.session_state.get("perfil", "") or "").lower()
+    if perfil not in ["preset", "adm"]:
+        raise RuntimeError("Somente Pré-Set e Administração podem criar backup manual dos armários.")
+
+    if not tabela_existe(ARQUIVO_ARMARIOS):
+        raise RuntimeError("A tabela de armários ainda não existe.")
+
+    df_atual = carregar_tabela(
+        ARQUIVO_ARMARIOS,
+        colunas_padrao=[
+            "Armario", "Posicao", "Ordem", "Item",
+            "Status", "Data_Hora", "Observacao", "Rebolo"
+        ],
+        dtype=str,
+    )
+    df_atual = _normalizar_armarios_df(df_atual)
+
+    if df_atual.empty:
+        raise RuntimeError("Os armários estão vazios. Backup manual não foi criado.")
+
+    _registrar_snapshot_armarios(df_atual, origem="backup_manual_preset")
+    return _qtd_armarios_ocupados(df_atual)
+
+
+
 def _restaurar_ultimo_backup_armarios():
     """Restaura o estado imediatamente anterior à última gravação.
 
@@ -4739,7 +4769,7 @@ def _tela_menu_dashboard_9999():
     info_bkp_arm = _info_ultimo_backup_armarios()
 
     with st.container(key="preset_restore_armarios"):
-        c_restore_info, c_restore_btn = st.columns([3.3, 1.35])
+        c_restore_info, c_backup_btn, c_restore_btn = st.columns([3.0, 1.15, 1.35])
 
         if info_bkp_arm.get("disponivel"):
             detalhes_bkp = []
@@ -4772,19 +4802,6 @@ def _tela_menu_dashboard_9999():
                 """,
                 unsafe_allow_html=True,
             )
-
-            if c_restore_btn.button(
-                "♻️ Restaurar último estado",
-                key="preset_restaurar_ultimo_armario",
-                use_container_width=True,
-                help="Volta os armários para o estado completo imediatamente anterior à última alteração."
-            ):
-                try:
-                    _restaurar_ultimo_backup_armarios()
-                    st.success("✅ Armários restaurados para o último estado salvo.")
-                    st.rerun()
-                except Exception as exc:
-                    st.error(f"Não foi possível restaurar os armários: {exc}")
         else:
             c_restore_info.markdown(
                 """
@@ -4802,12 +4819,40 @@ def _tela_menu_dashboard_9999():
                         🛡️ PROTEÇÃO DOS ARMÁRIOS ATIVA
                     </div>
                     <div style="font-size:11px;color:#A1A1AA;margin-top:3px;">
-                        O primeiro backup será criado automaticamente antes da próxima alteração.
+                        Backup automático antes de cada alteração + backup manual disponível.
                     </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
+
+        if c_backup_btn.button(
+            "💾 Fazer backup agora",
+            key="preset_backup_manual_armarios",
+            use_container_width=True,
+            help="Salva agora uma cópia completa do estado atual dos armários."
+        ):
+            try:
+                qtd_ocupadas = _criar_backup_manual_armarios()
+                st.success(f"✅ Backup criado com sucesso. {qtd_ocupadas} gaveta(s) ocupada(s) salvas.")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Não foi possível criar o backup: {exc}")
+
+        if info_bkp_arm.get("disponivel"):
+            if c_restore_btn.button(
+                "♻️ Restaurar último estado",
+                key="preset_restaurar_ultimo_armario",
+                use_container_width=True,
+                help="Volta os armários para o último estado completo salvo."
+            ):
+                try:
+                    _restaurar_ultimo_backup_armarios()
+                    st.success("✅ Armários restaurados para o último estado salvo.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Não foi possível restaurar os armários: {exc}")
+        else:
             c_restore_btn.button(
                 "♻️ Sem backup ainda",
                 key="preset_restaurar_ultimo_armario_vazio",
