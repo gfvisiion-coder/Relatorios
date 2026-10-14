@@ -3151,9 +3151,48 @@ def get_status_icon(status_str):
     elif "PARADA" in status_str: return "🔴"
     else: return "🟢"
 
+def _normalizar_diametro_haste(valor):
+    """Valida diâmetro usando ponto como separador decimal.
+
+    Aceita:
+      4
+      4.5
+      12.75
+
+    Não aceita vírgula. Valores inteiros não precisam de .0.
+    """
+    raw = str(valor or "").strip().replace("Ø", "").strip()
+
+    if not raw:
+        return "", "⚠️ Informe o diâmetro da haste."
+
+    if "," in raw:
+        return "", "⚠️ No diâmetro use ponto (.) e não vírgula (,). Exemplo: 4.5"
+
+    if not re.fullmatch(r"\d+(?:\.\d+)?", raw):
+        return "", "⚠️ Diâmetro inválido. Use somente números e ponto. Ex.: 4 ou 4.5"
+
+    try:
+        if float(raw) <= 0:
+            return "", "⚠️ O diâmetro deve ser maior que zero."
+    except Exception:
+        return "", "⚠️ Diâmetro inválido."
+
+    # Normaliza sem obrigar .0 nos inteiros.
+    inteiro, ponto, decimal = raw.partition(".")
+    inteiro = str(int(inteiro))
+
+    if ponto:
+        decimal = decimal.rstrip("0")
+        if decimal:
+            return f"{inteiro}.{decimal}", ""
+
+    return inteiro, ""
+
+
 def extrair_tags_producao(status_str):
     tags = ""
-    for marcador in ["[Item Atual:", "[Novo Item:", "[Ordem:", "[Item:", "[Pçs/Hora:", "[Obs:", "[Fim Previsto:"]:
+    for marcador in ["[Item Atual:", "[Novo Item:", "[Ordem:", "[Item:", "[Pçs/Hora:", "[Obs:", "[Fim Previsto:", "[Diametro:"]:
         if marcador in status_str:
             try: tags += f" {marcador} {status_str.split(marcador)[1].split(']')[0].strip()}]"
             except: pass
@@ -3608,43 +3647,114 @@ def painel_controle_maquina(maq_id, setor):
                         st.rerun()
 
         elif st.session_state[flow_key] == "detalhe_prep":
+            # Na Retífica, a escolha HASTE/GUIA e o tipo de troca ficam FORA do
+            # formulário para que o campo Ø apareça imediatamente ao selecionar
+            # "Troca de Diâmetro".
+            info_atual = obter_info_maquina(maq_id, setor)
+            st_atual = str(info_atual['Status']) if info_atual else ""
+
+            tipo_setup_rtf = None
+            acao_haste = "Sem troca específica"
+            diametro_haste = ""
+            troca_rebolo_guia = False
+
+            if setor != "AFC":
+                st.markdown("⚙️ **Configuração da preparação da Retífica**")
+                tipo_setup_rtf = st.radio(
+                    "Setup:",
+                    ["HASTE", "GUIA"],
+                    horizontal=True,
+                    key=f"rtf_tipo_setup_{maq_id}"
+                )
+
+                if tipo_setup_rtf == "HASTE":
+                    acao_haste = st.radio(
+                        "Tipo de preparação da HASTE:",
+                        ["Sem troca específica", "Troca de Rebolo", "Troca de Diâmetro"],
+                        horizontal=True,
+                        key=f"rtf_acao_haste_{maq_id}"
+                    )
+
+                    if acao_haste == "Troca de Diâmetro":
+                        diametro_haste = st.text_input(
+                            "Ø Diâmetro:",
+                            placeholder="Ex.: 4.5",
+                            key=f"rtf_diametro_haste_{maq_id}",
+                            help="Use ponto para casas decimais. Ex.: 4.5. Para inteiro, use apenas 4."
+                        )
+                        st.caption("Use **ponto (.)** para decimal: `4.5`. Se for inteiro, pode usar `4`. Não use vírgula.")
+                else:
+                    troca_rebolo_guia = st.toggle(
+                        "Troca de Rebolo",
+                        key=f"rtf_rebolo_guia_{maq_id}"
+                    )
+
+                st.markdown(
+                    "<hr style='margin: 8px 0 14px 0; border-color: #27272A;'>",
+                    unsafe_allow_html=True
+                )
+
             with st.form(f"form_prep_{maq_id}"):
                 st.markdown("⚙️ **Configuração de Preparação / Agendamento**")
-                info_atual = obter_info_maquina(maq_id, setor)
-                st_atual = str(info_atual['Status']) if info_atual else ""
-                
+
                 hora_pre_fill = ""
                 if "AGENDADA PARA" in st_atual.upper():
-                    try: hora_pre_fill = st_atual.upper().split("AGENDADA PARA")[1].strip().split(" ")[0]
-                    except: pass
+                    try:
+                        hora_pre_fill = st_atual.upper().split("AGENDADA PARA")[1].strip().split(" ")[0]
+                    except:
+                        pass
                 elif "[AGENDADO:" in st_atual.upper():
-                    try: hora_pre_fill = st_atual.upper().split("[AGENDADO:")[1].split("]")[0].strip()
-                    except: pass
+                    try:
+                        hora_pre_fill = st_atual.upper().split("[AGENDADO:")[1].split("]")[0].strip()
+                    except:
+                        pass
                 elif "[Fim Previsto:" in st_atual:
-                    try: hora_pre_fill = st_atual.split("[Fim Previsto:")[1].split("]")[0].strip()
-                    except: pass
-                    
-                hora_relatorio = st.text_input("⏰ Horário Alvo (Aparecerá no Relatório):", value=hora_pre_fill, placeholder="Ex: 12:30")
+                    try:
+                        hora_pre_fill = st_atual.split("[Fim Previsto:")[1].split("]")[0].strip()
+                    except:
+                        pass
+
+                hora_relatorio = st.text_input(
+                    "⏰ Horário Alvo (Aparecerá no Relatório):",
+                    value=hora_pre_fill,
+                    placeholder="Ex: 12:30"
+                )
                 is_agendado = st.toggle("Marcar como Agendamento Futuro", value=True)
-                
-                prep_sugerido = st.text_input("🧑‍🔧 Sugerir Preparador (Opcional):", placeholder="Ex: Lucas")
-                
+
+                prep_sugerido = st.text_input(
+                    "🧑‍🔧 Sugerir Preparador (Opcional):",
+                    placeholder="Ex: Lucas"
+                )
+
+                troca_diametro = False
+
                 if setor == "AFC":
-                    tipo_setup = st.radio("Selecione o Status:", ["PREPARAÇÃO", "SEQUÊNCIA"], horizontal=True)
+                    tipo_setup = st.radio(
+                        "Selecione o Status:",
+                        ["PREPARAÇÃO", "SEQUÊNCIA"],
+                        horizontal=True
+                    )
                     troca_rebolo = st.toggle("Troca de Rebolo")
                 else:
-                    tipo_setup = st.radio("Setup:", ["HASTE", "GUIA"], horizontal=True)
-                    troca_diametro = False
-                    if tipo_setup == "HASTE": troca_diametro = st.toggle("Troca de Diâmetro")
-                    troca_rebolo = st.toggle("Troca de Rebolo")
-                
+                    tipo_setup = tipo_setup_rtf or "HASTE"
+
+                    if tipo_setup == "HASTE":
+                        troca_rebolo = (acao_haste == "Troca de Rebolo")
+                        troca_diametro = (acao_haste == "Troca de Diâmetro")
+                    else:
+                        troca_rebolo = bool(troca_rebolo_guia)
+
                 is_guia = (setor != "AFC" and tipo_setup == "GUIA") or "GUIA" in st_atual.upper()
-                
+
                 op_pre, item_pre = "", ""
-                if "[Ordem:" in st_atual: op_pre = st_atual.split("[Ordem:")[1].split("]")[0].strip()
-                if "[Item Atual:" in st_atual: item_pre = st_atual.split("[Item Atual:")[1].split("]")[0].strip()
-                elif "[Novo Item:" in st_atual: item_pre = st_atual.split("[Novo Item:")[1].split("]")[0].strip()
-                elif "[Item:" in st_atual: item_pre = st_atual.split("[Item:")[1].split("]")[0].strip()
+                if "[Ordem:" in st_atual:
+                    op_pre = st_atual.split("[Ordem:")[1].split("]")[0].strip()
+                if "[Item Atual:" in st_atual:
+                    item_pre = st_atual.split("[Item Atual:")[1].split("]")[0].strip()
+                elif "[Novo Item:" in st_atual:
+                    item_pre = st_atual.split("[Novo Item:")[1].split("]")[0].strip()
+                elif "[Item:" in st_atual:
+                    item_pre = st_atual.split("[Item:")[1].split("]")[0].strip()
 
                 if not is_guia:
                     if "[PROG: OK" in st_atual.upper():
@@ -3653,49 +3763,99 @@ def painel_controle_maquina(maq_id, setor):
                         prog_status_prep = "SIM (Programa OK)"
                     else:
                         st.markdown("💻 **Validação do Programa CNC**")
-                        prog_status_prep = st.selectbox("O programa da peça está OK na máquina?", ["-- Vá até a máquina e verifique --", "SIM (Programa OK)", "NÃO (Falta/Erro de Programa)"])
-                    
+                        prog_status_prep = st.selectbox(
+                            "O programa da peça está OK na máquina?",
+                            [
+                                "-- Vá até a máquina e verifique --",
+                                "SIM (Programa OK)",
+                                "NÃO (Falta/Erro de Programa)"
+                            ]
+                        )
+
                     st.markdown("📦 **Dados do Item**")
-                    ordem_atual = st.text_input("Ordem Atual (OP):", value=op_pre, placeholder="Ex: 987654")
-                    item_atual = st.text_input("Item Atual (Na Máquina):", value=item_pre, placeholder="Ex: 313324")
+                    ordem_atual = st.text_input(
+                        "Ordem Atual (OP):",
+                        value=op_pre,
+                        placeholder="Ex: 987654"
+                    )
+                    item_atual = st.text_input(
+                        "Item Atual (Na Máquina):",
+                        value=item_pre,
+                        placeholder="Ex: 313324"
+                    )
                 else:
                     prog_status_prep = "SIM (Programa OK)"
                     ordem_atual = op_pre
                     item_atual = item_pre
                     st.info("ℹ️ Setup de GUIA: O Programa, a OP e o Item da haste atual serão mantidos automaticamente.")
-                
-                st.markdown("<hr style='margin: 10px 0px; border-color: #27272A;'>", unsafe_allow_html=True)
-                
+
+                st.markdown(
+                    "<hr style='margin: 10px 0px; border-color: #27272A;'>",
+                    unsafe_allow_html=True
+                )
+
                 if st.form_submit_button("💾 Salvar Registro", type="primary"):
+                    diametro_normalizado = ""
+                    erro_diametro = ""
+
+                    if setor != "AFC" and tipo_setup == "HASTE" and troca_diametro:
+                        diametro_normalizado, erro_diametro = _normalizar_diametro_haste(diametro_haste)
+
                     if not hora_relatorio.strip():
                         st.error("⚠️ O campo de horário é obrigatório!")
+                    elif erro_diametro:
+                        st.error(erro_diametro)
                     elif prep_sugerido.strip() and not is_guia and prog_status_prep == "-- Vá até a máquina e verifique --":
                         st.error("⚠️ Como você sugeriu um preparador, é OBRIGATÓRIO verificar na máquina se o Programa está OK!")
                     else:
                         if setor == "AFC":
                             detalhe_setup = tipo_setup
-                            if troca_rebolo: detalhe_setup += " (C/ Rebolo)"
+                            if troca_rebolo:
+                                detalhe_setup += " (C/ Rebolo)"
                         else:
                             detalhe_setup = f"PREPARAÇÃO - {tipo_setup}"
-                            if tipo_setup == "HASTE" and troca_diametro: detalhe_setup += " (C/ Diâmetro)"
-                            if troca_rebolo: detalhe_setup += " (C/ Rebolo)"
-                            
-                        if prep_sugerido.strip(): 
+
+                            if tipo_setup == "HASTE":
+                                if troca_rebolo:
+                                    detalhe_setup += " (C/ Rebolo)"
+                                elif troca_diametro:
+                                    detalhe_setup += " (Troca de Diâmetro)"
+                            elif troca_rebolo:
+                                detalhe_setup += " (C/ Rebolo)"
+
+                        if prep_sugerido.strip():
                             detalhe_setup += f" [Prep. Sugerido: {prep_sugerido.strip().upper()}]"
                             val_prog = "OK" if "SIM" in prog_status_prep else "NOK"
                             detalhe_setup += f" [Prog: {val_prog}]"
-                            
-                        if is_agendado and hora_relatorio.strip(): 
+
+                        if is_agendado and hora_relatorio.strip():
                             st_final = f"{detalhe_setup} [AGENDADO:{hora_relatorio.strip()}]"
-                        else: 
+                        else:
                             st_final = f"AGUARDANDO PREPARADOR - {detalhe_setup}"
-                        
+
+                        # Guarda o diâmetro como dado estruturado para permanecer
+                        # visível também quando o setup passar para PREPARANDO.
+                        if diametro_normalizado:
+                            st_final += f" [Diametro: Ø{diametro_normalizado}]"
+
                         ordem_limpa = ordem_atual.strip().upper().replace(".0", "").lstrip("0")
                         item_limpa = item_atual.strip().upper().replace(".0", "").lstrip("0")
-                        if ordem_limpa: st_final += f" [Ordem: {ordem_limpa}]"
-                        if item_limpa: st_final += f" [Item Atual: {item_limpa}]"
-                        
-                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_relatorio.strip()}, ARQUIVO_DADOS)
+
+                        if ordem_limpa:
+                            st_final += f" [Ordem: {ordem_limpa}]"
+                        if item_limpa:
+                            st_final += f" [Item Atual: {item_limpa}]"
+
+                        salvar_csv(
+                            {
+                                "Setor": setor,
+                                "Maquina": f"{setor} {maq_id}",
+                                "Operador": st.session_state['operador'],
+                                "Status": st_final,
+                                "Hora": hora_relatorio.strip()
+                            },
+                            ARQUIVO_DADOS
+                        )
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
                         st.success("✅ Registro salvo com sucesso!")
@@ -5898,6 +6058,15 @@ def tela_checkup():
 
                         tem_rebolo = "SIM" if "(C/ REBOLO)" in st_m.upper() else "NÃO"
 
+                        diametro_troca = ""
+                        m_diametro = re.search(
+                            r"\[Diametro:\s*Ø?\s*([0-9]+(?:\.[0-9]+)?)\]",
+                            st_m,
+                            flags=re.IGNORECASE
+                        )
+                        if m_diametro:
+                            diametro_troca = m_diametro.group(1).strip()
+
                         h_alvo = "Imediato / Na Fila"
                         if "AGENDADA PARA" in st_m.upper():
                             try: h_alvo = st_m.upper().split('AGENDADA PARA')[1].strip().split(" ")[0]
@@ -6001,7 +6170,11 @@ def tela_checkup():
                         if tem_rebolo == "SIM":
                             html_rebolo = f"<div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>🛞 Reb 1:</strong> <span style='font-size: 13px;'>{reb1}</span></div><div style='margin: 0;'><strong style='font-size: 13px;'>🛞 Reb 2:</strong> <span style='font-size: 13px;'>{reb2}</span></div>"
 
-                        html = f"<div class='postit-card' style='background-color: {bg_color}; padding: 15px; border-radius: 6px; box-shadow: 2px 4px 8px rgba(0,0,0,0.3); margin-bottom: 20px; min-height: 250px;'><div style='margin: 0 0 10px 0; border-bottom: 2px solid {bd_color}; padding-bottom: 5px;'><strong style='font-size: 16px;'>{cabecalho_maq}</strong></div><div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>{titulo_tempo}</strong> <span style='font-size: 14px;'>{valor_tempo}</span></div><div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>📋 Setup:</strong> <span style='font-size: 14px;'>{tipo_setup}</span></div><div style='margin: 0 0 8px 0;'><strong style='font-size: 14px;'>💻 Programa:</strong> <span style='font-size: 14px;'>{prog_status}</span></div><div style='margin: 0 0 8px 0;'><strong style='font-size: 14px;'>🔄 Troca Rebolo:</strong> <span style='font-size: 14px;'>{tem_rebolo}</span></div><div style='background: rgba(255,255,255,0.6); padding: 8px; border-radius: 6px; margin-bottom: 8px;'><div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>Ordem:</strong> <span style='font-size: 13px;'>{final_op}</span></div><div style='margin: 0;'><strong style='font-size: 13px;'>{label_item_txt}:</strong> <span style='font-size: 13px;'>{final_item}</span></div></div>{html_rebolo}</div>"
+                        html_diametro = ""
+                        if diametro_troca:
+                            html_diametro = f"<div style='margin: 0 0 8px 0;'><strong style='font-size: 14px;'>Ø Troca Diâmetro:</strong> <span style='font-size: 14px; font-weight: 800;'>Ø{diametro_troca}</span></div>"
+
+                        html = f"<div class='postit-card' style='background-color: {bg_color}; padding: 15px; border-radius: 6px; box-shadow: 2px 4px 8px rgba(0,0,0,0.3); margin-bottom: 20px; min-height: 250px;'><div style='margin: 0 0 10px 0; border-bottom: 2px solid {bd_color}; padding-bottom: 5px;'><strong style='font-size: 16px;'>{cabecalho_maq}</strong></div><div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>{titulo_tempo}</strong> <span style='font-size: 14px;'>{valor_tempo}</span></div><div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>📋 Setup:</strong> <span style='font-size: 14px;'>{tipo_setup}</span></div><div style='margin: 0 0 8px 0;'><strong style='font-size: 14px;'>💻 Programa:</strong> <span style='font-size: 14px;'>{prog_status}</span></div><div style='margin: 0 0 8px 0;'><strong style='font-size: 14px;'>🔄 Troca Rebolo:</strong> <span style='font-size: 14px;'>{tem_rebolo}</span></div>{html_diametro}<div style='background: rgba(255,255,255,0.6); padding: 8px; border-radius: 6px; margin-bottom: 8px;'><div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>Ordem:</strong> <span style='font-size: 13px;'>{final_op}</span></div><div style='margin: 0;'><strong style='font-size: 13px;'>{label_item_txt}:</strong> <span style='font-size: 13px;'>{final_item}</span></div></div>{html_rebolo}</div>"
                         
                         cols[j].markdown(html, unsafe_allow_html=True)
 
