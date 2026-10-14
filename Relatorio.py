@@ -3239,7 +3239,7 @@ def get_status_icon(status_str):
 
 def extrair_tags_producao(status_str):
     tags = ""
-    for marcador in ["[Item Atual:", "[Novo Item:", "[Ordem:", "[Item:", "[Pçs/Hora:", "[Obs:", "[Fim Previsto:", "[Processo:", "[Troca Diametro:", "[Troca Rebolo:"]:
+    for marcador in ["[Item Atual:", "[Novo Item:", "[Ordem:", "[Item:", "[Pçs/Hora:", "[Obs:", "[Fim Previsto:", "[Processo:", "[Troca Diametro:", "[Troca Rebolo:", "[Rebolo Adiantado:", "[Tempo Rebolo Adiantado:"]:
         if marcador in status_str:
             try: tags += f" {marcador} {status_str.split(marcador)[1].split(']')[0].strip()}]"
             except: pass
@@ -3432,7 +3432,16 @@ def painel_controle_maquina(maq_id, setor):
         )
 
         timer_str = ""
-        if ("MANUTENÇÃO" in status_atual or "PREPARAÇÃO" in status_atual or "SEQUÊNCIA" in status_atual or "PREPARANDO" in status_atual) and info:
+        status_atual_up = status_atual.strip().upper()
+        if (
+            status_atual_up.startswith("MANUTENÇÃO")
+            or status_atual_up.startswith("MANUTENCAO")
+            or status_atual_up.startswith("PREPARAÇÃO")
+            or status_atual_up.startswith("PREPARACAO")
+            or status_atual_up.startswith("SEQUÊNCIA")
+            or status_atual_up.startswith("SEQUENCIA")
+            or status_atual_up.startswith("PREPARANDO")
+        ) and info:
             try:
                 dt_reg = datetime.strptime(f"{datetime.now(FUSO_BR).strftime('%Y-%m-%d')} {hora_atual}", "%Y-%m-%d %H:%M")
                 tempo_decorrido = datetime.now(FUSO_BR) - dt_reg.replace(tzinfo=FUSO_BR)
@@ -3449,18 +3458,42 @@ def painel_controle_maquina(maq_id, setor):
             status_exibicao = re.sub(r' \[Prep:.*?\]', '', status_exibicao)
             status_exibicao = re.sub(r' \[Prog:.*?\]', '', status_exibicao)
             
-        if "AGUARDANDO PREPARADOR" in status_atual: st.warning(f"🟠 Status Atual: {status_exibicao}")
+        if "TROCA DE REBOLO ADIANTADA" in status_atual.upper():
+            st.markdown(
+                f"<div style='padding:12px 14px;border-radius:10px;"
+                f"background:#2E1065;border:1px solid #8B5CF6;"
+                f"color:#F5F3FF;font-weight:800;'>"
+                f"🟣 REBOLO ADIANTADO · {html.escape(status_exibicao)} "
+                f"desde {html.escape(str(hora_atual))}{html.escape(str(timer_str))}"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+        elif (
+            status_atual.strip().upper().startswith("PRODUZINDO")
+            and "[SETUP FUTURO: SIM]" in status_atual.upper()
+        ):
+            st.success(f"🟢 PRODUZINDO · Próximo setup preservado: {status_exibicao}")
+        elif "AGUARDANDO PREPARADOR" in status_atual: st.warning(f"🟠 Status Atual: {status_exibicao}")
         elif "AGENDADO" in status_atual or "AGENDADA" in status_atual: st.info(f"🔵 Status: {status_exibicao}")
-        elif "PREPARANDO" in status_atual: st.info(f"🟡 Status Atual: {status_exibicao} desde {hora_atual}{timer_str}")
-        elif "SEQUÊNCIA" in status_atual: st.info(f"🟣 Status Atual: {status_exibicao} desde {hora_atual}{timer_str}")
-        elif "PRODUZINDO" in status_atual: st.success(f"🟢 Status Atual: {status_exibicao}")
+        elif status_atual.strip().upper().startswith("PREPARANDO"): st.info(f"🟡 Status Atual: {status_exibicao} desde {hora_atual}{timer_str}")
+        elif status_atual.strip().upper().startswith("SEQUÊNCIA") or status_atual.strip().upper().startswith("SEQUENCIA"): st.info(f"🟣 Status Atual: {status_exibicao} desde {hora_atual}{timer_str}")
+        elif status_atual.strip().upper().startswith("PRODUZINDO"): st.success(f"🟢 Status Atual: {status_exibicao}")
         elif "PARADA" in status_atual: st.error(f"🔴 Status Atual: Paralisada desde {hora_atual}")
         elif "MANUTENÇÃO" in status_atual: st.warning(f"🛠️ Status Atual: Em Manutenção desde {hora_atual}{timer_str}")
         else: st.warning(f"🟡 Status Atual: {status_exibicao} desde {hora_atual}{timer_str}")
             
         flow_key = f"flow_{maq_id}"
-        is_setup_ativo = "PREPARANDO" in status_atual or "SEQUÊNCIA" in status_atual
-        is_espera = "AGUARDANDO PREPARADOR" in status_atual or "AGENDADO" in status_atual or "AGENDADA" in status_atual
+        _status_inicio = status_atual.strip().upper()
+        is_setup_ativo = (
+            _status_inicio.startswith("PREPARANDO")
+            or _status_inicio.startswith("SEQUÊNCIA")
+            or _status_inicio.startswith("SEQUENCIA")
+        )
+        is_espera = (
+            "AGUARDANDO PREPARADOR" in status_atual
+            or "AGENDADO" in status_atual
+            or "AGENDADA" in status_atual
+        )
         
         if flow_key not in st.session_state:
             if is_espera: st.session_state[flow_key] = "acoes_espera"
@@ -3473,53 +3506,179 @@ def painel_controle_maquina(maq_id, setor):
             
             with st.form(f"form_fast_track_{maq_id}"):
                 if is_troca_adiantada:
-                    st.markdown(f"<p style='text-align: center; font-weight: 600;'>A troca de rebolo adiantada foi concluída?</p>", unsafe_allow_html=True)
-                    obs_fast = st.text_input("Observação (Opcional):", placeholder="Ex: Rebolo pronto...")
-                    
+                    st.markdown(
+                        "<div style='padding:10px 12px;border-radius:10px;"
+                        "background:#2E1065;border:1px solid #8B5CF6;"
+                        "color:#F5F3FF;text-align:center;font-weight:900;"
+                        "margin-bottom:10px;'>"
+                        "🟣 TROCA DE REBOLO ADIANTADA EM ANDAMENTO"
+                        "</div>",
+                        unsafe_allow_html=True
+                    )
+                    st.caption(
+                        "Quando terminar a troca, clique em **Voltar a Produzir**. "
+                        "O tempo será contabilizado e o próximo horário será recalculado."
+                    )
+                    obs_fast = st.text_input(
+                        "Observação (Opcional):",
+                        placeholder="Ex: Rebolo pronto..."
+                    )
+
                     c1, c2, c3 = st.columns(3)
-                    btn_concluir = c1.form_submit_button("✅ Concluir Troca")
+                    btn_concluir = c1.form_submit_button(
+                        "▶️ Voltar a Produzir",
+                        type="primary"
+                    )
                     btn_assumir = c2.form_submit_button("🔄 Assumir")
                     btn_alt = c3.form_submit_button("⚠️ Alterar")
-                    
+
                     if btn_concluir:
                         hora_atual_dt = datetime.now(FUSO_BR)
                         hora_br_str = hora_atual_dt.strftime("%H:%M")
-                        
+
                         info_atual = obter_info_maquina(maq_id, setor)
                         st_atual_raw = str(info_atual['Status']) if info_atual else ""
                         hora_inicio_str = str(info_atual['Hora']) if info_atual else hora_br_str
-                        
+
                         minutos_decorridos = 0
                         try:
                             t_inicio = datetime.strptime(hora_inicio_str, "%H:%M")
                             t_fim = datetime.strptime(hora_br_str, "%H:%M")
-                            if t_fim < t_inicio: t_fim += timedelta(days=1)
-                            minutos_decorridos = int((t_fim - t_inicio).total_seconds() / 60)
-                        except: pass
-                        
-                        st_fechamento = "PRODUZINDO [Troca de Rebolo Concluída]"
-                        if obs_fast.strip(): st_fechamento += f" [Obs: {obs_fast.strip()}]"
-                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_fechamento, "Hora": hora_br_str}, ARQUIVO_DADOS)
-                        
-                        h_alvo = ""
-                        if "[AGENDADO:" in st_atual_raw:
-                            try: 
-                                h_alvo = st_atual_raw.split("[AGENDADO:")[1].split("]")[0].strip()
-                                t_alvo = datetime.strptime(h_alvo, "%H:%M")
-                                t_alvo_novo = t_alvo + timedelta(minutes=minutos_decorridos)
-                                h_alvo = t_alvo_novo.strftime("%H:%M")
-                            except: pass
-                        
-                        tags_prod = extrair_tags_producao(st_atual_raw)
-                        st_volta = f"SEQUÊNCIA"
-                        if h_alvo: st_volta += f" [AGENDADO:{h_alvo}]"
-                        st_volta += f" {tags_prod}"
-                        
-                        salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_volta.strip(), "Hora": hora_br_str}, ARQUIVO_DADOS)
-                        
+                            if t_fim < t_inicio:
+                                t_fim += timedelta(days=1)
+                            minutos_decorridos = max(
+                                0,
+                                int((t_fim - t_inicio).total_seconds() // 60)
+                            )
+                        except Exception:
+                            minutos_decorridos = 0
+
+                        # Mantém todos os dados do setup que ainda acontecerá depois.
+                        tags_futuras = extrair_tags_producao(st_atual_raw)
+
+                        # Horário originalmente previsto.
+                        h_alvo_original = ""
+                        up_raw = st_atual_raw.upper()
+
+                        if "[AGENDADO:" in up_raw:
+                            try:
+                                h_alvo_original = (
+                                    up_raw.split("[AGENDADO:")[1]
+                                    .split("]")[0]
+                                    .strip()
+                                )
+                            except Exception:
+                                pass
+                        elif "AGENDADA PARA" in up_raw:
+                            try:
+                                h_alvo_original = (
+                                    up_raw.split("AGENDADA PARA")[1]
+                                    .strip()
+                                    .split(" ")[0]
+                                )
+                            except Exception:
+                                pass
+                        elif "[FIM PREVISTO:" in up_raw:
+                            try:
+                                h_alvo_original = (
+                                    up_raw.split("[FIM PREVISTO:")[1]
+                                    .split("]")[0]
+                                    .strip()
+                                )
+                            except Exception:
+                                pass
+
+                        # Ex.: 08:30 + 45 min = 09:15
+                        h_alvo_novo = h_alvo_original
+                        if h_alvo_original and minutos_decorridos > 0:
+                            try:
+                                t_alvo = datetime.strptime(h_alvo_original, "%H:%M")
+                                h_alvo_novo = (
+                                    t_alvo + timedelta(minutes=minutos_decorridos)
+                                ).strftime("%H:%M")
+                            except Exception:
+                                h_alvo_novo = h_alvo_original
+
+                        # Fecha esse bloco como uma preparação normal.
+                        st_fechamento = (
+                            f"PRODUZINDO {tags_futuras} "
+                            f"[Troca de Rebolo Adiantada Concluída] "
+                            f"[Tempo Rebolo Adiantado: {minutos_decorridos} min]"
+                        ).strip()
+
+                        if obs_fast.strip():
+                            st_fechamento += f" [Obs: {obs_fast.strip()}]"
+
+                        salvar_csv(
+                            {
+                                "Setor": setor,
+                                "Maquina": f"{setor} {maq_id}",
+                                "Operador": st.session_state['operador'],
+                                "Status": st_fechamento,
+                                "Hora": hora_br_str
+                            },
+                            ARQUIVO_DADOS
+                        )
+
+                        # A máquina volta a PRODUZIR de verdade.
+                        # O setup futuro permanece embutido em tags para ser
+                        # iniciado normalmente no novo horário.
+                        tags_futuras_limpa = re.sub(
+                            r'(?i)\s*\[Processo:\s*[^\]]*\]',
+                            '',
+                            tags_futuras
+                        )
+                        tags_futuras_limpa = re.sub(
+                            r'(?i)\s*\[Fim Previsto:\s*\d{1,2}:\d{2}\s*\]',
+                            '',
+                            tags_futuras_limpa
+                        ).strip()
+
+                        st_volta = (
+                            "PRODUZINDO "
+                            "[Setup Futuro: SIM] "
+                            "[Processo: SEQUÊNCIA] "
+                            "[Rebolo Adiantado: OK]"
+                        )
+                        st_volta += (
+                            f" [Tempo Rebolo Adiantado: {minutos_decorridos} min]"
+                        )
+
+                        if h_alvo_novo:
+                            st_volta += f" [AGENDADO:{h_alvo_novo}]"
+
+                        if tags_futuras_limpa:
+                            st_volta += f" {tags_futuras_limpa}"
+
+                        st_volta = re.sub(r'[ \t]{2,}', ' ', st_volta).strip()
+
+                        salvar_csv(
+                            {
+                                "Setor": setor,
+                                "Maquina": f"{setor} {maq_id}",
+                                "Operador": st.session_state['operador'],
+                                "Status": st_volta,
+                                "Hora": hora_br_str
+                            },
+                            ARQUIVO_DADOS
+                        )
+
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
-                        st.success(f"✅ Troca concluída em {minutos_decorridos} min! Novo agendamento: {h_alvo if h_alvo else '--'}")
+
+                        if h_alvo_original and h_alvo_novo:
+                            st.success(
+                                f"✅ Troca concluída em {minutos_decorridos} min. "
+                                f"Máquina voltou a PRODUZIR. Próxima parada ajustada de "
+                                f"{h_alvo_original} para {h_alvo_novo}. "
+                                f"O setup futuro foi mantido."
+                            )
+                        else:
+                            st.success(
+                                f"✅ Troca concluída em {minutos_decorridos} min. "
+                                f"O setup futuro foi mantido."
+                            )
+
                         st.rerun()
 
                 else:
@@ -4102,8 +4261,18 @@ def painel_controle_maquina(maq_id, setor):
                 if is_afc_seq:
                     c1, c2, c3, c4 = st.columns(4)
                     btn_sugerir = c1.form_submit_button("💡 Sugerir")
-                    btn_iniciar = c2.form_submit_button("🚀 INICIAR", type="primary", disabled=bloquear_inicio)
-                    btn_rebolo_adiantado = c3.form_submit_button("🛞 Trocar Rebolo")
+                    btn_iniciar = c2.form_submit_button(
+                        "🚀 INICIAR",
+                        type="primary",
+                        disabled=bloquear_inicio
+                    )
+                    rebolo_ja_adiantado = (
+                        "[REBOLO ADIANTADO: OK]" in status_atual.upper()
+                    )
+                    btn_rebolo_adiantado = c3.form_submit_button(
+                        "✅ Rebolo adiantado" if rebolo_ja_adiantado else "🛞 Trocar Rebolo",
+                        disabled=rebolo_ja_adiantado
+                    )
                     btn_alterar = c4.form_submit_button("⚠️ Alterar")
                 else:
                     c1, c2, c3 = st.columns(3)
@@ -4119,10 +4288,10 @@ def painel_controle_maquina(maq_id, setor):
                     hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
                     info_atual = obter_info_maquina(maq_id, setor)
                     tags_prod = extrair_tags_producao(str(info_atual['Status'])) if info_atual else ""
-                    
-                    tags_prod = re.sub(r' \[Ordem:.*?\]', '', tags_prod)
-                    tags_prod = re.sub(r' \[Novo Item:.*?\]', '', tags_prod)
-                    
+
+                    # A troca é adiantada, mas o setup principal continua pendente.
+                    # Ordem, Item, Programa e demais tags NÃO podem ser apagados.
+
                     h_alvo = ""
                     st_atual_raw = str(info_atual['Status']) if info_atual else ""
                     if "AGENDADA PARA" in st_atual_raw.upper():
@@ -4432,6 +4601,13 @@ def _classificar_preparacao_home(status):
     up = str(status).strip().upper()
     if up.startswith('PREPARANDO'):
         return 'ativa'
+
+    if (
+        up.startswith('PRODUZINDO')
+        and '[SETUP FUTURO: SIM]' in up
+        and ('[AGENDADO:' in up or 'AGENDADA PARA' in up)
+    ):
+        return 'aguardando'
     if (
         up.startswith('PREPARAÇÃO') or up.startswith('PREPARACAO') or
         up.startswith('SEQUÊNCIA') or up.startswith('SEQUENCIA') or
@@ -4929,11 +5105,23 @@ def _metricas_setups_mes_home(agora=None):
                     categoria_pendente = cat
                 continue
             if up.startswith('PREPARANDO'):
-                if 'TROCA DE REBOLO ADIANTADA' in up:
-                    continue
                 if inicio_ativo is None:
                     inicio_ativo = dt
-                    categoria_ativa = categoria_pendente or _categoria_setup_home(setor, status)
+
+                    if 'TROCA DE REBOLO ADIANTADA' in up:
+                        categoria_ativa = (
+                            categoria_pendente
+                            or (
+                                'afc_sequencia'
+                                if setor == 'AFC'
+                                else _categoria_setup_home(setor, status)
+                            )
+                        )
+                    else:
+                        categoria_ativa = (
+                            categoria_pendente
+                            or _categoria_setup_home(setor, status)
+                        )
                 continue
             if up.startswith('PRODUZINDO'):
                 if inicio_ativo is not None and categoria_ativa in saida:
@@ -6000,6 +6188,8 @@ def _mapa_processo_rodando_rtf(status_dict):
 
 def _estado_gerencial_maquina(status):
     up = _normalizar_setup_home(status)
+    if 'TROCA DE REBOLO ADIANTADA' in up:
+        return 'REBOLO ADIANTADO', '#8B5CF6'
     if up.startswith('MANUTENCAO'):
         return 'MANUTENÇÃO', '#F97316'
     if up.startswith('PARADA'):
@@ -6360,6 +6550,27 @@ def tela_checkup():
                         elif "PARADA" in st_m.upper():
                             bg_color, bd_color = "#FECACA", "#DC2626" 
                             cabecalho_maq = f"🔴 {setor_m} {maq_m} (PARADA)"
+                        elif "TROCA DE REBOLO ADIANTADA" in st_m.upper():
+                            bg_color, bd_color = "#DDD6FE", "#7C3AED"
+                            cabecalho_maq = f"🟣 {setor_m} {maq_m} (REBOLO ADIANTADO)"
+                            titulo_tempo = "⏳ Tempo de Rebolo:"
+                            valor_tempo = "0 min"
+                            info_maq = obter_info_maquina(maq_m, setor_m)
+                            if info_maq:
+                                h_inicio = info_maq.get('Hora', '--:--')
+                                if h_inicio != '--:--':
+                                    try:
+                                        dt_reg = datetime.strptime(
+                                            f"{datetime.now(FUSO_BR).strftime('%Y-%m-%d')} {h_inicio}",
+                                            "%Y-%m-%d %H:%M"
+                                        )
+                                        t_decorrido = (
+                                            datetime.now(FUSO_BR)
+                                            - dt_reg.replace(tzinfo=FUSO_BR)
+                                        )
+                                        valor_tempo = f"{int(t_decorrido.total_seconds() // 60)} min"
+                                    except:
+                                        pass
                         elif is_preparando:
                             bg_color, bd_color = "#FDBA74", "#EA580C"
                             if setor_m == "RTF" and processo_rtf in ["HASTE", "GUIA", "FACETADO"]:
@@ -8391,6 +8602,9 @@ def tela_programador():
                     if is_manutencao:
                         bg_color, bd_color = "#3F1515", "#EF4444" 
                         status_label_txt = "Em Manutenção"
+                    elif "TROCA DE REBOLO ADIANTADA" in st_m.upper():
+                        bg_color, bd_color = "#2E1065", "#8B5CF6"
+                        status_label_txt = "Rebolo Adiantado (Executando)"
                     elif is_preparando:
                         bg_color, bd_color = "#172554", "#3B82F6" 
                         status_label_txt = "Em Preparação (Executando)"
