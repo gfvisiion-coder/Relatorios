@@ -8050,9 +8050,31 @@ def tela_armarios():
         st.markdown("#### 🛡️ Backup e Recuperação dos Armários")
         st.caption("Cada alteração salva automaticamente o estado anterior antes de gravar o novo.")
 
-        if st.session_state.get("perfil") != "adm":
-            st.info("ℹ️ A restauração de backups é exclusiva da Administração.")
+        if st.session_state.get("perfil") not in ["adm", "preset"]:
+            st.info("ℹ️ A área de backup é exclusiva do Pré-Set e da Administração.")
         else:
+            c_bkp_now, c_bkp_hint = st.columns([1.3, 2.7])
+            if c_bkp_now.button(
+                "💾 Fazer backup agora",
+                key="armarios_backup_manual_aba",
+                use_container_width=True,
+                help="Salva uma cópia completa do estado atual dos armários."
+            ):
+                try:
+                    qtd_ocupadas = _criar_backup_manual_armarios()
+                    st.success(
+                        f"✅ Backup criado com sucesso. "
+                        f"{qtd_ocupadas} gaveta(s) ocupada(s) salvas."
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Não foi possível criar o backup: {exc}")
+
+            c_bkp_hint.caption(
+                "Pré-Set e Administração podem criar e restaurar backups. "
+                "Além disso, o backup automático continua sendo salvo antes de cada alteração."
+            )
+
             if tabela_existe(ARQUIVO_ARMARIOS_BACKUP):
                 try:
                     df_bkp = _normalizar_armarios_df(carregar_tabela(ARQUIVO_ARMARIOS_BACKUP, dtype=str))
