@@ -1816,6 +1816,53 @@ CSS_APP = """
         }
     }
 
+    /* V11.14 - restauração rápida de armários no dashboard Pré-Set */
+    .st-key-preset_restore_armarios {
+        margin: 8px 0 16px 0;
+        padding: 8px;
+        border-radius: 15px;
+        border: 1px solid rgba(255,255,255,.055);
+        background: rgba(255,255,255,.018);
+    }
+    .st-key-preset_restore_armarios div[data-testid="stHorizontalBlock"] {
+        align-items: center !important;
+        gap: 10px !important;
+    }
+    .st-key-preset_restore_armarios div[data-testid="stButton"] > button {
+        min-height: 58px !important;
+        height: 58px !important;
+        border-radius: 13px !important;
+        font-size: 11px !important;
+        font-weight: 900 !important;
+        border: 1px solid rgba(245,158,11,.28) !important;
+        background: rgba(245,158,11,.10) !important;
+        color: #FDBA74 !important;
+    }
+    .st-key-preset_restore_armarios div[data-testid="stButton"] > button:hover {
+        border-color: rgba(245,158,11,.48) !important;
+        background: rgba(245,158,11,.17) !important;
+        color: #FFEDD5 !important;
+    }
+    @media (max-width:768px) {
+        .st-key-preset_restore_armarios {
+            margin-top: 8px;
+        }
+        .st-key-preset_restore_armarios div[data-testid="stHorizontalBlock"] {
+            flex-wrap: wrap !important;
+            gap: 8px !important;
+        }
+        .st-key-preset_restore_armarios div[data-testid="stHorizontalBlock"] > div[data-testid="stColumn"] {
+            flex: 1 1 100% !important;
+            width: 100% !important;
+            min-width: 100% !important;
+            max-width: 100% !important;
+        }
+        .st-key-preset_restore_armarios div[data-testid="stButton"] > button {
+            min-height: 46px !important;
+            height: 46px !important;
+        }
+    }
+
 </style>
 """
 st.markdown(CSS_APP, unsafe_allow_html=True)
@@ -2045,6 +2092,8 @@ ARQUIVO_EQUIPE = "banco_equipe.csv"
 ARQUIVO_HISTORICO = "historico_relatorios.csv"
 ARQUIVO_HISTORICO_EVENTOS = "historico_eventos.csv"
 ARQUIVO_ARMARIOS = "banco_armarios.csv"
+ARQUIVO_ARMARIOS_BACKUP = "backup_armarios.csv"
+ARQUIVO_ARMARIOS_HISTORICO = "historico_armarios.csv"
 ARQUIVO_ALERTAS = "alertas_preset.csv"
 ARQUIVO_CNC = "banco_cnc.csv"
 ARQUIVO_FECHAMENTO = "ultimo_fechamento.csv"
@@ -2057,7 +2106,8 @@ ARQUIVO_REBOLOS = "rebolos.xlsx"
 TABELAS_TURSO = {
     ARQUIVO_DADOS, ARQUIVO_EQUIPE, ARQUIVO_HISTORICO,
     ARQUIVO_HISTORICO_EVENTOS, ARQUIVO_ARMARIOS, ARQUIVO_ALERTAS,
-    ARQUIVO_CNC, ARQUIVO_FECHAMENTO, "historico_devolucoes.csv"
+    ARQUIVO_CNC, ARQUIVO_FECHAMENTO, "historico_devolucoes.csv",
+    ARQUIVO_ARMARIOS_BACKUP, ARQUIVO_ARMARIOS_HISTORICO
 }
 
 # Referências estáveis às implementações reais restauradas no início do arquivo.
@@ -2077,6 +2127,169 @@ def _nome_tabela_caminho(path):
         return None
 
 
+
+def _normalizar_armarios_df(df):
+    if df is None:
+        return pd.DataFrame()
+    df = df.copy()
+    colunas = ["Armario", "Posicao", "Ordem", "Item", "Status", "Data_Hora", "Observacao", "Rebolo"]
+    for col in colunas:
+        if col not in df.columns:
+            df[col] = ""
+    for col in colunas:
+        df[col] = df[col].fillna("").astype(str)
+    df["Posicao"] = df["Posicao"].str.replace(".0", "", regex=False).str.strip()
+    df["Ordem"] = df["Ordem"].str.replace(".0", "", regex=False).str.strip()
+    df["Item"] = df["Item"].str.replace(".0", "", regex=False).str.strip()
+    df["Status"] = df["Status"].str.strip()
+    return df[colunas]
+
+
+def _qtd_armarios_ocupados(df):
+    if df is None or df.empty:
+        return 0
+    d = _normalizar_armarios_df(df)
+    status = d["Status"].str.upper().str.strip()
+    ordem = d["Ordem"].str.strip()
+    item = d["Item"].str.strip()
+    return int(((status != "VAZIO") | (ordem != "") | (item != "")).sum())
+
+
+def _registrar_snapshot_armarios(df_atual, origem="alteracao"):
+    if df_atual is None or df_atual.empty:
+        return
+    df_atual = _normalizar_armarios_df(df_atual)
+    snapshot_id = datetime.now(FUSO_BR).strftime("%Y%m%d_%H%M%S_%f")
+    data_snapshot = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
+    operador = str(st.session_state.get("operador", "SISTEMA") or "SISTEMA")
+    salvar_tabela(df_atual, ARQUIVO_ARMARIOS_BACKUP, modo="replace")
+    hist = df_atual.copy()
+    hist.insert(0, "Snapshot_Id", snapshot_id)
+    hist.insert(1, "Snapshot_Data", data_snapshot)
+    hist.insert(2, "Snapshot_Origem", str(origem))
+    hist.insert(3, "Snapshot_Operador", operador)
+    salvar_tabela(hist, ARQUIVO_ARMARIOS_HISTORICO, modo="append")
+
+
+def _salvar_armarios_protegido(df_novo, origem="alteracao", permitir_esvaziar=False):
+    df_novo = _normalizar_armarios_df(df_novo)
+    if df_novo.empty:
+        raise RuntimeError("Proteção dos armários: recusei gravar uma tabela vazia.")
+    if df_novo[["Armario", "Posicao"]].duplicated().any():
+        raise RuntimeError("Proteção dos armários: existem posições duplicadas (Armário + Posição).")
+
+    atual_existe = tabela_existe(ARQUIVO_ARMARIOS)
+    df_atual = pd.DataFrame()
+    if atual_existe:
+        df_atual = carregar_tabela(
+            ARQUIVO_ARMARIOS,
+            colunas_padrao=["Armario", "Posicao", "Ordem", "Item", "Status", "Data_Hora", "Observacao", "Rebolo"],
+            dtype=str
+        )
+        df_atual = _normalizar_armarios_df(df_atual)
+        if not df_atual.empty:
+            ocup_ant = _qtd_armarios_ocupados(df_atual)
+            ocup_novo = _qtd_armarios_ocupados(df_novo)
+            if ocup_ant > 0 and ocup_novo == 0 and not permitir_esvaziar:
+                raise RuntimeError(
+                    f"PROTEÇÃO ATIVADA: havia {ocup_ant} gavetas ocupadas e a nova gravação tentaria deixar TODAS vazias. Alteração bloqueada."
+                )
+            if len(df_novo) < max(1, int(len(df_atual) * 0.85)):
+                raise RuntimeError(
+                    f"PROTEÇÃO ATIVADA: a tabela cairia de {len(df_atual)} para {len(df_novo)} posições. Alteração bloqueada."
+                )
+            _registrar_snapshot_armarios(df_atual, origem=origem)
+
+    salvar_tabela(df_novo, ARQUIVO_ARMARIOS, modo="replace")
+
+    try:
+        conferido = carregar_tabela(ARQUIVO_ARMARIOS, dtype=str)
+        conferido = _normalizar_armarios_df(conferido)
+        if len(conferido) != len(df_novo):
+            raise RuntimeError("Quantidade de posições gravadas diferente do esperado.")
+    except Exception as exc:
+        if atual_existe and not df_atual.empty:
+            try:
+                salvar_tabela(df_atual, ARQUIVO_ARMARIOS, modo="replace")
+            except Exception:
+                pass
+        raise RuntimeError(f"Falha ao validar os armários após gravação: {exc}")
+
+
+def _info_ultimo_backup_armarios():
+    """Retorna informações do último snapshot salvo antes de uma alteração."""
+    info = {
+        "disponivel": False,
+        "data": "",
+        "operador": "",
+        "origem": "",
+        "ocupadas": 0,
+        "linhas": 0,
+    }
+
+    try:
+        if tabela_existe(ARQUIVO_ARMARIOS_BACKUP):
+            df_bkp = carregar_tabela(ARQUIVO_ARMARIOS_BACKUP, dtype=str)
+            df_bkp = _normalizar_armarios_df(df_bkp)
+            if not df_bkp.empty:
+                info["disponivel"] = True
+                info["ocupadas"] = _qtd_armarios_ocupados(df_bkp)
+                info["linhas"] = len(df_bkp)
+    except Exception:
+        pass
+
+    try:
+        if tabela_existe(ARQUIVO_ARMARIOS_HISTORICO):
+            hist = carregar_tabela(ARQUIVO_ARMARIOS_HISTORICO, dtype=str)
+            if (
+                hist is not None
+                and not hist.empty
+                and "Snapshot_Id" in hist.columns
+            ):
+                hist = hist.copy()
+                ids = hist["Snapshot_Id"].astype(str)
+                ultimo_id = ids.max()
+                ult = hist[ids == ultimo_id]
+                if not ult.empty:
+                    row = ult.iloc[-1]
+                    info["data"] = str(row.get("Snapshot_Data", "") or "")
+                    info["operador"] = str(row.get("Snapshot_Operador", "") or "")
+                    info["origem"] = str(row.get("Snapshot_Origem", "") or "")
+    except Exception:
+        pass
+
+    return info
+
+
+def _restaurar_ultimo_backup_armarios():
+    """Restaura o estado imediatamente anterior à última gravação.
+
+    A própria restauração passa pela camada protegida; portanto o estado
+    atual também é salvo antes de ser substituído.
+    """
+    if not tabela_existe(ARQUIVO_ARMARIOS_BACKUP):
+        raise RuntimeError("Ainda não existe um backup anterior dos armários.")
+
+    df_backup = carregar_tabela(
+        ARQUIVO_ARMARIOS_BACKUP,
+        colunas_padrao=[
+            "Armario", "Posicao", "Ordem", "Item",
+            "Status", "Data_Hora", "Observacao", "Rebolo"
+        ],
+        dtype=str,
+    )
+    df_backup = _normalizar_armarios_df(df_backup)
+
+    if df_backup.empty:
+        raise RuntimeError("O último backup dos armários está vazio e não será restaurado.")
+
+    _salvar_armarios_protegido(
+        df_backup,
+        origem="restauracao_preset_ultimo_estado",
+        permitir_esvaziar=True,
+    )
+
+
 def _read_csv_persistente(filepath, *args, **kwargs):
     tabela = _nome_tabela_caminho(filepath)
     if tabela:
@@ -2088,7 +2301,10 @@ def _read_csv_persistente(filepath, *args, **kwargs):
 def _to_csv_persistente(self, path_or_buf=None, *args, **kwargs):
     tabela = _nome_tabela_caminho(path_or_buf) if path_or_buf is not None else None
     if tabela:
-        salvar_tabela(self, tabela, modo="replace")
+        if tabela == ARQUIVO_ARMARIOS:
+            _salvar_armarios_protegido(self, origem="gravacao_app")
+        else:
+            salvar_tabela(self, tabela, modo="replace")
         return None
     return _original_df_to_csv(self, path_or_buf, *args, **kwargs)
 
@@ -2621,46 +2837,64 @@ def restaurar_queda_energia(setor):
         salvar_tabela(pd.DataFrame(novas_linhas), ARQUIVO_DADOS, modo="append")
 
 def inicializar_armarios():
-    precisa_criar = False
-    dados_antigos = []
-    if not os.path.exists(ARQUIVO_ARMARIOS):
-        precisa_criar = True
-    else:
-        try:
-            df_temp = pd.read_csv(ARQUIVO_ARMARIOS, dtype=str)
-            if "Retíficas 05 a 28" not in df_temp['Armario'].values or "Afiadoras 04 a 28" not in df_temp['Armario'].values:
-                precisa_criar = True
-                ocupadas = df_temp[df_temp['Status'] != 'VAZIO']
-                dados_antigos = ocupadas.to_dict('records')
-        except:
-            precisa_criar = True
-            
-    if precisa_criar:
+    """Garante a estrutura dos armários sem recriar a tabela em caso de erro."""
+    mapa_armarios = {
+        "Afiadoras 04 a 28": sorted([int(m.split('-')[0]) for m in TODAS_AFC if int(m.split('-')[0]) <= 28]),
+        "Afiadoras 29 a 41": sorted([int(m.split('-')[0]) for m in TODAS_AFC if int(m.split('-')[0]) >= 29]),
+        "Retíficas 05 a 28": sorted([
+            int(m.split('-')[0]) for m in TODAS_RTF
+            if int(m.split('-')[0]) >= 5 and int(m.split('-')[0]) not in [6, 17] and int(m.split('-')[0]) <= 28
+        ]),
+        "Retíficas 29 a 42": sorted([int(m.split('-')[0]) for m in TODAS_RTF if int(m.split('-')[0]) >= 29]),
+    }
+
+    def _base_vazia():
         dados = []
-        afc_nums = sorted([int(m.split('-')[0]) for m in TODAS_AFC])
-        rtf_nums_raw = sorted([int(m.split('-')[0]) for m in TODAS_RTF])
-        rtf_nums = [m for m in rtf_nums_raw if m >= 5 and m not in [6, 17]]
-        mapa_armarios = {
-            "Afiadoras 04 a 28": [m for m in afc_nums if m <= 28],
-            "Afiadoras 29 a 41": [m for m in afc_nums if m >= 29],
-            "Retíficas 05 a 28": [m for m in rtf_nums if m <= 28],
-            "Retíficas 29 a 42": [m for m in rtf_nums if m >= 29]
-        }
         for arm, maquinas in mapa_armarios.items():
             for maq in maquinas:
-                dados.append({"Armario": arm, "Posicao": str(maq), "Ordem": "", "Item": "", "Status": "VAZIO", "Data_Hora": "", "Observacao": ""})
-        df_novo = pd.DataFrame(dados)
-        for row in dados_antigos:
-            pos = str(row.get('Posicao', ''))
-            arm_antigo = str(row.get('Armario', ''))
-            idx_exato = df_novo[df_novo['Posicao'] == pos].index
-            if not idx_exato.empty:
-                df_novo.loc[idx_exato[0], 'Ordem'] = str(row.get('Ordem', ''))
-                df_novo.loc[idx_exato[0], 'Item'] = str(row.get('Item', ''))
-                df_novo.loc[idx_exato[0], 'Status'] = str(row.get('Status', 'VAZIO'))
-                df_novo.loc[idx_exato[0], 'Data_Hora'] = str(row.get('Data_Hora', ''))
-                df_novo.loc[idx_exato[0], 'Observacao'] = str(row.get('Observacao', ''))
-        df_novo.to_csv(ARQUIVO_ARMARIOS, index=False)
+                dados.append({
+                    "Armario": arm, "Posicao": str(maq), "Ordem": "", "Item": "",
+                    "Status": "VAZIO", "Data_Hora": "", "Observacao": "", "Rebolo": ""
+                })
+        return pd.DataFrame(dados)
+
+    if not tabela_existe(ARQUIVO_ARMARIOS):
+        _salvar_armarios_protegido(_base_vazia(), origem="criacao_inicial", permitir_esvaziar=True)
+        return
+
+    try:
+        atual = carregar_tabela(
+            ARQUIVO_ARMARIOS,
+            colunas_padrao=["Armario", "Posicao", "Ordem", "Item", "Status", "Data_Hora", "Observacao", "Rebolo"],
+            dtype=str,
+        )
+        atual = _normalizar_armarios_df(atual)
+    except Exception as exc:
+        raise RuntimeError(
+            "Não foi possível ler banco_armarios.csv no Turso. Por segurança, o app NÃO recriou nem sobrescreveu os armários. "
+            f"Detalhe: {exc}"
+        )
+
+    if atual.empty:
+        raise RuntimeError(
+            "A tabela banco_armarios.csv existe no Turso, mas retornou zero linhas. Por segurança, a reconstrução automática foi bloqueada."
+        )
+
+    esperado = _base_vazia()
+    chaves_atual = set(zip(atual["Armario"], atual["Posicao"]))
+    chaves_esperado = set(zip(esperado["Armario"], esperado["Posicao"]))
+    if not chaves_esperado.issubset(chaves_atual):
+        novo = esperado.copy()
+        atual_idx = atual.set_index(["Armario", "Posicao"], drop=False)
+        for idx, row in novo.iterrows():
+            chave = (row["Armario"], row["Posicao"])
+            if chave in atual_idx.index:
+                antigo = atual_idx.loc[chave]
+                if isinstance(antigo, pd.DataFrame):
+                    antigo = antigo.iloc[0]
+                for col in ["Ordem", "Item", "Status", "Data_Hora", "Observacao", "Rebolo"]:
+                    novo.at[idx, col] = str(antigo.get(col, "") or "")
+        _salvar_armarios_protegido(novo, origem="migracao_estrutura")
 
 def exibir_alertas_preset():
     if st.session_state.get('perfil') not in ['preset', 'adm']: return
@@ -4498,6 +4732,88 @@ def _tela_menu_dashboard_9999():
         + '</div>'
     )
     st.markdown(html_kpis, unsafe_allow_html=True)
+
+    # Recuperação rápida dos armários para o próprio Pré-Set.
+    # O backup representa o estado COMPLETO imediatamente anterior à última
+    # inclusão, retirada ou edição que gravou banco_armarios.csv.
+    info_bkp_arm = _info_ultimo_backup_armarios()
+
+    with st.container(key="preset_restore_armarios"):
+        c_restore_info, c_restore_btn = st.columns([3.3, 1.35])
+
+        if info_bkp_arm.get("disponivel"):
+            detalhes_bkp = []
+            if info_bkp_arm.get("data"):
+                detalhes_bkp.append(info_bkp_arm["data"])
+            if info_bkp_arm.get("operador"):
+                detalhes_bkp.append(info_bkp_arm["operador"])
+
+            detalhe_txt = " · ".join(detalhes_bkp) if detalhes_bkp else "último estado salvo"
+            c_restore_info.markdown(
+                f"""
+                <div style="
+                    min-height:58px;
+                    display:flex;
+                    flex-direction:column;
+                    justify-content:center;
+                    padding:8px 12px;
+                    border:1px solid rgba(245,158,11,.20);
+                    background:rgba(245,158,11,.055);
+                    border-radius:13px;
+                ">
+                    <div style="font-size:11px;font-weight:900;color:#F59E0B;letter-spacing:.35px;">
+                        🛡️ BACKUP DOS ARMÁRIOS ATIVO
+                    </div>
+                    <div style="font-size:11px;color:#A1A1AA;margin-top:3px;">
+                        Último estado: {html.escape(detalhe_txt)} ·
+                        {int(info_bkp_arm.get("ocupadas", 0))} gaveta(s) ocupada(s)
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            if c_restore_btn.button(
+                "♻️ Restaurar último estado",
+                key="preset_restaurar_ultimo_armario",
+                use_container_width=True,
+                help="Volta os armários para o estado completo imediatamente anterior à última alteração."
+            ):
+                try:
+                    _restaurar_ultimo_backup_armarios()
+                    st.success("✅ Armários restaurados para o último estado salvo.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Não foi possível restaurar os armários: {exc}")
+        else:
+            c_restore_info.markdown(
+                """
+                <div style="
+                    min-height:58px;
+                    display:flex;
+                    flex-direction:column;
+                    justify-content:center;
+                    padding:8px 12px;
+                    border:1px solid rgba(45,212,191,.14);
+                    background:rgba(45,212,191,.035);
+                    border-radius:13px;
+                ">
+                    <div style="font-size:11px;font-weight:900;color:#2DD4BF;">
+                        🛡️ PROTEÇÃO DOS ARMÁRIOS ATIVA
+                    </div>
+                    <div style="font-size:11px;color:#A1A1AA;margin-top:3px;">
+                        O primeiro backup será criado automaticamente antes da próxima alteração.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            c_restore_btn.button(
+                "♻️ Sem backup ainda",
+                key="preset_restaurar_ultimo_armario_vazio",
+                use_container_width=True,
+                disabled=True,
+            )
 
     preparacoes = {'ativa': [], 'aguardando': []}
     for setor, maquinas in [('AFC', TODAS_AFC), ('RTF', TODAS_RTF)]:
@@ -6474,7 +6790,7 @@ def tela_armarios():
                     st.rerun()
         st.divider()
 
-    aba1, aba2, aba3, aba4, aba5, aba6 = st.tabs(["👁️ Visão Física", "➕ Alimentar", "🔔 Histórico", "🔄 Troca de Rebolo", "🔙 Devoluções", "✏️ Edição Lote"])
+    aba1, aba2, aba3, aba4, aba5, aba6, aba7 = st.tabs(["👁️ Visão Física", "➕ Alimentar", "🔔 Histórico", "🔄 Troca de Rebolo", "🔙 Devoluções", "✏️ Edição Lote", "🛡️ Backup"])
 
     with aba1:
         # ---------------------- VISÃO FÍSICA REDESENHADA ----------------------
@@ -6862,6 +7178,78 @@ def tela_armarios():
                 st.rerun()
         else:
             st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode editar as gavetas em lote.")
+
+    with aba7:
+        st.markdown("#### 🛡️ Backup e Recuperação dos Armários")
+        st.caption("Cada alteração salva automaticamente o estado anterior antes de gravar o novo.")
+
+        if st.session_state.get("perfil") != "adm":
+            st.info("ℹ️ A restauração de backups é exclusiva da Administração.")
+        else:
+            if tabela_existe(ARQUIVO_ARMARIOS_BACKUP):
+                try:
+                    df_bkp = _normalizar_armarios_df(carregar_tabela(ARQUIVO_ARMARIOS_BACKUP, dtype=str))
+                except Exception as exc:
+                    df_bkp = pd.DataFrame()
+                    st.error(f"Não foi possível ler o último backup: {exc}")
+
+                if not df_bkp.empty:
+                    ocup_bkp = _qtd_armarios_ocupados(df_bkp)
+                    c1, c2 = st.columns(2)
+                    c1.metric("Posições no backup", len(df_bkp))
+                    c2.metric("Ocupadas no backup", ocup_bkp)
+                    st.dataframe(df_bkp[df_bkp["Status"].str.upper().ne("VAZIO")], use_container_width=True, hide_index=True)
+                    confirmar_bkp = st.checkbox(
+                        "Confirmo que quero substituir o estado atual pelo último backup.",
+                        key="confirma_restore_armarios_ultimo"
+                    )
+                    if st.button("♻️ Restaurar último backup", type="primary", use_container_width=True,
+                                 disabled=not confirmar_bkp, key="restore_armarios_ultimo"):
+                        try:
+                            _salvar_armarios_protegido(df_bkp, origem="restauracao_ultimo_backup", permitir_esvaziar=True)
+                            st.success("✅ Último backup restaurado com sucesso.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível restaurar: {exc}")
+                else:
+                    st.info("Ainda não existe um backup automático utilizável.")
+            else:
+                st.info("Ainda não existe backup automático. Ele será criado antes da próxima alteração.")
+
+            st.divider()
+            st.markdown("##### 🕘 Histórico de snapshots")
+            if tabela_existe(ARQUIVO_ARMARIOS_HISTORICO):
+                try:
+                    hist = carregar_tabela(ARQUIVO_ARMARIOS_HISTORICO, dtype=str)
+                except Exception as exc:
+                    hist = pd.DataFrame()
+                    st.error(f"Não foi possível ler o histórico: {exc}")
+
+                if not hist.empty and "Snapshot_Id" in hist.columns:
+                    resumo = (
+                        hist.groupby(["Snapshot_Id", "Snapshot_Data", "Snapshot_Origem", "Snapshot_Operador"], dropna=False)
+                        .size().reset_index(name="Linhas").sort_values("Snapshot_Id", ascending=False)
+                    )
+                    st.dataframe(resumo.head(30), use_container_width=True, hide_index=True)
+                    opcoes = resumo["Snapshot_Id"].astype(str).tolist()
+                    snap = st.selectbox("Snapshot para restaurar:", opcoes, key="snapshot_armarios_restore")
+                    confirmar_hist = st.checkbox("Confirmo a restauração deste snapshot.", key="confirma_restore_armarios_hist")
+                    if st.button("↩️ Restaurar snapshot selecionado", use_container_width=True,
+                                 disabled=not confirmar_hist, key="restore_armarios_snapshot"):
+                        try:
+                            snap_df = hist[hist["Snapshot_Id"].astype(str) == str(snap)].copy()
+                            metadados = ["Snapshot_Id", "Snapshot_Data", "Snapshot_Origem", "Snapshot_Operador"]
+                            snap_df = snap_df.drop(columns=[c for c in metadados if c in snap_df.columns])
+                            snap_df = _normalizar_armarios_df(snap_df)
+                            _salvar_armarios_protegido(snap_df, origem=f"restauracao_snapshot_{snap}", permitir_esvaziar=True)
+                            st.success("✅ Snapshot restaurado com sucesso.")
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Não foi possível restaurar o snapshot: {exc}")
+                else:
+                    st.info("Nenhum snapshot histórico disponível ainda.")
+            else:
+                st.info("O histórico começará a ser criado antes da próxima alteração dos armários.")
 
 def tela_lirs():
     botao_navegar("⬅ Voltar à Central", 'hub_relatorios')
