@@ -7491,57 +7491,107 @@ def tela_armarios():
             # ABA 2 - BIPAGEM / ALIMENTAÇÃO UMA MÁQUINA POR VEZ
             # ---------------------------------------------------------
             with tab_armario:
-                fila_armario = st.session_state.get("alimentar_fila_armario")
-                fila_maquinas = st.session_state.get("alimentar_fila_maquinas", [])
-                fila_indice = int(st.session_state.get("alimentar_fila_indice", 0) or 0)
-                fila_finalizada = bool(
-                    st.session_state.get("alimentar_fila_finalizada", False)
+                # Esta área roda isolada do restante do app.
+                # Em versões modernas do Streamlit, qualquer interação aqui
+                # reroda somente este fragmento e somente a sessão deste usuário.
+                _tem_fragmento_armario = hasattr(st, "fragment")
+                _decorador_fragmento_armario = (
+                    st.fragment if _tem_fragmento_armario else (lambda fn: fn)
                 )
 
-                if not fila_armario or not fila_maquinas:
-                    st.info(
-                        "👈 Primeiro abra **Selecionar Máquinas**, escolha o armário "
-                        "e monte a sequência."
+                @_decorador_fragmento_armario
+                def _render_fluxo_alimentar_armario():
+                    def _rerun_local_armario():
+                        if _tem_fragmento_armario:
+                            try:
+                                st.rerun(scope="fragment")
+                                return
+                            except Exception:
+                                pass
+                        st.rerun()
+
+                    # Recarrega o estado atual do Turso dentro do fragmento.
+                    # Isso evita usar um DataFrame antigo depois de salvar.
+                    try:
+                        df_arm_seq = pd.read_csv(
+                            ARQUIVO_ARMARIOS,
+                            dtype={
+                                "Ordem": str,
+                                "Item": str,
+                                "Status": str,
+                                "Data_Hora": str,
+                                "Posicao": str,
+                                "Armario": str,
+                                "Observacao": str,
+                                "Rebolo": str,
+                            },
+                        ).fillna("")
+                    except Exception as exc:
+                        st.error(
+                            f"⚠️ Não foi possível carregar os armários agora: {exc}. "
+                            "Nada foi alterado."
+                        )
+                        return
+
+                    fila_armario = st.session_state.get("alimentar_fila_armario")
+                    fila_maquinas = st.session_state.get("alimentar_fila_maquinas", [])
+                    fila_indice = int(
+                        st.session_state.get("alimentar_fila_indice", 0) or 0
                     )
-                elif fila_finalizada or fila_indice >= len(fila_maquinas):
-                    st.success("✅ Sequência concluída. Todas as máquinas selecionadas foram percorridas.")
+                    fila_finalizada = bool(
+                        st.session_state.get("alimentar_fila_finalizada", False)
+                    )
 
-                    c_nova, c_reiniciar = st.columns(2)
+                    if not fila_armario or not fila_maquinas:
+                        st.info(
+                            "👈 Primeiro abra **Selecionar Máquinas**, escolha o armário "
+                            "e monte a sequência."
+                        )
+                        return
 
-                    if c_nova.button(
-                        "⚙️ Fazer nova seleção",
-                        use_container_width=True,
-                        key="alimentar_nova_selecao"
-                    ):
-                        st.session_state["alimentar_fila_maquinas"] = []
-                        st.session_state["alimentar_fila_indice"] = 0
-                        st.session_state["alimentar_fila_finalizada"] = False
-                        st.rerun()
+                    if fila_finalizada or fila_indice >= len(fila_maquinas):
+                        st.success(
+                            "✅ Sequência concluída. Todas as máquinas selecionadas "
+                            "foram percorridas."
+                        )
 
-                    if c_reiniciar.button(
-                        "🔄 Reiniciar mesma sequência",
-                        use_container_width=True,
-                        key="alimentar_reiniciar_fila"
-                    ):
-                        st.session_state["alimentar_fila_indice"] = 0
-                        st.session_state["alimentar_fila_finalizada"] = False
-                        st.rerun()
+                        c_nova, c_reiniciar = st.columns(2)
 
-                else:
+                        if c_nova.button(
+                            "⚙️ Fazer nova seleção",
+                            use_container_width=True,
+                            key="alimentar_nova_selecao"
+                        ):
+                            st.session_state["alimentar_fila_maquinas"] = []
+                            st.session_state["alimentar_fila_indice"] = 0
+                            st.session_state["alimentar_fila_finalizada"] = False
+                            _rerun_local_armario()
+
+                        if c_reiniciar.button(
+                            "🔄 Reiniciar mesma sequência",
+                            use_container_width=True,
+                            key="alimentar_reiniciar_fila"
+                        ):
+                            st.session_state["alimentar_fila_indice"] = 0
+                            st.session_state["alimentar_fila_finalizada"] = False
+                            _rerun_local_armario()
+
+                        return
+
                     maquina_atual = str(fila_maquinas[fila_indice])
                     total_fila = len(fila_maquinas)
                     numero_atual = fila_indice + 1
 
-                    # Consulta o estado REAL da posição corrente.
-                    linha_atual = df_arm[
-                        (df_arm["Armario"] == fila_armario)
-                        & (
-                            df_arm["Posicao"]
-                            .astype(str)
-                            .str.replace(".0", "", regex=False)
-                            .str.strip()
-                            == maquina_atual
-                        )
+                    pos_norm = (
+                        df_arm_seq["Posicao"]
+                        .astype(str)
+                        .str.replace(".0", "", regex=False)
+                        .str.strip()
+                    )
+
+                    linha_atual = df_arm_seq[
+                        (df_arm_seq["Armario"] == fila_armario)
+                        & pos_norm.eq(maquina_atual)
                     ]
 
                     status_atual_arm = "VAZIO"
@@ -7564,258 +7614,257 @@ def tela_armarios():
                             row_atual.get("Rebolo", "") or ""
                         ).replace("nan", "").strip()
 
-                    pct_fila = int((numero_atual / max(1, total_fila)) * 100)
-
-                    st.markdown(
-                        f"""
-                        <div style="
-                            padding:14px 16px;
-                            border-radius:15px;
-                            background:rgba(139,92,246,.075);
-                            border:1px solid rgba(139,92,246,.20);
-                            margin:4px 0 12px 0;
-                        ">
-                            <div style="
-                                display:flex;
-                                align-items:center;
-                                justify-content:space-between;
-                                gap:10px;
-                            ">
-                                <div>
-                                    <div style="
-                                        font-size:11px;
-                                        font-weight:900;
-                                        color:#A78BFA;
-                                        letter-spacing:.5px;
-                                    ">
-                                        {html.escape(fila_armario)}
-                                    </div>
-                                    <div style="
-                                        font-size:25px;
-                                        font-weight:950;
-                                        color:#F4F4F5;
-                                        margin-top:2px;
-                                    ">
-                                        Máquina {html.escape(maquina_atual)}
-                                    </div>
-                                </div>
-                                <div style="
-                                    font-size:12px;
-                                    font-weight:900;
-                                    color:#D4D4D8;
-                                ">
-                                    {numero_atual} / {total_fila}
-                                </div>
-                            </div>
-
-                            <div style="
-                                height:5px;
-                                background:rgba(255,255,255,.07);
-                                border-radius:999px;
-                                overflow:hidden;
-                                margin-top:10px;
-                            ">
-                                <div style="
-                                    width:{pct_fila}%;
-                                    height:100%;
-                                    background:#8B5CF6;
-                                "></div>
-                            </div>
-                        </div>
-                        """,
-                        unsafe_allow_html=True
+                    pct_fila = int(
+                        (numero_atual / max(1, total_fila)) * 100
                     )
+
+                    # HTML em string compacta: evita o Markdown interpretar
+                    # a indentação como bloco de código.
+                    html_fila = (
+                        f'<div style="padding:14px 16px;border-radius:15px;'
+                        f'background:rgba(139,92,246,.075);'
+                        f'border:1px solid rgba(139,92,246,.20);'
+                        f'margin:4px 0 12px 0;">'
+                        f'<div style="display:flex;align-items:center;'
+                        f'justify-content:space-between;gap:10px;">'
+                        f'<div>'
+                        f'<div style="font-size:11px;font-weight:900;'
+                        f'color:#A78BFA;letter-spacing:.5px;">'
+                        f'{html.escape(fila_armario)}</div>'
+                        f'<div style="font-size:25px;font-weight:950;'
+                        f'color:#F4F4F5;margin-top:2px;">'
+                        f'Máquina {html.escape(maquina_atual)}</div>'
+                        f'</div>'
+                        f'<div style="font-size:12px;font-weight:900;'
+                        f'color:#D4D4D8;">{numero_atual} / {total_fila}</div>'
+                        f'</div>'
+                        f'<div style="height:5px;background:rgba(255,255,255,.07);'
+                        f'border-radius:999px;overflow:hidden;margin-top:10px;">'
+                        f'<div style="width:{pct_fila}%;height:100%;'
+                        f'background:#8B5CF6;"></div>'
+                        f'</div>'
+                        f'</div>'
+                    )
+                    st.markdown(html_fila, unsafe_allow_html=True)
 
                     if status_atual_arm.upper() == "VAZIO":
                         st.info("📭 Esta posição está vazia.")
                     else:
                         st.warning(
                             f"⚠️ Esta posição já possui dados. "
-                            f"OP: {op_atual_arm or '—'} · Item: {item_atual_arm or '—'}"
+                            f"OP: {op_atual_arm or '—'} · "
+                            f"Item: {item_atual_arm or '—'}"
                         )
 
-                    # Botão PULAR fora do form: não grava absolutamente nada.
-                    c_pular, c_restante = st.columns([1.0, 2.2])
-
-                    if c_pular.button(
-                        "⏭️ Pular",
-                        use_container_width=True,
-                        key=f"alimentar_pular_{fila_armario}_{maquina_atual}_{fila_indice}",
-                        help="Não altera esta posição e avança para a próxima máquina selecionada."
-                    ):
-                        novo_indice = fila_indice + 1
-                        st.session_state["alimentar_fila_indice"] = novo_indice
-                        if novo_indice >= total_fila:
-                            st.session_state["alimentar_fila_finalizada"] = True
-                        st.rerun()
-
-                    c_restante.caption(
-                        "Use **Pular** quando não houver OP/setup para guardar nesta máquina. "
-                        "Nada será alterado no banco."
+                    # -------------------------------------------------
+                    # CAMPOS FORA DE FORM:
+                    # cada valor fica salvo no session_state DESTE usuário.
+                    # Um rerun da sessão não apaga o que ele digitou.
+                    # -------------------------------------------------
+                    chave_base = (
+                        f"alimentar_draft_{fila_armario}_{maquina_atual}"
+                        .replace(" ", "_")
+                        .replace("í", "i")
+                        .replace("Í", "I")
                     )
 
-                    with st.form(
-                        f"form_alimentar_sequencial_{fila_armario}_{maquina_atual}",
-                        clear_on_submit=True
-                    ):
-                        motivos_rapidos = [
-                            "-- Selecione um Motivo Rápido (Opcional) --",
-                            "Aguardando Jagura",
-                            "Aguardando Almoxarifado",
-                            "Aguardando PCP",
-                            "Em Preparação",
-                            "Em Sequência"
-                        ]
+                    motivos_rapidos = [
+                        "-- Selecione um Motivo Rápido (Opcional) --",
+                        "Aguardando Jagura",
+                        "Aguardando Almoxarifado",
+                        "Aguardando PCP",
+                        "Em Preparação",
+                        "Em Sequência",
+                    ]
 
-                        motivo_select = st.selectbox(
-                            "Motivo / Caminho Rápido:",
-                            motivos_rapidos,
-                            key=f"alimentar_seq_motivo_{maquina_atual}"
+                    motivo_key = f"{chave_base}_motivo"
+                    op_key = f"{chave_base}_op"
+                    item_key = f"{chave_base}_item"
+                    reb_key = f"{chave_base}_reb"
+                    obs_key = f"{chave_base}_obs"
+
+                    motivo_select = st.selectbox(
+                        "Motivo / Caminho Rápido:",
+                        motivos_rapidos,
+                        key=motivo_key,
+                    )
+
+                    c_op, c_it = st.columns(2)
+
+                    ordem_in = c_op.text_input(
+                        "Ordem de Produção (OP):",
+                        placeholder="Ex: 987654",
+                        key=op_key,
+                    )
+
+                    item_in = c_it.text_input(
+                        "Item / Peça:",
+                        placeholder="Ex: 313324",
+                        key=item_key,
+                    )
+
+                    rebolo_in = st.text_input(
+                        "Rebolo(s) Alocado (Opcional):",
+                        placeholder="Ex: REB 123",
+                        key=reb_key,
+                    )
+
+                    obs_in = st.text_input(
+                        "Observação Adicional:",
+                        placeholder="Detalhes...",
+                        key=obs_key,
+                    )
+
+                    c_salvar, c_pular = st.columns([2.2, 1.0])
+
+                    salvar_seq = c_salvar.button(
+                        "📥 SALVAR E IR PARA PRÓXIMA",
+                        type="primary",
+                        use_container_width=True,
+                        key=f"{chave_base}_salvar",
+                    )
+
+                    pular_seq = c_pular.button(
+                        "⏭️ Pular",
+                        use_container_width=True,
+                        key=f"{chave_base}_pular",
+                        help=(
+                            "Não altera esta posição e avança para a próxima "
+                            "máquina selecionada."
+                        ),
+                    )
+
+                    if pular_seq:
+                        # Não limpa o banco e não escreve nada.
+                        novo_indice = fila_indice + 1
+                        st.session_state["alimentar_fila_indice"] = novo_indice
+
+                        if novo_indice >= total_fila:
+                            st.session_state["alimentar_fila_finalizada"] = True
+
+                        _rerun_local_armario()
+
+                    if salvar_seq:
+                        obs_final = (
+                            motivo_select
+                            if motivo_select != motivos_rapidos[0]
+                            else ""
                         )
 
-                        c_op, c_it = st.columns(2)
-
-                        ordem_in = c_op.text_input(
-                            "Ordem de Produção (OP):",
-                            placeholder="Ex: 987654",
-                            key=f"alimentar_seq_op_{maquina_atual}"
-                        )
-
-                        item_in = c_it.text_input(
-                            "Item / Peça:",
-                            placeholder="Ex: 313324",
-                            key=f"alimentar_seq_item_{maquina_atual}"
-                        )
-
-                        rebolo_in = st.text_input(
-                            "Rebolo(s) Alocado (Opcional):",
-                            placeholder="Ex: REB 123",
-                            key=f"alimentar_seq_reb_{maquina_atual}"
-                        )
-
-                        obs_in = st.text_input(
-                            "Observação Adicional:",
-                            placeholder="Detalhes...",
-                            key=f"alimentar_seq_obs_{maquina_atual}"
-                        )
-
-                        salvar_seq = st.form_submit_button(
-                            "📥 SALVAR E IR PARA PRÓXIMA",
-                            type="primary",
-                            use_container_width=True
-                        )
-
-                        if salvar_seq:
+                        if obs_in.strip():
                             obs_final = (
-                                motivo_select
-                                if motivo_select != motivos_rapidos[0]
-                                else ""
+                                f"{obs_final} - {obs_in.strip()}"
+                                if obs_final
+                                else obs_in.strip()
                             )
 
-                            if obs_in.strip():
-                                obs_final = (
-                                    f"{obs_final} - {obs_in.strip()}"
-                                    if obs_final
-                                    else obs_in.strip()
-                                )
+                        if not ordem_in.strip() and not obs_final.strip():
+                            st.error(
+                                "⚠️ Informe a OP ou selecione um motivo. "
+                                "Se não houver nada para esta máquina, use **Pular**."
+                            )
+                        else:
+                            ordem_limpa = (
+                                ordem_in.strip()
+                                .upper()
+                                .replace(".0", "")
+                                .lstrip("0")
+                            )
+                            item_limpa = (
+                                item_in.strip()
+                                .upper()
+                                .replace(".0", "")
+                                .lstrip("0")
+                            )
 
-                            if not ordem_in.strip() and not obs_final.strip():
+                            novo_status = (
+                                "AGUARDANDO MÁQUINA"
+                                if ordem_limpa
+                                else "VAZIO"
+                            )
+
+                            idx = df_arm_seq[
+                                (df_arm_seq["Armario"] == fila_armario)
+                                & (
+                                    df_arm_seq["Posicao"]
+                                    .astype(str)
+                                    .str.replace(".0", "", regex=False)
+                                    .str.strip()
+                                    == maquina_atual
+                                )
+                            ].index
+
+                            if idx.empty:
                                 st.error(
-                                    "⚠️ Informe a OP ou selecione um motivo. "
-                                    "Se não houver nada para esta máquina, use **Pular**."
+                                    "⚠️ Não encontrei esta posição no armário. "
+                                    "Nada foi gravado."
                                 )
                             else:
-                                ordem_limpa = (
-                                    ordem_in.strip()
-                                    .upper()
-                                    .replace(".0", "")
-                                    .lstrip("0")
+                                df_arm_seq.loc[
+                                    idx,
+                                    [
+                                        "Ordem",
+                                        "Item",
+                                        "Status",
+                                        "Data_Hora",
+                                        "Observacao",
+                                        "Rebolo",
+                                    ],
+                                ] = [
+                                    ordem_limpa,
+                                    item_limpa,
+                                    novo_status,
+                                    datetime.now(FUSO_BR).strftime("%H:%M"),
+                                    obs_final,
+                                    rebolo_in.strip(),
+                                ]
+
+                                # Continua usando a camada protegida:
+                                # salva backup ANTES de alterar o estado oficial.
+                                df_arm_seq.to_csv(
+                                    ARQUIVO_ARMARIOS,
+                                    index=False,
                                 )
-                                item_limpa = (
-                                    item_in.strip()
-                                    .upper()
-                                    .replace(".0", "")
-                                    .lstrip("0")
-                                )
 
-                                novo_status = (
-                                    "AGUARDANDO MÁQUINA"
-                                    if ordem_limpa
-                                    else "VAZIO"
-                                )
+                                # Limpa somente o rascunho DESTA máquina
+                                # DESTE usuário depois que gravou com sucesso.
+                                for _k in [
+                                    motivo_key,
+                                    op_key,
+                                    item_key,
+                                    reb_key,
+                                    obs_key,
+                                ]:
+                                    st.session_state.pop(_k, None)
 
-                                idx = df_arm[
-                                    (df_arm["Armario"] == fila_armario)
-                                    & (
-                                        df_arm["Posicao"]
-                                        .astype(str)
-                                        .str.replace(".0", "", regex=False)
-                                        .str.strip()
-                                        == maquina_atual
-                                    )
-                                ].index
+                                novo_indice = fila_indice + 1
+                                st.session_state["alimentar_fila_indice"] = novo_indice
 
-                                if idx.empty:
-                                    st.error(
-                                        "⚠️ Não encontrei esta posição no armário. "
-                                        "Nada foi gravado."
-                                    )
-                                else:
-                                    df_arm.loc[
-                                        idx,
-                                        [
-                                            "Ordem",
-                                            "Item",
-                                            "Status",
-                                            "Data_Hora",
-                                            "Observacao",
-                                            "Rebolo"
-                                        ]
-                                    ] = [
-                                        ordem_limpa,
-                                        item_limpa,
-                                        novo_status,
-                                        datetime.now(FUSO_BR).strftime("%H:%M"),
-                                        obs_final,
-                                        rebolo_in.strip()
-                                    ]
-
-                                    # A camada de proteção já cria o backup
-                                    # completo ANTES desta gravação.
-                                    df_arm.to_csv(
-                                        ARQUIVO_ARMARIOS,
-                                        index=False
-                                    )
-
-                                    novo_indice = fila_indice + 1
+                                if novo_indice >= total_fila:
                                     st.session_state[
-                                        "alimentar_fila_indice"
-                                    ] = novo_indice
+                                        "alimentar_fila_finalizada"
+                                    ] = True
 
-                                    if novo_indice >= total_fila:
-                                        st.session_state[
-                                            "alimentar_fila_finalizada"
-                                        ] = True
+                                _rerun_local_armario()
 
-                                    st.success(
-                                        f"✅ Máquina {maquina_atual} salva. "
-                                        "Avançando para a próxima."
-                                    )
-                                    st.rerun()
-
-                    # Lista compacta do que vem pela frente.
                     restantes = fila_maquinas[fila_indice + 1:]
                     if restantes:
                         st.caption(
-                            "Próximas: " + " → ".join(
-                                str(x) for x in restantes[:10]
-                            )
+                            "Próximas: "
+                            + " → ".join(str(x) for x in restantes[:10])
                             + (
                                 f" → +{len(restantes)-10}"
                                 if len(restantes) > 10
                                 else ""
                             )
                         )
+
+                    st.caption(
+                        "🔒 Este fluxo atualiza somente a sessão do usuário que "
+                        "está alimentando o armário."
+                    )
+
+                _render_fluxo_alimentar_armario()
         else:
             st.info(
                 "ℹ️ Apenas o perfil do Pré-Set e Administração "
