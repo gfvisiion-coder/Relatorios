@@ -3130,6 +3130,92 @@ def dar_baixa_armario(ordem_alvo, operador_nome="SISTEMA"):
             df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
     except: pass
 
+def buscar_dados_armario_maquina(maq_id, setor):
+    """Retorna (OP, Item, Rebolo) da gaveta física da máquina.
+
+    A posição é comparada numericamente para que, por exemplo,
+    máquina 05 encontre corretamente a posição 5 do armário.
+    """
+    if not os.path.exists(ARQUIVO_ARMARIOS):
+        return "", "", ""
+
+    try:
+        df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype=str).fillna("")
+        if df_arm.empty:
+            return "", "", ""
+
+        m = re.search(r"\d+", str(maq_id))
+        if not m:
+            return "", "", ""
+
+        pos_maquina = int(m.group(0))
+
+        if "Posicao" not in df_arm.columns or "Armario" not in df_arm.columns:
+            return "", "", ""
+
+        df_arm = df_arm.copy()
+        df_arm["_pos_num"] = pd.to_numeric(
+            df_arm["Posicao"]
+            .astype(str)
+            .str.replace(".0", "", regex=False)
+            .str.strip(),
+            errors="coerce"
+        )
+
+        arm_norm = (
+            df_arm["Armario"]
+            .astype(str)
+            .apply(
+                lambda x: unicodedata.normalize("NFKD", x.upper())
+                .encode("ASCII", "ignore")
+                .decode("ASCII")
+            )
+        )
+
+        if str(setor).upper().strip() == "AFC":
+            mask_setor = arm_norm.str.contains("AFIADOR", na=False)
+        else:
+            mask_setor = arm_norm.str.contains("RETIFIC", na=False)
+
+        candidatos = df_arm[
+            mask_setor & df_arm["_pos_num"].eq(pos_maquina)
+        ].copy()
+
+        if candidatos.empty:
+            return "", "", ""
+
+        status_norm = (
+            candidatos.get("Status", pd.Series("", index=candidatos.index))
+            .astype(str)
+            .str.strip()
+            .str.upper()
+        )
+        ordem_norm = (
+            candidatos.get("Ordem", pd.Series("", index=candidatos.index))
+            .astype(str)
+            .str.replace(".0", "", regex=False)
+            .str.strip()
+        )
+
+        ocupadas = candidatos[
+            status_norm.ne("VAZIO") | ordem_norm.ne("")
+        ]
+        row = ocupadas.iloc[0] if not ocupadas.empty else candidatos.iloc[0]
+
+        def _limpar(v, tirar_zero=True):
+            s = str(v or "").replace(".0", "").replace("nan", "").strip()
+            return s.lstrip("0") if tirar_zero else s
+
+        return (
+            _limpar(row.get("Ordem", "")),
+            _limpar(row.get("Item", "")),
+            _limpar(row.get("Rebolo", ""), tirar_zero=False),
+        )
+    except Exception:
+        return "", "", ""
+
+
+
 def buscar_item_por_ordem(ordem_alvo):
     if not ordem_alvo or not os.path.exists(ARQUIVO_ARMARIOS): return "SEM CADASTRO"
     try:
@@ -3340,18 +3426,11 @@ def painel_controle_maquina(maq_id, setor):
         info = obter_info_maquina(maq_id, setor)
         hora_atual = info.get('Hora', '--:--') if info else ''
 
-        op_armario, item_armario = "", ""
-        if os.path.exists(ARQUIVO_ARMARIOS):
-            try:
-                df_arm_temp = pd.read_csv(ARQUIVO_ARMARIOS, dtype=str)
-                gaveta_num = maq_id.split("-")[0]
-                filtro_arm = "Afiadoras" if setor == "AFC" else "Retíficas"
-                gaveta_row = df_arm_temp[(df_arm_temp['Posicao'] == str(gaveta_num)) & (df_arm_temp['Armario'].str.contains(filtro_arm))]
-                if not gaveta_row.empty and str(gaveta_row.iloc[0]['Status']).strip() != 'VAZIO':
-                    op_armario = str(gaveta_row.iloc[0].get('Ordem', '')).replace('.0', '').replace('nan', '').strip()
-                    item_armario = str(gaveta_row.iloc[0].get('Item', '')).replace('.0', '').replace('nan', '').strip()
-            except: pass
-        
+        # Próxima OP/Item do setup: sempre pela gaveta física da máquina.
+        op_armario, item_armario, rebolo_armario = buscar_dados_armario_maquina(
+            maq_id, setor
+        )
+
         timer_str = ""
         if ("MANUTENÇÃO" in status_atual or "PREPARAÇÃO" in status_atual or "SEQUÊNCIA" in status_atual or "PREPARANDO" in status_atual) and info:
             try:
@@ -3722,6 +3801,13 @@ def painel_controle_maquina(maq_id, setor):
                 elif "[Item:" in st_atual:
                     item_pre = st_atual.split("[Item:")[1].split("]")[0].strip()
 
+                is_rtf_haste_config = (setor == "RTF" and tipo_setup == "HASTE")
+                if is_rtf_haste_config:
+                    # HASTE usa o setup que está guardado no armário,
+                    # e não a OP que está rodando atualmente na máquina.
+                    op_pre = op_armario
+                    item_pre = item_armario
+
                 if not is_guia:
                     if "[PROG: OK" in st_atual.upper():
                         st.markdown("💻 **Validação do Programa CNC**")
@@ -3739,16 +3825,41 @@ def painel_controle_maquina(maq_id, setor):
                         )
 
                     st.markdown("📦 **Dados do Item**")
-                    ordem_atual = st.text_input(
-                        "Ordem Atual (OP):",
-                        value=op_pre,
-                        placeholder="Ex: 987654"
-                    )
-                    item_atual = st.text_input(
-                        "Item Atual (Na Máquina):",
-                        value=item_pre,
-                        placeholder="Ex: 313324"
-                    )
+
+                    if is_rtf_haste_config:
+                        if op_armario and item_armario:
+                            st.success(
+                                f"📦 HASTE puxada do armário: OP {op_armario} · Item {item_armario}"
+                            )
+                            ordem_atual = st.text_input(
+                                "Nova Ordem (OP) da HASTE:",
+                                value=op_armario,
+                                disabled=True
+                            )
+                            item_atual = st.text_input(
+                                "Novo Item da HASTE:",
+                                value=item_armario,
+                                disabled=True
+                            )
+                        else:
+                            st.error(
+                                "⚠️ A gaveta desta máquina não possui OP e Item completos. "
+                                "Alimente/corrija o armário antes de salvar a HASTE."
+                            )
+                            ordem_atual = ""
+                            item_atual = ""
+                    else:
+                        # AFC / SEQUÊNCIA permanecem no fluxo existente.
+                        ordem_atual = st.text_input(
+                            "Ordem Atual (OP):",
+                            value=op_pre,
+                            placeholder="Ex: 987654"
+                        )
+                        item_atual = st.text_input(
+                            "Item Atual (Na Máquina):",
+                            value=item_pre,
+                            placeholder="Ex: 313324"
+                        )
                 else:
                     prog_status_prep = "SIM (Programa OK)"
                     ordem_atual = op_pre
@@ -3763,6 +3874,11 @@ def painel_controle_maquina(maq_id, setor):
                 if st.form_submit_button("💾 Salvar Registro", type="primary"):
                     if not hora_relatorio.strip():
                         st.error("⚠️ O campo de horário é obrigatório!")
+                    elif is_rtf_haste_config and (not op_armario or not item_armario):
+                        st.error(
+                            "⚠️ HASTE sem OP/Item completos no armário. "
+                            "O registro não foi salvo."
+                        )
                     elif prep_sugerido.strip() and not is_guia and prog_status_prep == "-- Vá até a máquina e verifique --":
                         st.error("⚠️ Como você sugeriu um preparador, é OBRIGATÓRIO verificar na máquina se o Programa está OK!")
                     else:
@@ -3830,9 +3946,44 @@ def painel_controle_maquina(maq_id, setor):
                     
                 nome_input = st.text_input("Nome do Preparador:", value=sug_nome if sug_nome else "")
                 
-                is_guia = "GUIA" in status_atual.upper()
-                is_seq = "SEQUÊNCIA" in status_atual.upper() or "SEQUENCIA" in status_atual.upper()
+                status_up = status_atual.upper()
+                is_guia = "GUIA" in status_up
+                is_seq = "SEQUÊNCIA" in status_up or "SEQUENCIA" in status_up
+                is_haste = (
+                    "HASTE" in status_up
+                    or "[PROCESSO: HASTE]" in status_up
+                )
                 is_comum = not is_guia and not is_seq
+
+                # Recupera a OP já gravada no agendamento/status.
+                ordem_status = ""
+                item_status = ""
+
+                if "[Ordem:" in status_atual:
+                    try:
+                        ordem_status = (
+                            status_atual.split("[Ordem:")[1]
+                            .split("]")[0]
+                            .strip()
+                            .replace(".0", "")
+                            .lstrip("0")
+                        )
+                    except:
+                        ordem_status = ""
+
+                for marcador_item in ["[Novo Item:", "[Item Atual:", "[Item:"]:
+                    if marcador_item in status_atual:
+                        try:
+                            item_status = (
+                                status_atual.split(marcador_item)[1]
+                                .split("]")[0]
+                                .strip()
+                                .replace(".0", "")
+                                .lstrip("0")
+                            )
+                            break
+                        except:
+                            pass
                 
                 if is_guia:
                     prog_status_espera = "SIM (Programa OK)"
@@ -3846,22 +3997,87 @@ def painel_controle_maquina(maq_id, setor):
                 
                 st.markdown("📦 **Dados da Preparação**")
                 nova_ordem_input = ""
-                
-                if is_comum:
-                    nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", value=op_armario, placeholder="Ex: 987654")
-                    if op_armario:
-                        st.success(f"📦 OP {op_armario} puxada automaticamente do armário! (Item: {item_armario})")
+                item_entrada_auto = ""
+
+                if is_haste:
+                    # HASTE: obrigatoriamente vem da gaveta da máquina.
+                    nova_ordem_input = op_armario
+                    item_entrada_auto = item_armario
+
+                    if nova_ordem_input and item_entrada_auto:
+                        st.text_input(
+                            "Nova Ordem (OP) Entrando:",
+                            value=nova_ordem_input,
+                            disabled=True,
+                            key=f"op_auto_haste_{maq_id}"
+                        )
+                        st.text_input(
+                            "Novo Item:",
+                            value=item_entrada_auto,
+                            disabled=True,
+                            key=f"item_auto_haste_{maq_id}"
+                        )
+                        st.success(
+                            f"📦 HASTE puxada automaticamente do armário: "
+                            f"OP {nova_ordem_input} · Item {item_entrada_auto}"
+                        )
                     else:
-                        st.info("ℹ️ O Item da peça será puxado automaticamente do armário baseado nesta OP.")
+                        st.error(
+                            "⚠️ HASTE sem OP/Item no armário desta máquina. "
+                            "Não é necessário digitar manualmente: corrija a gaveta."
+                        )
+
                 elif is_seq:
-                    nova_ordem_input = st.text_input("Nova Ordem (OP) Entrando:", value=op_armario, placeholder="Ex: 987654")
-                    if op_armario:
-                        st.success(f"📦 OP {op_armario} puxada automaticamente do armário!")
+                    # SEQUÊNCIA: a OP já salva no agendamento tem prioridade.
+                    # Fallback para armário apenas para registros antigos.
+                    nova_ordem_input = ordem_status or op_armario
+
+                    if nova_ordem_input:
+                        st.text_input(
+                            "Nova Ordem (OP) Entrando:",
+                            value=nova_ordem_input,
+                            disabled=True,
+                            key=f"op_auto_seq_{maq_id}"
+                        )
+                        origem = "agendamento" if ordem_status else "armário"
+                        st.success(
+                            f"🔁 Sequência: OP {nova_ordem_input} puxada automaticamente "
+                            f"do {origem}. O Item atual será mantido."
+                        )
                     else:
-                        st.info("ℹ️ Sequência: O Item atual será mantido. Informe apenas a nova OP.")
+                        st.error(
+                            "⚠️ A Sequência não possui OP salva no agendamento "
+                            "nem disponível no armário."
+                        )
+
+                elif is_comum:
+                    # Outras preparações mantêm o comportamento existente.
+                    nova_ordem_input = st.text_input(
+                        "Nova Ordem (OP) Entrando:",
+                        value=(ordem_status or op_armario),
+                        placeholder="Ex: 987654"
+                    )
+
+                    if ordem_status:
+                        st.success(
+                            f"📋 OP {ordem_status} recuperada do agendamento."
+                        )
+                    elif op_armario:
+                        st.success(
+                            f"📦 OP {op_armario} puxada automaticamente do armário! "
+                            f"(Item: {item_armario})"
+                        )
+                    else:
+                        st.info(
+                            "ℹ️ O Item será buscado automaticamente pela OP informada."
+                        )
+
                 elif is_guia:
-                    st.info("ℹ️ Preparação de Guia: A Ordem e o Item atuais serão mantidos. Nenhuma nova OP é necessária.")
-                
+                    st.info(
+                        "ℹ️ Preparação de Guia: A Ordem e o Item atuais serão mantidos. "
+                        "Nenhuma nova OP é necessária."
+                    )
+
                 st.markdown("⏰ **Adiar Agendamento (Opcional)**")
                 col_adiar1, col_adiar2 = st.columns([3, 2])
                 novo_horario_adiar = col_adiar1.text_input("Novo Horário:", placeholder="Ex: 14:30")
@@ -3975,8 +4191,20 @@ def painel_controle_maquina(maq_id, setor):
                             st.rerun()
                             
                 if btn_iniciar:
-                    if is_comum and not nova_ordem_input.strip(): st.error("⚠️ Para INICIAR a preparação, informe a Nova Ordem (OP)!")
-                    elif is_seq and not nova_ordem_input.strip(): st.error("⚠️ Para INICIAR a Sequência, informe a Nova Ordem (OP)!")
+                    if is_haste and (not nova_ordem_input.strip() or not item_entrada_auto.strip()):
+                        st.error(
+                            "⚠️ HASTE sem OP/Item no armário. "
+                            "Alimente/corrija a gaveta antes de iniciar."
+                        )
+                    elif is_seq and not nova_ordem_input.strip():
+                        st.error(
+                            "⚠️ Sequência sem OP automática disponível. "
+                            "Revise o agendamento ou o armário."
+                        )
+                    elif is_comum and not nova_ordem_input.strip():
+                        st.error(
+                            "⚠️ Para INICIAR a preparação, informe a Nova Ordem (OP)!"
+                        )
                     else:
                         nome_final = nome_input if nome_input.strip() else st.session_state['operador']
                         hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
@@ -3995,14 +4223,31 @@ def painel_controle_maquina(maq_id, setor):
                         nova_ordem_limpa = nova_ordem_input.strip().upper().replace(".0", "").lstrip("0")
 
                         if not is_guia:
-                            if is_comum:
+                            if is_haste:
+                                item_buscado = item_entrada_auto
+                                st_andamento += f" [Ordem: {nova_ordem_limpa}]"
+                                st_andamento += f" [Novo Item: {item_buscado}]"
+                                dar_baixa_armario(
+                                    nova_ordem_limpa,
+                                    st.session_state.get('operador', 'SISTEMA')
+                                )
+
+                            elif is_comum:
                                 item_buscado = buscar_item_por_ordem(nova_ordem_limpa)
                                 st_andamento += f" [Ordem: {nova_ordem_limpa}]"
                                 st_andamento += f" [Novo Item: {item_buscado}]"
-                                dar_baixa_armario(nova_ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
+                                dar_baixa_armario(
+                                    nova_ordem_limpa,
+                                    st.session_state.get('operador', 'SISTEMA')
+                                )
+
                             elif is_seq:
+                                # Sequência mantém o item atual e troca somente a OP.
                                 st_andamento += f" [Ordem: {nova_ordem_limpa}]"
-                                dar_baixa_armario(nova_ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
+                                dar_baixa_armario(
+                                    nova_ordem_limpa,
+                                    st.session_state.get('operador', 'SISTEMA')
+                                )
                         else:
                             if nova_ordem_limpa:
                                 st_andamento += f" [Ordem: {nova_ordem_limpa}]"
