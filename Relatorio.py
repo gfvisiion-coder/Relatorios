@@ -2155,6 +2155,172 @@ def _qtd_armarios_ocupados(df):
     return int(((status != "VAZIO") | (ordem != "") | (item != "")).sum())
 
 
+_ARMARIO_COLUNAS_SQL = [
+    "Armario", "Posicao", "Ordem", "Item",
+    "Status", "Data_Hora", "Observacao", "Rebolo"
+]
+
+
+def _garantir_tabelas_backup_armarios_sql():
+    """Garante backup/histórico sem transportar o armário inteiro ao Python."""
+    defs_arm = ", ".join(
+        f"{_quote_identifier(c)} TEXT"
+        for c in _ARMARIO_COLUNAS_SQL
+    )
+
+    if not tabela_existe(ARQUIVO_ARMARIOS_BACKUP):
+        turso_request(
+            f"CREATE TABLE IF NOT EXISTS "
+            f"{_quote_identifier(ARQUIVO_ARMARIOS_BACKUP)} "
+            f"({defs_arm})",
+            want_rows=False
+        )
+        _marcar_tabela_existe(ARQUIVO_ARMARIOS_BACKUP, True)
+
+    if not tabela_existe(ARQUIVO_ARMARIOS_HISTORICO):
+        defs_hist = (
+            '"Snapshot_Id" TEXT, '
+            '"Snapshot_Data" TEXT, '
+            '"Snapshot_Origem" TEXT, '
+            '"Snapshot_Operador" TEXT, '
+            + defs_arm
+        )
+        turso_request(
+            f"CREATE TABLE IF NOT EXISTS "
+            f"{_quote_identifier(ARQUIVO_ARMARIOS_HISTORICO)} "
+            f"({defs_hist})",
+            want_rows=False
+        )
+        _marcar_tabela_existe(ARQUIVO_ARMARIOS_HISTORICO, True)
+
+
+def _atualizar_gaveta_armario_rapido(
+    armario,
+    posicao,
+    campos,
+    origem="alteracao_gaveta"
+):
+    """Atualiza somente uma gaveta, mantendo backup + histórico completos.
+
+    A diferença para o método antigo é importante:
+    - o backup é copiado DENTRO do próprio Turso;
+    - o histórico é copiado DENTRO do próprio Turso;
+    - somente a gaveta alterada recebe UPDATE;
+    - tudo ocorre na MESMA transação.
+
+    Assim continuamos com restauração completa, mas sem reconstruir
+    banco_armarios.csv inteiro a cada bipagem.
+    """
+    if not tabela_existe(ARQUIVO_ARMARIOS):
+        raise RuntimeError("A tabela de armários não existe no Turso.")
+
+    campos_permitidos = {
+        "Ordem", "Item", "Status", "Data_Hora",
+        "Observacao", "Rebolo"
+    }
+    campos = {
+        str(k): "" if v is None else str(v)
+        for k, v in dict(campos or {}).items()
+        if str(k) in campos_permitidos
+    }
+
+    if not campos:
+        return
+
+    armario = str(armario or "").strip()
+    pos_txt = str(posicao or "").replace(".0", "").strip()
+
+    if not armario or not pos_txt:
+        raise RuntimeError("Armário ou posição inválidos.")
+
+    try:
+        pos_num = int(float(pos_txt))
+    except Exception as exc:
+        raise RuntimeError(f"Posição inválida: {posicao}") from exc
+
+    _garantir_tabelas_backup_armarios_sql()
+
+    snapshot_id = datetime.now(FUSO_BR).strftime("%Y%m%d_%H%M%S_%f")
+    snapshot_data = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S")
+    operador = str(
+        st.session_state.get("operador", "SISTEMA") or "SISTEMA"
+    )
+
+    cols_q = ", ".join(
+        _quote_identifier(c) for c in _ARMARIO_COLUNAS_SQL
+    )
+    hist_cols_q = ", ".join(
+        [_quote_identifier("Snapshot_Id"),
+         _quote_identifier("Snapshot_Data"),
+         _quote_identifier("Snapshot_Origem"),
+         _quote_identifier("Snapshot_Operador")]
+        + [_quote_identifier(c) for c in _ARMARIO_COLUNAS_SQL]
+    )
+
+    set_sql = ", ".join(
+        f"{_quote_identifier(col)}=?"
+        for col in campos.keys()
+    )
+    update_args = list(campos.values()) + [armario, pos_num]
+
+    tabela_arm = _quote_identifier(ARQUIVO_ARMARIOS)
+    tabela_bkp = _quote_identifier(ARQUIVO_ARMARIOS_BACKUP)
+    tabela_hist = _quote_identifier(ARQUIVO_ARMARIOS_HISTORICO)
+
+    steps = [
+        _stmt_batch("BEGIN IMMEDIATE"),
+        _stmt_batch(
+            f"DELETE FROM {tabela_bkp}",
+            condition={"type": "ok", "step": 0},
+        ),
+        _stmt_batch(
+            f"INSERT INTO {tabela_bkp} ({cols_q}) "
+            f"SELECT {cols_q} FROM {tabela_arm}",
+            condition={"type": "ok", "step": 1},
+        ),
+        _stmt_batch(
+            f"INSERT INTO {tabela_hist} ({hist_cols_q}) "
+            f"SELECT ?, ?, ?, ?, {cols_q} FROM {tabela_arm}",
+            [
+                snapshot_id,
+                snapshot_data,
+                str(origem),
+                operador,
+            ],
+            condition={"type": "ok", "step": 2},
+        ),
+        _stmt_batch(
+            f"UPDATE {tabela_arm} SET {set_sql} "
+            f"WHERE {_quote_identifier('Armario')}=? "
+            f"AND CAST({_quote_identifier('Posicao')} AS INTEGER)=?",
+            update_args,
+            condition={"type": "ok", "step": 3},
+        ),
+        _stmt_batch(
+            "COMMIT",
+            condition={"type": "ok", "step": 4},
+        ),
+        _stmt_batch(
+            "ROLLBACK",
+            condition={
+                "type": "or",
+                "conds": [
+                    {"type": "error", "step": i}
+                    for i in range(0, 6)
+                ],
+            },
+        ),
+    ]
+
+    _turso_batch_atomico(steps, timeout=60)
+
+    # Só invalida o cache; não precisa reler/regravar a tabela inteira.
+    _invalidar_cache_turso(ARQUIVO_ARMARIOS)
+    _invalidar_cache_turso(ARQUIVO_ARMARIOS_BACKUP)
+    _invalidar_cache_turso(ARQUIVO_ARMARIOS_HISTORICO)
+
+
+
 def _registrar_snapshot_armarios(df_atual, origem="alteracao"):
     if df_atual is None or df_atual.empty:
         return
@@ -3125,9 +3291,18 @@ def dar_baixa_armario(ordem_alvo, operador_nome="SISTEMA"):
             else:
                 pd.DataFrame([novo_alerta]).to_csv(ARQUIVO_ALERTAS, index=False)
             
-            df_arm.loc[idx_ordem, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao']] = ["", "", 'VAZIO', datetime.now(FUSO_BR).strftime("%H:%M"), ""]
-            df_arm = df_arm.drop(columns=['Ordem_busca'])
-            df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
+            _atualizar_gaveta_armario_rapido(
+                armario_removido,
+                maq_removida,
+                {
+                    "Ordem": "",
+                    "Item": "",
+                    "Status": "VAZIO",
+                    "Data_Hora": datetime.now(FUSO_BR).strftime("%H:%M"),
+                    "Observacao": "",
+                },
+                origem="baixa_inicio_setup"
+            )
     except: pass
 
 def buscar_dados_armario_maquina(maq_id, setor):
@@ -7373,8 +7548,19 @@ def tela_armarios():
                         
                         idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                         if not idx.empty:
-                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao', 'Rebolo']] = [ordem_limpo, item_limpo, novo_status, datetime.now(FUSO_BR).strftime("%H:%M"), obs_final, rebolo_in.strip()]
-                            df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
+                            _atualizar_gaveta_armario_rapido(
+                                arm_sel,
+                                pos_sel,
+                                {
+                                    "Ordem": ordem_limpo,
+                                    "Item": item_limpo,
+                                    "Status": novo_status,
+                                    "Data_Hora": datetime.now(FUSO_BR).strftime("%H:%M"),
+                                    "Observacao": obs_final,
+                                    "Rebolo": rebolo_in.strip(),
+                                },
+                                origem="guardar_setup_gaveta"
+                            )
                             st.session_state['gaveta_selecionada'] = None
                             st.success(f"✅ Setup guardado na gaveta da MÁQUINA {pos_sel}!")
                             st.rerun()
@@ -7419,16 +7605,37 @@ def tela_armarios():
 
                         idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                         if not idx.empty:
-                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Observacao', 'Rebolo']] = [ordem_limpa_upd, item_limpo_upd, novo_status_upd, obs_final, novo_rebolo.strip()]
-                            df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
+                            _atualizar_gaveta_armario_rapido(
+                                arm_sel,
+                                pos_sel,
+                                {
+                                    "Ordem": ordem_limpa_upd,
+                                    "Item": item_limpo_upd,
+                                    "Status": novo_status_upd,
+                                    "Observacao": obs_final,
+                                    "Rebolo": novo_rebolo.strip(),
+                                },
+                                origem="editar_gaveta"
+                            )
                             st.session_state['gaveta_selecionada'] = None
                             st.success("✅ Gaveta atualizada com sucesso!")
                             st.rerun()
                 if c2.form_submit_button("🗑️ Excluir", use_container_width=True):
                     idx = df_arm[(df_arm['Armario'] == arm_sel) & (df_arm['Posicao'] == str(pos_sel))].index
                     if not idx.empty:
-                        df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao', 'Rebolo']] = ["", "", "VAZIO", datetime.now(FUSO_BR).strftime("%H:%M"), "", ""]
-                        df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
+                        _atualizar_gaveta_armario_rapido(
+                            arm_sel,
+                            pos_sel,
+                            {
+                                "Ordem": "",
+                                "Item": "",
+                                "Status": "VAZIO",
+                                "Data_Hora": datetime.now(FUSO_BR).strftime("%H:%M"),
+                                "Observacao": "",
+                                "Rebolo": "",
+                            },
+                            origem="liberar_gaveta"
+                        )
                         st.session_state['gaveta_selecionada'] = None
                         st.success("✅ Gaveta liberada com sucesso!")
                         st.rerun()
@@ -8011,30 +8218,18 @@ def tela_armarios():
                                     "Nada foi gravado."
                                 )
                             else:
-                                df_arm_seq.loc[
-                                    idx,
-                                    [
-                                        "Ordem",
-                                        "Item",
-                                        "Status",
-                                        "Data_Hora",
-                                        "Observacao",
-                                        "Rebolo",
-                                    ],
-                                ] = [
-                                    ordem_limpa,
-                                    item_limpa,
-                                    novo_status,
-                                    datetime.now(FUSO_BR).strftime("%H:%M"),
-                                    obs_final,
-                                    rebolo_in.strip(),
-                                ]
-
-                                # Continua usando a camada protegida:
-                                # salva backup ANTES de alterar o estado oficial.
-                                df_arm_seq.to_csv(
-                                    ARQUIVO_ARMARIOS,
-                                    index=False,
+                                _atualizar_gaveta_armario_rapido(
+                                    fila_armario,
+                                    maquina_atual,
+                                    {
+                                        "Ordem": ordem_limpa,
+                                        "Item": item_limpa,
+                                        "Status": novo_status,
+                                        "Data_Hora": datetime.now(FUSO_BR).strftime("%H:%M"),
+                                        "Observacao": obs_final,
+                                        "Rebolo": rebolo_in.strip(),
+                                    },
+                                    origem="alimentar_sequencial"
                                 )
 
                                 # Limpa somente o rascunho DESTA máquina
