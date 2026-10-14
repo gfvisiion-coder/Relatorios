@@ -5328,6 +5328,160 @@ def _metricas_setups_mes_home(agora=None):
     return saida
 
 
+def _metricas_centerless_mes_9999(agora=None):
+    """Resumo mensal das medições Centerless para o painel gerencial 9999."""
+    agora = agora or datetime.now(FUSO_BR)
+    mes_ref = agora.strftime("%m/%Y")
+
+    saida = {
+        "17": {
+            "qtd": 0,
+            "ciclo_medio": 0.0,
+            "melhor_ciclo": 0.0,
+            "pecas_hora": 0.0,
+            "tempo_medio_medicao_s": 0.0,
+        },
+        "6": {
+            "qtd": 0,
+            "ciclo_medio": 0.0,
+            "melhor_ciclo": 0.0,
+            "pecas_hora": 0.0,
+            "tempo_medio_medicao_s": 0.0,
+        },
+        "materiais": pd.DataFrame(),
+    }
+
+    try:
+        if not tabela_existe(ARQUIVO_CENTERLESS):
+            return saida
+
+        tab = _quote_identifier(ARQUIVO_CENTERLESS)
+        result = turso_request(
+            f"""SELECT
+                    "Data",
+                    "Maquina",
+                    "Material",
+                    "Tempo_Total_s",
+                    "Quantidade",
+                    "Tempo_Ciclo_s",
+                    "Pecas_Hora"
+                FROM {tab}
+                WHERE substr("Data", 4, 7)=?""",
+            [mes_ref],
+            want_rows=True,
+        )
+        df = _resultado_turso_df(result)
+
+        if df.empty:
+            return saida
+
+        for col in [
+            "Tempo_Total_s",
+            "Quantidade",
+            "Tempo_Ciclo_s",
+            "Pecas_Hora",
+        ]:
+            if col not in df.columns:
+                df[col] = 0
+            df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        for col in ["Maquina", "Material"]:
+            if col not in df.columns:
+                df[col] = ""
+            df[col] = df[col].fillna("").astype(str).str.strip()
+
+        # Cards por máquina
+        for maq in ("17", "6"):
+            d = df[
+                df["Maquina"].str.upper().eq(f"CENTERLESS {maq}")
+            ].copy()
+
+            ciclos = d["Tempo_Ciclo_s"].dropna()
+            ritmos = d["Pecas_Hora"].dropna()
+            tempos = d["Tempo_Total_s"].dropna()
+
+            if ciclos.empty:
+                continue
+
+            saida[maq] = {
+                "qtd": int(len(ciclos)),
+                "ciclo_medio": float(ciclos.mean()),
+                "melhor_ciclo": float(ciclos.min()),
+                "pecas_hora": float(ritmos.mean()) if not ritmos.empty else 0.0,
+                "tempo_medio_medicao_s": float(tempos.mean()) if not tempos.empty else 0.0,
+            }
+
+        # Resumo por máquina + material
+        validos = df[
+            df["Material"].ne("")
+            & df["Tempo_Ciclo_s"].notna()
+        ].copy()
+
+        if not validos.empty:
+            resumo = (
+                validos
+                .groupby(["Maquina", "Material"], dropna=False)
+                .agg(
+                    Medicoes=("Tempo_Ciclo_s", "count"),
+                    Ciclo_Medio_s=("Tempo_Ciclo_s", "mean"),
+                    Melhor_Ciclo_s=("Tempo_Ciclo_s", "min"),
+                    Pecas_Hora_Media=("Pecas_Hora", "mean"),
+                    Qtd_Media=("Quantidade", "mean"),
+                )
+                .reset_index()
+            )
+
+            resumo["Ciclo_Medio_s"] = resumo["Ciclo_Medio_s"].round(2)
+            resumo["Melhor_Ciclo_s"] = resumo["Melhor_Ciclo_s"].round(2)
+            resumo["Pecas_Hora_Media"] = resumo["Pecas_Hora_Media"].round(1)
+            resumo["Qtd_Media"] = resumo["Qtd_Media"].round(1)
+
+            resumo = resumo.rename(
+                columns={
+                    "Maquina": "Máquina",
+                    "Material": "Material",
+                    "Medicoes": "Medições",
+                    "Ciclo_Medio_s": "Ciclo médio (s/pç)",
+                    "Melhor_Ciclo_s": "Melhor ciclo (s/pç)",
+                    "Pecas_Hora_Media": "Média (pç/h)",
+                    "Qtd_Media": "Qtd. média medida",
+                }
+            ).sort_values(
+                ["Máquina", "Medições", "Material"],
+                ascending=[True, False, True],
+            )
+
+            saida["materiais"] = resumo
+
+    except Exception:
+        # O painel gerencial não pode quebrar por falta de dados Centerless.
+        return saida
+
+    return saida
+
+
+def _render_centerless_metric_card(titulo, dados, icone, cor):
+    qtd = int(dados.get("qtd", 0) or 0)
+    ciclo = float(dados.get("ciclo_medio", 0) or 0)
+    melhor = float(dados.get("melhor_ciclo", 0) or 0)
+    ph = float(dados.get("pecas_hora", 0) or 0)
+
+    ciclo_txt = f"{ciclo:.2f}" if qtd else "—"
+    rodape = (
+        f"{qtd} med. · {ph:.1f} pç/h"
+        if qtd
+        else "sem medições no mês"
+    )
+    melhor_txt = f"{melhor:.2f} s/pç" if qtd else "—"
+
+    return f"""<div class="setup-metric-card" style="--setup-color:{cor}">
+<div class="setup-metric-head"><span>{html.escape(titulo)}</span><b>{icone}</b></div>
+<div class="setup-metric-main"><strong>{ciclo_txt}</strong><span>s / peça</span></div>
+<div class="setup-metric-average"><span>{html.escape(rodape)}</span><b>{melhor_txt}</b></div>
+</div>"""
+
+
+
 def _render_setup_metric_card(titulo, dados, icone, cor):
     qtd = int(dados.get('qtd', 0))
     media = int(dados.get('media', 0))
@@ -5379,6 +5533,14 @@ _CENTERLESS_ESTADOS = {"PRONTO", "RODANDO", "PARADO"}
 
 
 def _centerless_garantir_estado():
+    """Garante a estrutura uma única vez por sessão.
+
+    Antes, cada toque no controle fazia INSERTs de garantia para as duas máquinas.
+    Agora a inicialização ocorre só uma vez, reduzindo bastante a latência.
+    """
+    if st.session_state.get("_centerless_db_ready"):
+        return
+
     if not tabela_existe(ARQUIVO_CENTERLESS_ESTADO):
         turso_request(
             f"""CREATE TABLE IF NOT EXISTS {_quote_identifier(ARQUIVO_CENTERLESS_ESTADO)} (
@@ -5397,16 +5559,21 @@ def _centerless_garantir_estado():
         _invalidar_cache_turso(ARQUIVO_CENTERLESS_ESTADO)
 
     agora = datetime.now(FUSO_BR).isoformat()
-    for maq in _CENTERLESS_MAQUINAS:
-        turso_request(
-            f"""INSERT INTO {_quote_identifier(ARQUIVO_CENTERLESS_ESTADO)}
-            ("Maquina","Estado","Material","Inicio_ISO","Fim_ISO",
-             "Tempo_Segundos","Operador","Atualizado_Em")
-            VALUES (?, 'PRONTO', '', '', '', 0, '', ?)
-            ON CONFLICT("Maquina") DO NOTHING""",
-            [maq, agora],
-            want_rows=False,
-        )
+
+    # Uma única chamada ao Turso para garantir as duas máquinas.
+    turso_request(
+        f"""INSERT INTO {_quote_identifier(ARQUIVO_CENTERLESS_ESTADO)}
+        ("Maquina","Estado","Material","Inicio_ISO","Fim_ISO",
+         "Tempo_Segundos","Operador","Atualizado_Em")
+        VALUES
+            ('17', 'PRONTO', '', '', '', 0, '', ?),
+            ('6',  'PRONTO', '', '', '', 0, '', ?)
+        ON CONFLICT("Maquina") DO NOTHING""",
+        [agora, agora],
+        want_rows=False,
+    )
+
+    st.session_state["_centerless_db_ready"] = True
 
 
 def _centerless_estados():
@@ -5453,7 +5620,101 @@ def _centerless_estados():
 
 
 def _centerless_estado(maq):
-    return _centerless_estados()[str(maq)]
+    """Lê somente a máquina solicitada."""
+    _centerless_garantir_estado()
+    maq = str(maq)
+
+    result = turso_request(
+        f"""SELECT "Maquina","Estado","Material","Inicio_ISO","Fim_ISO",
+                   "Tempo_Segundos","Operador","Atualizado_Em"
+            FROM {_quote_identifier(ARQUIVO_CENTERLESS_ESTADO)}
+            WHERE "Maquina"=?
+            LIMIT 1""",
+        [maq],
+        want_rows=True,
+    )
+    df = _resultado_turso_df(result)
+
+    if df.empty:
+        return {
+            "Maquina": maq,
+            "Estado": "PRONTO",
+            "Material": "",
+            "Inicio_ISO": "",
+            "Fim_ISO": "",
+            "Tempo_Segundos": 0.0,
+            "Operador": "",
+            "Atualizado_Em": "",
+        }
+
+    row = df.iloc[0]
+    estado = str(row.get("Estado", "PRONTO") or "PRONTO").upper().strip()
+    if estado not in _CENTERLESS_ESTADOS:
+        estado = "PRONTO"
+
+    try:
+        tempo_s = float(row.get("Tempo_Segundos", 0) or 0)
+    except Exception:
+        tempo_s = 0.0
+
+    return {
+        "Maquina": maq,
+        "Estado": estado,
+        "Material": str(row.get("Material", "") or "").strip(),
+        "Inicio_ISO": str(row.get("Inicio_ISO", "") or "").strip(),
+        "Fim_ISO": str(row.get("Fim_ISO", "") or "").strip(),
+        "Tempo_Segundos": max(0.0, tempo_s),
+        "Operador": str(row.get("Operador", "") or "").strip(),
+        "Atualizado_Em": str(row.get("Atualizado_Em", "") or "").strip(),
+    }
+
+
+def _centerless_transicao_rapida(
+    maq,
+    estado_esperado,
+    novo_estado,
+    material,
+    inicio_iso,
+    fim_iso,
+    tempo_segundos,
+):
+    """Uma única escrita no Turso, com proteção contra clique concorrente."""
+    operador = str(st.session_state.get("operador", "") or "")
+    agora_iso = datetime.now(FUSO_BR).isoformat()
+
+    result = turso_request(
+        f"""UPDATE {_quote_identifier(ARQUIVO_CENTERLESS_ESTADO)}
+        SET
+            "Estado"=?,
+            "Material"=?,
+            "Inicio_ISO"=?,
+            "Fim_ISO"=?,
+            "Tempo_Segundos"=?,
+            "Operador"=?,
+            "Atualizado_Em"=?
+        WHERE "Maquina"=? AND "Estado"=?""",
+        [
+            str(novo_estado),
+            str(material or "").strip().upper(),
+            str(inicio_iso or ""),
+            str(fim_iso or ""),
+            float(tempo_segundos or 0),
+            operador,
+            agora_iso,
+            str(maq),
+            str(estado_esperado),
+        ],
+        want_rows=False,
+    )
+
+    afetadas = result.get("affected_row_count", 0)
+    try:
+        afetadas = int(afetadas or 0)
+    except Exception:
+        afetadas = 0
+
+    _invalidar_cache_turso(ARQUIVO_CENTERLESS_ESTADO)
+    return afetadas > 0
 
 
 def _centerless_salvar_estado(
@@ -5513,56 +5774,118 @@ def _centerless_mensagem(texto, tipo="info"):
     st.session_state["_centerless_msg"] = (tipo, str(texto))
 
 
-def _centerless_acionar(maq, material_key):
-    """PRONTO -> RODANDO -> PARADO. PARADO ignora novo comando."""
+def _centerless_acionar(
+    maq,
+    material_key,
+    estado_tela,
+    inicio_iso_tela="",
+    material_tela="",
+):
+    """Resposta rápida ao AC285.
+
+    Usa o estado que já estava renderizado na tela e faz somente UMA chamada
+    de escrita ao Turso. Isso elimina a leitura prévia que atrasava o sinal.
+    """
+    t0 = time.perf_counter()
+
     try:
         maq = str(maq)
-        e = _centerless_estado(maq)
+        estado_tela = str(estado_tela or "PRONTO").upper().strip()
 
-        if e["Estado"] == "PARADO":
+        if estado_tela == "PARADO":
             _centerless_mensagem(
                 f"Centerless {maq}: já está parada. Informe a quantidade e finalize.",
                 "warning",
             )
             return
 
-        if e["Estado"] == "PRONTO":
-            material = str(st.session_state.get(material_key, "") or "").strip().upper()
+        if estado_tela == "PRONTO":
+            material = str(
+                st.session_state.get(material_key, "") or ""
+            ).strip().upper()
+
             if not material:
                 _centerless_mensagem(
                     f"Centerless {maq}: informe o material antes de iniciar.",
                     "error",
                 )
                 return
+
             agora = datetime.now(FUSO_BR)
-            _centerless_salvar_estado(
-                maq, "RODANDO", material, agora.isoformat(), "", 0
+
+            ok = _centerless_transicao_rapida(
+                maq=maq,
+                estado_esperado="PRONTO",
+                novo_estado="RODANDO",
+                material=material,
+                inicio_iso=agora.isoformat(),
+                fim_iso="",
+                tempo_segundos=0,
             )
+
+            if not ok:
+                _centerless_mensagem(
+                    f"Centerless {maq}: o estado mudou antes do comando. "
+                    "A tela foi sincronizada.",
+                    "warning",
+                )
+                return
+
+            ms = int((time.perf_counter() - t0) * 1000)
             _centerless_mensagem(
-                f"Centerless {maq}: medição iniciada para {material}.",
+                f"⚡ Centerless {maq}: iniciado para {material} · comando processado em {ms} ms.",
                 "success",
             )
             return
 
-        if e["Estado"] == "RODANDO":
-            inicio = _centerless_dt(e["Inicio_ISO"])
+        if estado_tela == "RODANDO":
+            inicio = _centerless_dt(inicio_iso_tela)
             fim = datetime.now(FUSO_BR)
+
+            if inicio is None:
+                # Só usa leitura do banco como recuperação de exceção.
+                e = _centerless_estado(maq)
+                inicio = _centerless_dt(e.get("Inicio_ISO"))
+                material_tela = e.get("Material", material_tela)
+
             if inicio is None:
                 raise RuntimeError("Horário inicial não encontrado.")
+
             if inicio.tzinfo is None:
                 inicio = inicio.replace(tzinfo=FUSO_BR)
+
             segundos = max(0.0, (fim - inicio).total_seconds())
-            _centerless_salvar_estado(
-                maq, "PARADO", e["Material"],
-                inicio.isoformat(), fim.isoformat(), segundos
+
+            ok = _centerless_transicao_rapida(
+                maq=maq,
+                estado_esperado="RODANDO",
+                novo_estado="PARADO",
+                material=material_tela,
+                inicio_iso=inicio.isoformat(),
+                fim_iso=fim.isoformat(),
+                tempo_segundos=segundos,
             )
+
+            if not ok:
+                _centerless_mensagem(
+                    f"Centerless {maq}: o cronômetro já havia mudado de estado. "
+                    "A tela foi sincronizada.",
+                    "warning",
+                )
+                return
+
+            ms = int((time.perf_counter() - t0) * 1000)
             _centerless_mensagem(
-                f"Centerless {maq}: parado em {_centerless_tempo_txt(segundos)}. "
-                "Agora informe a quantidade e finalize.",
+                f"⚡ Centerless {maq}: parado em {_centerless_tempo_txt(segundos)} "
+                f"· comando processado em {ms} ms. Informe a quantidade e finalize.",
                 "success",
             )
+
     except Exception as exc:
-        _centerless_mensagem(f"Erro Centerless {maq}: {exc}", "error")
+        _centerless_mensagem(
+            f"Erro Centerless {maq}: {exc}",
+            "error",
+        )
 
 
 def _centerless_finalizar(maq, qtd_key):
@@ -5623,6 +5946,7 @@ def _centerless_finalizar(maq, qtd_key):
             f"Centerless {maq}: ciclo {ciclo_s:.2f} s/peça · {ph:.1f} peças/h.",
             "success",
         )
+        st.session_state["_centerless_historico_atualizado"] = True
     except Exception as exc:
         _centerless_mensagem(f"Erro ao finalizar Centerless {maq}: {exc}", "error")
 
@@ -5682,34 +6006,109 @@ def _centerless_timer(estado):
 
 
 def _centerless_instalar_ac285():
+    """Captura ↑/↓ imediatamente no navegador.
+
+    Exibe um indicador instantâneo antes mesmo da resposta do servidor, para
+    deixar claro que o sinal físico do AC285 foi recebido.
+    """
     components.html(
         """
         <script>
         (() => {
-          const p=window.parent, d=p.document;
-          if(p.__ac285Centerless){
-            p.removeEventListener("keydown",p.__ac285Centerless,true);
+          const p = window.parent;
+          const d = p.document;
+
+          if (p.__ac285Centerless) {
+            p.removeEventListener("keydown", p.__ac285Centerless, true);
           }
-          function clickMachine(n){
-            const bs=Array.from(d.querySelectorAll("button"));
-            const b=bs.find(x=>{
-              const t=(x.innerText||x.textContent||"").toUpperCase();
-              return t.includes("CENTERLESS "+n) && t.includes("CONTROLE");
+
+          function feedback(machine, symbol) {
+            let box = d.getElementById("__ac285_centerless_feedback");
+            if (!box) {
+              box = d.createElement("div");
+              box.id = "__ac285_centerless_feedback";
+              box.style.position = "fixed";
+              box.style.right = "18px";
+              box.style.bottom = "18px";
+              box.style.zIndex = "999999";
+              box.style.padding = "10px 14px";
+              box.style.borderRadius = "12px";
+              box.style.background = "rgba(20,184,166,.96)";
+              box.style.border = "1px solid rgba(94,234,212,.95)";
+              box.style.color = "#042f2e";
+              box.style.fontWeight = "900";
+              box.style.fontSize = "12px";
+              box.style.boxShadow = "0 12px 35px rgba(0,0,0,.35)";
+              box.style.transition = "opacity .18s ease";
+              d.body.appendChild(box);
+            }
+
+            box.textContent = "⚡ " + symbol + " CENTERLESS " + machine + " · SINAL RECEBIDO";
+            box.style.opacity = "1";
+
+            clearTimeout(p.__ac285FeedbackTimer);
+            p.__ac285FeedbackTimer = setTimeout(() => {
+              box.style.opacity = "0";
+            }, 650);
+          }
+
+          function clickMachine(machine, symbol) {
+            const now = Date.now();
+
+            // Evita dois pulsos quase simultâneos do mesmo botão físico.
+            if (
+              p.__ac285LastSignal &&
+              now - p.__ac285LastSignal < 220
+            ) {
+              return;
+            }
+            p.__ac285LastSignal = now;
+
+            feedback(machine, symbol);
+
+            const buttons = Array.from(d.querySelectorAll("button"));
+            const target = buttons.find((b) => {
+              const txt = (b.innerText || b.textContent || "").toUpperCase();
+              return (
+                txt.includes("CENTERLESS " + machine) &&
+                txt.includes("CONTROLE")
+              );
             });
-            if(b && !b.disabled){
-              try{ d.activeElement && d.activeElement.blur(); }catch(e){}
-              b.click();
+
+            if (target && !target.disabled) {
+              try {
+                d.activeElement && d.activeElement.blur();
+              } catch (e) {}
+
+              // Feedback no próprio botão antes do round-trip Streamlit/Turso.
+              target.style.transform = "scale(.985)";
+              target.style.filter = "brightness(1.25)";
+              target.click();
+
+              setTimeout(() => {
+                try {
+                  target.style.transform = "";
+                  target.style.filter = "";
+                } catch (e) {}
+              }, 180);
             }
           }
-          p.__ac285Centerless=(e)=>{
-            if(e.repeat) return;
-            if(e.key==="ArrowUp"){
-              e.preventDefault(); e.stopPropagation(); clickMachine("17");
-            } else if(e.key==="ArrowDown"){
-              e.preventDefault(); e.stopPropagation(); clickMachine("6");
+
+          p.__ac285Centerless = (e) => {
+            if (e.repeat) return;
+
+            if (e.key === "ArrowUp") {
+              e.preventDefault();
+              e.stopPropagation();
+              clickMachine("17", "▲");
+            } else if (e.key === "ArrowDown") {
+              e.preventDefault();
+              e.stopPropagation();
+              clickMachine("6", "▼");
             }
           };
-          p.addEventListener("keydown",p.__ac285Centerless,true);
+
+          p.addEventListener("keydown", p.__ac285Centerless, true);
         })();
         </script>
         """,
@@ -5799,7 +6198,13 @@ def _centerless_card(maq, estado, hist):
         disabled=disabled,
         use_container_width=True,
         on_click=_centerless_acionar,
-        args=(maq, mat_key),
+        args=(
+            maq,
+            mat_key,
+            estado_txt,
+            estado.get("Inicio_ISO", ""),
+            estado.get("Material", ""),
+        ),
     )
 
     if estado_txt == "RODANDO":
@@ -5856,6 +6261,34 @@ def _centerless_card(maq, estado, hist):
         st.caption(f"Média histórica: {met['ph']:.1f} peças/h")
 
 
+def _centerless_painel_rapido(hist):
+    """Parte interativa isolada do painel Centerless."""
+    # Mensagens geradas pelos callbacks START/STOP aparecem aqui no rerun local.
+    msg = st.session_state.pop("_centerless_msg", None)
+    if msg:
+        tipo, conteudo = msg
+        {"success": st.success, "error": st.error, "warning": st.warning}.get(
+            tipo, st.info
+        )(conteudo)
+
+    try:
+        estados = _centerless_estados()
+    except Exception as exc:
+        st.error(f"Não foi possível carregar os cronômetros: {exc}")
+        return
+
+    col17, col6 = st.columns(2, gap="large")
+    with col17:
+        _centerless_card("17", estados["17"], hist)
+    with col6:
+        _centerless_card("6", estados["6"], hist)
+
+
+if hasattr(st, "fragment"):
+    _centerless_painel_rapido = st.fragment(_centerless_painel_rapido)
+
+
+
 def tela_centerless():
     if st.session_state.get("perfil") not in ("centerless", "adm"):
         st.error("🚫 Este módulo é exclusivo do Centerless.")
@@ -5879,13 +6312,6 @@ def tela_centerless():
         on_click=_encerrar_sessao_topbar,
     )
 
-    msg = st.session_state.pop("_centerless_msg", None)
-    if msg:
-        tipo, conteudo = msg
-        {"success": st.success, "error": st.error, "warning": st.warning}.get(
-            tipo, st.info
-        )(conteudo)
-
     st.markdown(
         """
         <div style='padding:10px 12px;border-radius:12px;background:rgba(139,92,246,.07);
@@ -5897,18 +6323,14 @@ def tela_centerless():
         unsafe_allow_html=True,
     )
 
-    try:
-        estados = _centerless_estados()
-    except Exception as exc:
-        st.error(f"Não foi possível abrir o cronômetro: {exc}")
-        return
-
     hist = _centerless_historico()
-    col17, col6 = st.columns(2, gap="large")
-    with col17:
-        _centerless_card("17", estados["17"], hist)
-    with col6:
-        _centerless_card("6", estados["6"], hist)
+
+    if st.session_state.pop("_centerless_historico_atualizado", False):
+        st.success("✅ Medição salva no histórico.")
+
+    # START / STOP ficam em fragmento isolado.
+    # O restante da página não é reconstruído a cada sinal do controle.
+    _centerless_painel_rapido(hist)
 
     st.divider()
     st.markdown("### 📊 Histórico de medições")
@@ -6056,6 +6478,7 @@ def _tela_menu_dashboard_9999():
 
     agora = datetime.now(FUSO_BR)
     metricas_mes = _metricas_setups_mes_home(agora)
+    metricas_centerless = _metricas_centerless_mes_9999(agora)
     inicios_ativos = _inicios_preparacao_ativa_home()
     hora = agora.hour
     saudacao = 'Bom dia' if 5 <= hora < 12 else ('Boa tarde' if 12 <= hora < 18 else 'Boa noite')
@@ -6264,8 +6687,8 @@ def _tela_menu_dashboard_9999():
     html_medias = (
         '<div class="setup-month-panel setup-month-panel-compact">'
         '<div class="setup-month-top">'
-        '<div><div class="setup-month-title">Médias de setup</div>'
-        '<div class="setup-month-sub">Quantidade concluída e média do tempo ativo no mês</div></div>'
+        '<div><div class="setup-month-title">Médias de preparação</div>'
+        '<div class="setup-month-sub">Tempo médio das preparações concluídas no mês</div></div>'
         f'<div class="setup-month-badge">{meses_pt.get(agora.month, agora.strftime("%m"))} / {agora.year}</div>'
         '</div>'
         '<div class="setup-month-grid setup-month-grid-2x2">'
@@ -6275,6 +6698,29 @@ def _tela_menu_dashboard_9999():
         + _render_setup_metric_card('Haste · Completa', metricas_mes['rtf_haste_completa'], 'C', '#F97316')
         + _render_setup_metric_card('Afiação · Preparação', metricas_mes['afc_preparacao'], 'P', '#2DD4BF')
         + _render_setup_metric_card('Afiação · Sequência', metricas_mes['afc_sequencia'], 'S', '#F59E0B')
+        + '</div></div>'
+    )
+
+    html_centerless_medias = (
+        '<div class="setup-month-panel setup-month-panel-compact">'
+        '<div class="setup-month-top">'
+        '<div><div class="setup-month-title">Tempo médio · Centerless</div>'
+        '<div class="setup-month-sub">Ciclo médio medido pelo login 5555 no mês</div></div>'
+        f'<div class="setup-month-badge">{meses_pt.get(agora.month, agora.strftime("%m"))} / {agora.year}</div>'
+        '</div>'
+        '<div class="setup-month-grid setup-month-grid-2x2">'
+        + _render_centerless_metric_card(
+            'Centerless 17',
+            metricas_centerless['17'],
+            '17',
+            '#A78BFA'
+        )
+        + _render_centerless_metric_card(
+            'Centerless 6',
+            metricas_centerless['6'],
+            '6',
+            '#2DD4BF'
+        )
         + '</div></div>'
     )
 
@@ -6312,7 +6758,44 @@ def _tela_menu_dashboard_9999():
 
     with col_esq:
         st.markdown(html_setor, unsafe_allow_html=True)
-        st.markdown(html_medias, unsafe_allow_html=True)
+
+        st.markdown(
+            "<div style='margin:14px 0 6px 0;font-size:12px;"
+            "font-weight:900;color:#F4F4F5;'>⏱️ Médias de preparação</div>",
+            unsafe_allow_html=True
+        )
+
+        aba_media_prep, aba_media_centerless = st.tabs([
+            "Preparações",
+            "⚫ Centerless",
+        ])
+
+        with aba_media_prep:
+            st.markdown(html_medias, unsafe_allow_html=True)
+
+        with aba_media_centerless:
+            st.markdown(html_centerless_medias, unsafe_allow_html=True)
+
+            df_centerless_material = metricas_centerless.get(
+                "materiais",
+                pd.DataFrame()
+            )
+
+            if df_centerless_material is None or df_centerless_material.empty:
+                st.info(
+                    "Ainda não existem medições Centerless finalizadas "
+                    "neste mês."
+                )
+            else:
+                st.caption(
+                    "Médias por material calculadas somente com as medições "
+                    "finalizadas pelo login 5555 no mês atual."
+                )
+                st.dataframe(
+                    df_centerless_material,
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
     with col_dir:
         st.markdown(html_preparacoes, unsafe_allow_html=True)
