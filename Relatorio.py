@@ -3151,48 +3151,9 @@ def get_status_icon(status_str):
     elif "PARADA" in status_str: return "🔴"
     else: return "🟢"
 
-def _normalizar_diametro_haste(valor):
-    """Valida diâmetro usando ponto como separador decimal.
-
-    Aceita:
-      4
-      4.5
-      12.75
-
-    Não aceita vírgula. Valores inteiros não precisam de .0.
-    """
-    raw = str(valor or "").strip().replace("Ø", "").strip()
-
-    if not raw:
-        return "", "⚠️ Informe o diâmetro da haste."
-
-    if "," in raw:
-        return "", "⚠️ No diâmetro use ponto (.) e não vírgula (,). Exemplo: 4.5"
-
-    if not re.fullmatch(r"\d+(?:\.\d+)?", raw):
-        return "", "⚠️ Diâmetro inválido. Use somente números e ponto. Ex.: 4 ou 4.5"
-
-    try:
-        if float(raw) <= 0:
-            return "", "⚠️ O diâmetro deve ser maior que zero."
-    except Exception:
-        return "", "⚠️ Diâmetro inválido."
-
-    # Normaliza sem obrigar .0 nos inteiros.
-    inteiro, ponto, decimal = raw.partition(".")
-    inteiro = str(int(inteiro))
-
-    if ponto:
-        decimal = decimal.rstrip("0")
-        if decimal:
-            return f"{inteiro}.{decimal}", ""
-
-    return inteiro, ""
-
-
 def extrair_tags_producao(status_str):
     tags = ""
-    for marcador in ["[Item Atual:", "[Novo Item:", "[Ordem:", "[Item:", "[Pçs/Hora:", "[Obs:", "[Fim Previsto:", "[Diametro:"]:
+    for marcador in ["[Item Atual:", "[Novo Item:", "[Ordem:", "[Item:", "[Pçs/Hora:", "[Obs:", "[Fim Previsto:", "[Processo:", "[Troca Diametro:", "[Troca Rebolo:"]:
         if marcador in status_str:
             try: tags += f" {marcador} {status_str.split(marcador)[1].split(']')[0].strip()}]"
             except: pass
@@ -3647,15 +3608,16 @@ def painel_controle_maquina(maq_id, setor):
                         st.rerun()
 
         elif st.session_state[flow_key] == "detalhe_prep":
-            # Na Retífica, a escolha HASTE/GUIA e o tipo de troca ficam FORA do
-            # formulário para que o campo Ø apareça imediatamente ao selecionar
-            # "Troca de Diâmetro".
+            # RETÍFICA / HASTE:
+            # - Troca de Diâmetro e Troca de Rebolo são marcações independentes.
+            # - Se ambas estiverem ligadas, o setup é HASTE COMPLETA.
+            # - Não existe campo para digitar o valor do diâmetro.
             info_atual = obter_info_maquina(maq_id, setor)
             st_atual = str(info_atual['Status']) if info_atual else ""
 
             tipo_setup_rtf = None
-            acao_haste = "Sem troca específica"
-            diametro_haste = ""
+            troca_diametro_haste = False
+            troca_rebolo_haste = False
             troca_rebolo_guia = False
 
             if setor != "AFC":
@@ -3668,24 +3630,29 @@ def painel_controle_maquina(maq_id, setor):
                 )
 
                 if tipo_setup_rtf == "HASTE":
-                    acao_haste = st.radio(
-                        "Tipo de preparação da HASTE:",
-                        ["Sem troca específica", "Troca de Rebolo", "Troca de Diâmetro"],
-                        horizontal=True,
-                        key=f"rtf_acao_haste_{maq_id}"
+                    c_diam, c_reb = st.columns(2)
+                    troca_diametro_haste = c_diam.toggle(
+                        "Ø Troca de Diâmetro",
+                        key=f"rtf_troca_diametro_{maq_id}",
+                        help="Ative quando o setup da haste envolver troca de diâmetro."
+                    )
+                    troca_rebolo_haste = c_reb.toggle(
+                        "🛞 Troca de Rebolo",
+                        key=f"rtf_troca_rebolo_haste_{maq_id}",
+                        help="Ative quando o setup da haste envolver troca de rebolo."
                     )
 
-                    if acao_haste == "Troca de Diâmetro":
-                        diametro_haste = st.text_input(
-                            "Ø Diâmetro:",
-                            placeholder="Ex.: 4.5",
-                            key=f"rtf_diametro_haste_{maq_id}",
-                            help="Use ponto para casas decimais. Ex.: 4.5. Para inteiro, use apenas 4."
-                        )
-                        st.caption("Use **ponto (.)** para decimal: `4.5`. Se for inteiro, pode usar `4`. Não use vírgula.")
+                    if troca_diametro_haste and troca_rebolo_haste:
+                        st.success("✅ Média: HASTE · COMPLETA")
+                    elif troca_diametro_haste:
+                        st.info("Ø Média: HASTE · DIÂMETRO")
+                    elif troca_rebolo_haste:
+                        st.info("🛞 Média: HASTE · REBOLO")
+                    else:
+                        st.caption("Ative Diâmetro e/ou Rebolo conforme o setup.")
                 else:
                     troca_rebolo_guia = st.toggle(
-                        "Troca de Rebolo",
+                        "🛞 Troca de Rebolo",
                         key=f"rtf_rebolo_guia_{maq_id}"
                     )
 
@@ -3737,10 +3704,9 @@ def painel_controle_maquina(maq_id, setor):
                     troca_rebolo = st.toggle("Troca de Rebolo")
                 else:
                     tipo_setup = tipo_setup_rtf or "HASTE"
-
                     if tipo_setup == "HASTE":
-                        troca_rebolo = (acao_haste == "Troca de Rebolo")
-                        troca_diametro = (acao_haste == "Troca de Diâmetro")
+                        troca_diametro = bool(troca_diametro_haste)
+                        troca_rebolo = bool(troca_rebolo_haste)
                     else:
                         troca_rebolo = bool(troca_rebolo_guia)
 
@@ -3795,16 +3761,8 @@ def painel_controle_maquina(maq_id, setor):
                 )
 
                 if st.form_submit_button("💾 Salvar Registro", type="primary"):
-                    diametro_normalizado = ""
-                    erro_diametro = ""
-
-                    if setor != "AFC" and tipo_setup == "HASTE" and troca_diametro:
-                        diametro_normalizado, erro_diametro = _normalizar_diametro_haste(diametro_haste)
-
                     if not hora_relatorio.strip():
                         st.error("⚠️ O campo de horário é obrigatório!")
-                    elif erro_diametro:
-                        st.error(erro_diametro)
                     elif prep_sugerido.strip() and not is_guia and prog_status_prep == "-- Vá até a máquina e verifique --":
                         st.error("⚠️ Como você sugeriu um preparador, é OBRIGATÓRIO verificar na máquina se o Programa está OK!")
                     else:
@@ -3814,14 +3772,20 @@ def painel_controle_maquina(maq_id, setor):
                                 detalhe_setup += " (C/ Rebolo)"
                         else:
                             detalhe_setup = f"PREPARAÇÃO - {tipo_setup}"
+                            detalhe_setup += f" [Processo: {tipo_setup}]"
 
                             if tipo_setup == "HASTE":
+                                if troca_diametro:
+                                    detalhe_setup += " (C/ Diâmetro) [Troca Diametro: SIM]"
+                                else:
+                                    detalhe_setup += " [Troca Diametro: NÃO]"
+
                                 if troca_rebolo:
-                                    detalhe_setup += " (C/ Rebolo)"
-                                elif troca_diametro:
-                                    detalhe_setup += " (Troca de Diâmetro)"
+                                    detalhe_setup += " (C/ Rebolo) [Troca Rebolo: SIM]"
+                                else:
+                                    detalhe_setup += " [Troca Rebolo: NÃO]"
                             elif troca_rebolo:
-                                detalhe_setup += " (C/ Rebolo)"
+                                detalhe_setup += " (C/ Rebolo) [Troca Rebolo: SIM]"
 
                         if prep_sugerido.strip():
                             detalhe_setup += f" [Prep. Sugerido: {prep_sugerido.strip().upper()}]"
@@ -3832,11 +3796,6 @@ def painel_controle_maquina(maq_id, setor):
                             st_final = f"{detalhe_setup} [AGENDADO:{hora_relatorio.strip()}]"
                         else:
                             st_final = f"AGUARDANDO PREPARADOR - {detalhe_setup}"
-
-                        # Guarda o diâmetro como dado estruturado para permanecer
-                        # visível também quando o setup passar para PREPARANDO.
-                        if diametro_normalizado:
-                            st_final += f" [Diametro: Ø{diametro_normalizado}]"
 
                         ordem_limpa = ordem_atual.strip().upper().replace(".0", "").lstrip("0")
                         item_limpa = item_atual.strip().upper().replace(".0", "").lstrip("0")
@@ -4602,19 +4561,33 @@ def _normalizar_setup_home(txt):
 
 
 def _categoria_setup_home(setor, status):
-    """Classificação pedida para o desempenho mensal."""
+    """Classifica os setups para as médias mensais."""
     up = _normalizar_setup_home(status)
     setor = str(setor or '').upper()
+
     if setor == 'RTF':
         if 'GUIA' in up:
             return 'rtf_guia'
+
         if 'HASTE' in up:
+            tem_diametro = ('C/ DIAMETRO' in up or '[TROCA DIAMETRO: SIM]' in up)
+            tem_rebolo = ('C/ REBOLO' in up or '[TROCA REBOLO: SIM]' in up)
+
+            if tem_diametro and tem_rebolo:
+                return 'rtf_haste_completa'
+            if tem_diametro:
+                return 'rtf_haste_diametro'
+            if tem_rebolo:
+                return 'rtf_haste_rebolo'
+
             return 'rtf_haste'
+
     elif setor == 'AFC':
         if 'SEQUENCIA' in up:
             return 'afc_sequencia'
         if 'PREPARACAO' in up:
             return 'afc_preparacao'
+
     return None
 
 
@@ -4674,7 +4647,7 @@ def _metricas_setups_mes_home(agora=None):
                 partes.append(dfc)
     except Exception:
         pass
-    chaves = ['rtf_guia','rtf_haste','afc_preparacao','afc_sequencia']
+    chaves = ['rtf_guia','rtf_haste','rtf_haste_diametro','rtf_haste_rebolo','rtf_haste_completa','afc_preparacao','afc_sequencia']
     saida = {k:{'qtd':0, 'media':0, 'duracoes':[]} for k in chaves}
     if not partes:
         return saida
@@ -5078,7 +5051,7 @@ def _tela_menu_dashboard_9999():
         1:'Janeiro',2:'Fevereiro',3:'Março',4:'Abril',5:'Maio',6:'Junho',
         7:'Julho',8:'Agosto',9:'Setembro',10:'Outubro',11:'Novembro',12:'Dezembro'
     }
-    qtd_rtf, media_rtf = _media_setor_setup_home(metricas_mes, ['rtf_guia','rtf_haste'])
+    qtd_rtf, media_rtf = _media_setor_setup_home(metricas_mes, ['rtf_guia','rtf_haste','rtf_haste_diametro','rtf_haste_rebolo','rtf_haste_completa'])
     qtd_afc, media_afc = _media_setor_setup_home(metricas_mes, ['afc_preparacao','afc_sequencia'])
     media_rtf_txt = _tempo_curto_home(media_rtf) if qtd_rtf else '—'
     media_afc_txt = _tempo_curto_home(media_afc) if qtd_afc else '—'
@@ -5104,7 +5077,9 @@ def _tela_menu_dashboard_9999():
         '</div>'
         '<div class="setup-month-grid setup-month-grid-2x2">'
         + _render_setup_metric_card('Retífica · Guia', metricas_mes['rtf_guia'], 'G', '#60A5FA')
-        + _render_setup_metric_card('Retífica · Haste', metricas_mes['rtf_haste'], 'H', '#A78BFA')
+        + _render_setup_metric_card('Haste · Diâmetro', metricas_mes['rtf_haste_diametro'], 'Ø', '#38BDF8')
+        + _render_setup_metric_card('Haste · Rebolo', metricas_mes['rtf_haste_rebolo'], 'R', '#A78BFA')
+        + _render_setup_metric_card('Haste · Completa', metricas_mes['rtf_haste_completa'], 'C', '#F97316')
         + _render_setup_metric_card('Afiação · Preparação', metricas_mes['afc_preparacao'], 'P', '#2DD4BF')
         + _render_setup_metric_card('Afiação · Sequência', metricas_mes['afc_sequencia'], 'S', '#F59E0B')
         + '</div></div>'
@@ -6058,14 +6033,11 @@ def tela_checkup():
 
                         tem_rebolo = "SIM" if "(C/ REBOLO)" in st_m.upper() else "NÃO"
 
-                        diametro_troca = ""
-                        m_diametro = re.search(
-                            r"\[Diametro:\s*Ø?\s*([0-9]+(?:\.[0-9]+)?)\]",
-                            st_m,
-                            flags=re.IGNORECASE
-                        )
-                        if m_diametro:
-                            diametro_troca = m_diametro.group(1).strip()
+                        tem_diametro = "SIM" if (
+                            "(C/ DIÂMETRO)" in st_m.upper()
+                            or "C/ DIAMETRO" in _normalizar_setup_home(st_m)
+                            or "[TROCA DIAMETRO: SIM]" in _normalizar_setup_home(st_m)
+                        ) else "NÃO"
 
                         h_alvo = "Imediato / Na Fila"
                         if "AGENDADA PARA" in st_m.upper():
@@ -6171,8 +6143,8 @@ def tela_checkup():
                             html_rebolo = f"<div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>🛞 Reb 1:</strong> <span style='font-size: 13px;'>{reb1}</span></div><div style='margin: 0;'><strong style='font-size: 13px;'>🛞 Reb 2:</strong> <span style='font-size: 13px;'>{reb2}</span></div>"
 
                         html_diametro = ""
-                        if diametro_troca:
-                            html_diametro = f"<div style='margin: 0 0 8px 0;'><strong style='font-size: 14px;'>Ø Troca Diâmetro:</strong> <span style='font-size: 14px; font-weight: 800;'>Ø{diametro_troca}</span></div>"
+                        if setor_m == "RTF" and ("HASTE" in st_m.upper() or processo_rtf == "HASTE"):
+                            html_diametro = f"<div style='margin: 0 0 8px 0;'><strong style='font-size: 14px;'>Ø Troca Diâmetro:</strong> <span style='font-size: 14px; font-weight: 800;'>{tem_diametro}</span></div>"
 
                         html = f"<div class='postit-card' style='background-color: {bg_color}; padding: 15px; border-radius: 6px; box-shadow: 2px 4px 8px rgba(0,0,0,0.3); margin-bottom: 20px; min-height: 250px;'><div style='margin: 0 0 10px 0; border-bottom: 2px solid {bd_color}; padding-bottom: 5px;'><strong style='font-size: 16px;'>{cabecalho_maq}</strong></div><div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>{titulo_tempo}</strong> <span style='font-size: 14px;'>{valor_tempo}</span></div><div style='margin: 0 0 4px 0;'><strong style='font-size: 14px;'>📋 Setup:</strong> <span style='font-size: 14px;'>{tipo_setup}</span></div><div style='margin: 0 0 8px 0;'><strong style='font-size: 14px;'>💻 Programa:</strong> <span style='font-size: 14px;'>{prog_status}</span></div><div style='margin: 0 0 8px 0;'><strong style='font-size: 14px;'>🔄 Troca Rebolo:</strong> <span style='font-size: 14px;'>{tem_rebolo}</span></div>{html_diametro}<div style='background: rgba(255,255,255,0.6); padding: 8px; border-radius: 6px; margin-bottom: 8px;'><div style='margin: 0 0 2px 0;'><strong style='font-size: 13px;'>Ordem:</strong> <span style='font-size: 13px;'>{final_op}</span></div><div style='margin: 0;'><strong style='font-size: 13px;'>{label_item_txt}:</strong> <span style='font-size: 13px;'>{final_item}</span></div></div>{html_rebolo}</div>"
                         
@@ -6864,6 +6836,7 @@ CSS_ARMARIOS_V104 = r"""
 </style>
 """
 st.markdown(CSS_ARMARIOS_V104, unsafe_allow_html=True)
+st.markdown('\n<style>\n@media (max-width: 768px) {\n    div[data-testid="stTabs"] button[role="tab"] {\n        min-height: 42px;\n    }\n}\n</style>\n', unsafe_allow_html=True)
 
 def tela_armarios():
     exibir_alertas_preset()
@@ -7164,63 +7137,445 @@ def tela_armarios():
 
     with aba2:
         if st.session_state['perfil'] in ['preset', 'adm']:
-            st.markdown("📥 **Guardar Ferramental / Setup**")
-            
-            c1, c2 = st.columns(2)
-            armario_sel = c1.selectbox("Selecione o Armário:", ["Afiadoras 04 a 28", "Afiadoras 29 a 41", "Retíficas 05 a 28", "Retíficas 29 a 42"], key="aba2_arm_sel")
-            
-            pos_vazias = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Status'] == 'VAZIO')]
-            pos_vazias_lista = pos_vazias['Posicao'].tolist()
-            
-            if not pos_vazias_lista:
-                st.warning(f"O {armario_sel} está cheio!")
-                pos_sel = None
-            else:
-                pos_vazias_sorted = sorted([int(x) for x in pos_vazias_lista])
-                pos_sel = c2.selectbox("Máquina Alvo:", [str(x) for x in pos_vazias_sorted], key="aba2_pos_sel")
+            st.markdown("📥 **Alimentação sequencial dos armários**")
+            st.caption(
+                "Selecione as máquinas que serão percorridas. Ao salvar ou pular, "
+                "o sistema avança somente para a próxima máquina da sequência."
+            )
 
-            with st.form("form_alimentar_lista", clear_on_submit=True):
-                motivos_rapidos = [
-                    "-- Selecione um Motivo Rápido (Opcional) --",
-                    "Aguardando Jagura",
-                    "Aguardando Almoxarifado",
-                    "Aguardando PCP",
-                    "Em Preparação",
-                    "Em Sequência"
+            tab_maquinas, tab_armario = st.tabs([
+                "⚙️ Selecionar Máquinas",
+                "🗄️ Alimentar Armário"
+            ])
+
+            # ---------------------------------------------------------
+            # ABA 1 - MONTAR A SEQUÊNCIA DE MÁQUINAS
+            # ---------------------------------------------------------
+            with tab_maquinas:
+                armarios_opcoes = [
+                    "Afiadoras 04 a 28",
+                    "Afiadoras 29 a 41",
+                    "Retíficas 05 a 28",
+                    "Retíficas 29 a 42"
                 ]
-                motivo_select = st.selectbox("Motivo / Caminho Rápido:", motivos_rapidos, key="aba2_motivo")
 
-                c_op, c_it = st.columns(2)
-                ordem_in = c_op.text_input("Ordem de Produção (OP):", placeholder="Ex: 987654", key="aba2_op")
-                item_in = c_it.text_input("Item / Peça:", placeholder="Ex: 313324", key="aba2_item")
-                rebolo_in = st.text_input("Rebolo(s) Alocado (Opcional):", placeholder="Ex: REB 123", key="aba2_reb")
-                obs_in = st.text_input("Observação Adicional:", placeholder="Detalhes...", key="aba2_obs")
+                armario_config = st.selectbox(
+                    "Armário que será alimentado:",
+                    armarios_opcoes,
+                    key="alimentar_armario_config"
+                )
 
-                if st.form_submit_button("📥 GUARDAR NO ARMÁRIO", type="primary"):
-                    obs_final = motivo_select if motivo_select != motivos_rapidos[0] else ""
-                    if obs_in.strip():
-                        obs_final = f"{obs_final} - {obs_in.strip()}" if obs_final else obs_in.strip()
+                df_arm_cfg = df_arm[df_arm["Armario"] == armario_config].copy()
+                df_arm_cfg["Posicao_Int"] = pd.to_numeric(
+                    df_arm_cfg["Posicao"], errors="coerce"
+                )
+                df_arm_cfg = df_arm_cfg.sort_values("Posicao_Int")
 
-                    if not ordem_in.strip() and not obs_final.strip(): 
-                        st.error("⚠️ A Ordem (OP) ou um Motivo Rápido são obrigatórios!")
-                    elif pos_sel is None: 
-                        st.error("⚠️ Não há posições disponíveis selecionadas!")
+                todas_maquinas_cfg = [
+                    str(int(x))
+                    for x in df_arm_cfg["Posicao_Int"].dropna().tolist()
+                ]
+
+                vazias_cfg = df_arm_cfg[
+                    df_arm_cfg["Status"].astype(str).str.strip().str.upper() == "VAZIO"
+                ]
+                maquinas_vazias_cfg = [
+                    str(int(x))
+                    for x in vazias_cfg["Posicao_Int"].dropna().tolist()
+                ]
+
+                c_info1, c_info2 = st.columns(2)
+                c_info1.metric("Máquinas / posições", len(todas_maquinas_cfg))
+                c_info2.metric("Vazias agora", len(maquinas_vazias_cfg))
+
+                st.caption(
+                    "Por padrão ficam selecionadas as posições vazias. "
+                    "Você pode retirar da sequência qualquer máquina que não queira percorrer."
+                )
+
+                # Evita carregar seleção de outro armário.
+                chave_arm_anterior = st.session_state.get("alimentar_armario_multiselect_ref")
+                if chave_arm_anterior != armario_config:
+                    st.session_state["alimentar_armario_multiselect_ref"] = armario_config
+                    st.session_state["alimentar_maquinas_sel"] = maquinas_vazias_cfg.copy()
+
+                maquinas_escolhidas = st.multiselect(
+                    "Máquinas que quero percorrer:",
+                    options=todas_maquinas_cfg,
+                    default=st.session_state.get(
+                        "alimentar_maquinas_sel",
+                        maquinas_vazias_cfg
+                    ),
+                    key="alimentar_maquinas_sel"
+                )
+
+                maquinas_escolhidas = sorted(
+                    {
+                        str(int(str(m).replace(".0", "").strip()))
+                        for m in maquinas_escolhidas
+                    },
+                    key=lambda x: int(x)
+                )
+
+                if maquinas_escolhidas:
+                    st.markdown(
+                        "**Sequência:** " + " → ".join(maquinas_escolhidas)
+                    )
+                else:
+                    st.warning("Selecione pelo menos uma máquina.")
+
+                if st.button(
+                    "▶️ Iniciar / Atualizar sequência",
+                    type="primary",
+                    use_container_width=True,
+                    key="alimentar_iniciar_sequencia"
+                ):
+                    if not maquinas_escolhidas:
+                        st.error("⚠️ Selecione pelo menos uma máquina.")
                     else:
-                        ordem_limpa = ordem_in.strip().upper().replace(".0", "").lstrip("0")
-                        item_limpa = item_in.strip().upper().replace(".0", "").lstrip("0")
-                        
-                        novo_status = "AGUARDANDO MÁQUINA" if ordem_limpa else "VAZIO"
-                        
-                        idx = df_arm[(df_arm['Armario'] == armario_sel) & (df_arm['Posicao'] == str(pos_sel))].index
-                        if not idx.empty:
-                            df_arm.loc[idx, ['Ordem', 'Item', 'Status', 'Data_Hora', 'Observacao', 'Rebolo']] = [
-                                ordem_limpa, item_limpa, novo_status, datetime.now(FUSO_BR).strftime("%H:%M"), obs_final, rebolo_in.strip()
-                            ]
-                            df_arm.to_csv(ARQUIVO_ARMARIOS, index=False)
-                            st.success(f"✅ Ferramental guardado para a MAQ {pos_sel} do {armario_sel}!")
-                            st.rerun()
-        else: 
-            st.info("ℹ️ Apenas o perfil do Pré-Set e Administração pode inserir ou remover itens nos armários.")
+                        st.session_state["alimentar_fila_armario"] = armario_config
+                        st.session_state["alimentar_fila_maquinas"] = maquinas_escolhidas
+                        st.session_state["alimentar_fila_indice"] = 0
+                        st.session_state["alimentar_fila_finalizada"] = False
+                        st.success(
+                            f"✅ Sequência preparada com {len(maquinas_escolhidas)} máquina(s). "
+                            "Abra a aba “Alimentar Armário”."
+                        )
+
+            # ---------------------------------------------------------
+            # ABA 2 - BIPAGEM / ALIMENTAÇÃO UMA MÁQUINA POR VEZ
+            # ---------------------------------------------------------
+            with tab_armario:
+                fila_armario = st.session_state.get("alimentar_fila_armario")
+                fila_maquinas = st.session_state.get("alimentar_fila_maquinas", [])
+                fila_indice = int(st.session_state.get("alimentar_fila_indice", 0) or 0)
+                fila_finalizada = bool(
+                    st.session_state.get("alimentar_fila_finalizada", False)
+                )
+
+                if not fila_armario or not fila_maquinas:
+                    st.info(
+                        "👈 Primeiro abra **Selecionar Máquinas**, escolha o armário "
+                        "e monte a sequência."
+                    )
+                elif fila_finalizada or fila_indice >= len(fila_maquinas):
+                    st.success("✅ Sequência concluída. Todas as máquinas selecionadas foram percorridas.")
+
+                    c_nova, c_reiniciar = st.columns(2)
+
+                    if c_nova.button(
+                        "⚙️ Fazer nova seleção",
+                        use_container_width=True,
+                        key="alimentar_nova_selecao"
+                    ):
+                        st.session_state["alimentar_fila_maquinas"] = []
+                        st.session_state["alimentar_fila_indice"] = 0
+                        st.session_state["alimentar_fila_finalizada"] = False
+                        st.rerun()
+
+                    if c_reiniciar.button(
+                        "🔄 Reiniciar mesma sequência",
+                        use_container_width=True,
+                        key="alimentar_reiniciar_fila"
+                    ):
+                        st.session_state["alimentar_fila_indice"] = 0
+                        st.session_state["alimentar_fila_finalizada"] = False
+                        st.rerun()
+
+                else:
+                    maquina_atual = str(fila_maquinas[fila_indice])
+                    total_fila = len(fila_maquinas)
+                    numero_atual = fila_indice + 1
+
+                    # Consulta o estado REAL da posição corrente.
+                    linha_atual = df_arm[
+                        (df_arm["Armario"] == fila_armario)
+                        & (
+                            df_arm["Posicao"]
+                            .astype(str)
+                            .str.replace(".0", "", regex=False)
+                            .str.strip()
+                            == maquina_atual
+                        )
+                    ]
+
+                    status_atual_arm = "VAZIO"
+                    op_atual_arm = ""
+                    item_atual_arm = ""
+                    rebolo_atual_arm = ""
+
+                    if not linha_atual.empty:
+                        row_atual = linha_atual.iloc[0]
+                        status_atual_arm = str(
+                            row_atual.get("Status", "VAZIO") or "VAZIO"
+                        ).strip()
+                        op_atual_arm = str(
+                            row_atual.get("Ordem", "") or ""
+                        ).replace(".0", "").replace("nan", "").strip()
+                        item_atual_arm = str(
+                            row_atual.get("Item", "") or ""
+                        ).replace(".0", "").replace("nan", "").strip()
+                        rebolo_atual_arm = str(
+                            row_atual.get("Rebolo", "") or ""
+                        ).replace("nan", "").strip()
+
+                    pct_fila = int((numero_atual / max(1, total_fila)) * 100)
+
+                    st.markdown(
+                        f"""
+                        <div style="
+                            padding:14px 16px;
+                            border-radius:15px;
+                            background:rgba(139,92,246,.075);
+                            border:1px solid rgba(139,92,246,.20);
+                            margin:4px 0 12px 0;
+                        ">
+                            <div style="
+                                display:flex;
+                                align-items:center;
+                                justify-content:space-between;
+                                gap:10px;
+                            ">
+                                <div>
+                                    <div style="
+                                        font-size:11px;
+                                        font-weight:900;
+                                        color:#A78BFA;
+                                        letter-spacing:.5px;
+                                    ">
+                                        {html.escape(fila_armario)}
+                                    </div>
+                                    <div style="
+                                        font-size:25px;
+                                        font-weight:950;
+                                        color:#F4F4F5;
+                                        margin-top:2px;
+                                    ">
+                                        Máquina {html.escape(maquina_atual)}
+                                    </div>
+                                </div>
+                                <div style="
+                                    font-size:12px;
+                                    font-weight:900;
+                                    color:#D4D4D8;
+                                ">
+                                    {numero_atual} / {total_fila}
+                                </div>
+                            </div>
+
+                            <div style="
+                                height:5px;
+                                background:rgba(255,255,255,.07);
+                                border-radius:999px;
+                                overflow:hidden;
+                                margin-top:10px;
+                            ">
+                                <div style="
+                                    width:{pct_fila}%;
+                                    height:100%;
+                                    background:#8B5CF6;
+                                "></div>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True
+                    )
+
+                    if status_atual_arm.upper() == "VAZIO":
+                        st.info("📭 Esta posição está vazia.")
+                    else:
+                        st.warning(
+                            f"⚠️ Esta posição já possui dados. "
+                            f"OP: {op_atual_arm or '—'} · Item: {item_atual_arm or '—'}"
+                        )
+
+                    # Botão PULAR fora do form: não grava absolutamente nada.
+                    c_pular, c_restante = st.columns([1.0, 2.2])
+
+                    if c_pular.button(
+                        "⏭️ Pular",
+                        use_container_width=True,
+                        key=f"alimentar_pular_{fila_armario}_{maquina_atual}_{fila_indice}",
+                        help="Não altera esta posição e avança para a próxima máquina selecionada."
+                    ):
+                        novo_indice = fila_indice + 1
+                        st.session_state["alimentar_fila_indice"] = novo_indice
+                        if novo_indice >= total_fila:
+                            st.session_state["alimentar_fila_finalizada"] = True
+                        st.rerun()
+
+                    c_restante.caption(
+                        "Use **Pular** quando não houver OP/setup para guardar nesta máquina. "
+                        "Nada será alterado no banco."
+                    )
+
+                    with st.form(
+                        f"form_alimentar_sequencial_{fila_armario}_{maquina_atual}",
+                        clear_on_submit=True
+                    ):
+                        motivos_rapidos = [
+                            "-- Selecione um Motivo Rápido (Opcional) --",
+                            "Aguardando Jagura",
+                            "Aguardando Almoxarifado",
+                            "Aguardando PCP",
+                            "Em Preparação",
+                            "Em Sequência"
+                        ]
+
+                        motivo_select = st.selectbox(
+                            "Motivo / Caminho Rápido:",
+                            motivos_rapidos,
+                            key=f"alimentar_seq_motivo_{maquina_atual}"
+                        )
+
+                        c_op, c_it = st.columns(2)
+
+                        ordem_in = c_op.text_input(
+                            "Ordem de Produção (OP):",
+                            placeholder="Ex: 987654",
+                            key=f"alimentar_seq_op_{maquina_atual}"
+                        )
+
+                        item_in = c_it.text_input(
+                            "Item / Peça:",
+                            placeholder="Ex: 313324",
+                            key=f"alimentar_seq_item_{maquina_atual}"
+                        )
+
+                        rebolo_in = st.text_input(
+                            "Rebolo(s) Alocado (Opcional):",
+                            placeholder="Ex: REB 123",
+                            key=f"alimentar_seq_reb_{maquina_atual}"
+                        )
+
+                        obs_in = st.text_input(
+                            "Observação Adicional:",
+                            placeholder="Detalhes...",
+                            key=f"alimentar_seq_obs_{maquina_atual}"
+                        )
+
+                        salvar_seq = st.form_submit_button(
+                            "📥 SALVAR E IR PARA PRÓXIMA",
+                            type="primary",
+                            use_container_width=True
+                        )
+
+                        if salvar_seq:
+                            obs_final = (
+                                motivo_select
+                                if motivo_select != motivos_rapidos[0]
+                                else ""
+                            )
+
+                            if obs_in.strip():
+                                obs_final = (
+                                    f"{obs_final} - {obs_in.strip()}"
+                                    if obs_final
+                                    else obs_in.strip()
+                                )
+
+                            if not ordem_in.strip() and not obs_final.strip():
+                                st.error(
+                                    "⚠️ Informe a OP ou selecione um motivo. "
+                                    "Se não houver nada para esta máquina, use **Pular**."
+                                )
+                            else:
+                                ordem_limpa = (
+                                    ordem_in.strip()
+                                    .upper()
+                                    .replace(".0", "")
+                                    .lstrip("0")
+                                )
+                                item_limpa = (
+                                    item_in.strip()
+                                    .upper()
+                                    .replace(".0", "")
+                                    .lstrip("0")
+                                )
+
+                                novo_status = (
+                                    "AGUARDANDO MÁQUINA"
+                                    if ordem_limpa
+                                    else "VAZIO"
+                                )
+
+                                idx = df_arm[
+                                    (df_arm["Armario"] == fila_armario)
+                                    & (
+                                        df_arm["Posicao"]
+                                        .astype(str)
+                                        .str.replace(".0", "", regex=False)
+                                        .str.strip()
+                                        == maquina_atual
+                                    )
+                                ].index
+
+                                if idx.empty:
+                                    st.error(
+                                        "⚠️ Não encontrei esta posição no armário. "
+                                        "Nada foi gravado."
+                                    )
+                                else:
+                                    df_arm.loc[
+                                        idx,
+                                        [
+                                            "Ordem",
+                                            "Item",
+                                            "Status",
+                                            "Data_Hora",
+                                            "Observacao",
+                                            "Rebolo"
+                                        ]
+                                    ] = [
+                                        ordem_limpa,
+                                        item_limpa,
+                                        novo_status,
+                                        datetime.now(FUSO_BR).strftime("%H:%M"),
+                                        obs_final,
+                                        rebolo_in.strip()
+                                    ]
+
+                                    # A camada de proteção já cria o backup
+                                    # completo ANTES desta gravação.
+                                    df_arm.to_csv(
+                                        ARQUIVO_ARMARIOS,
+                                        index=False
+                                    )
+
+                                    novo_indice = fila_indice + 1
+                                    st.session_state[
+                                        "alimentar_fila_indice"
+                                    ] = novo_indice
+
+                                    if novo_indice >= total_fila:
+                                        st.session_state[
+                                            "alimentar_fila_finalizada"
+                                        ] = True
+
+                                    st.success(
+                                        f"✅ Máquina {maquina_atual} salva. "
+                                        "Avançando para a próxima."
+                                    )
+                                    st.rerun()
+
+                    # Lista compacta do que vem pela frente.
+                    restantes = fila_maquinas[fila_indice + 1:]
+                    if restantes:
+                        st.caption(
+                            "Próximas: " + " → ".join(
+                                str(x) for x in restantes[:10]
+                            )
+                            + (
+                                f" → +{len(restantes)-10}"
+                                if len(restantes) > 10
+                                else ""
+                            )
+                        )
+        else:
+            st.info(
+                "ℹ️ Apenas o perfil do Pré-Set e Administração "
+                "pode inserir ou remover itens nos armários."
+            )
 
     with aba3:
         st.markdown("#### 🔔 Histórico de Setups Retirados para a Produção")
