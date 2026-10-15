@@ -2851,7 +2851,210 @@ def calcular_tempos_interrupcoes(df_all, palavra_chave):
             texto += f"{num_maq} - Desde {h_in} (Em andamento: {dur}) - Motivo: {motivo}\n"
     return texto if texto else "N/A\n\n"
 
-def gerar_textos_fechamento(data_alvo, df_completo):
+_EQUIPE_TURNOS = ["1° TURNO", "2° TURNO", "3° TURNO"]
+
+
+def _equipe_garantir_persistencia():
+    if not tabela_existe(ARQUIVO_EQUIPE):
+        return
+
+    df = carregar_tabela(
+        ARQUIVO_EQUIPE,
+        colunas_padrao=["Tipo", "Nome"],
+        dtype=str,
+    ).copy()
+
+    if df.empty:
+        return
+
+    alterou = False
+
+    if "Tipo" not in df.columns:
+        df["Tipo"] = ""
+        alterou = True
+    if "Nome" not in df.columns:
+        df["Nome"] = ""
+        alterou = True
+
+    turno_migracao = get_turno_logico()[1]
+
+    if "Turno" not in df.columns:
+        df["Turno"] = turno_migracao
+        alterou = True
+    else:
+        vazio = df["Turno"].fillna("").astype(str).str.strip().eq("")
+        if vazio.any():
+            df.loc[vazio, "Turno"] = turno_migracao
+            alterou = True
+
+    if "Data_Cadastro" not in df.columns:
+        df["Data_Cadastro"] = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M")
+        alterou = True
+
+    if "Operador_Cadastro" not in df.columns:
+        df["Operador_Cadastro"] = "MIGRADO"
+        alterou = True
+
+    for col in [
+        "Tipo", "Nome", "Turno",
+        "Data_Cadastro", "Operador_Cadastro"
+    ]:
+        df[col] = df[col].fillna("").astype(str).str.strip()
+
+    df["Nome"] = df["Nome"].str.upper()
+
+    if alterou:
+        salvar_tabela(
+            df[
+                [
+                    "Tipo",
+                    "Nome",
+                    "Turno",
+                    "Data_Cadastro",
+                    "Operador_Cadastro",
+                ]
+            ],
+            ARQUIVO_EQUIPE,
+            modo="replace",
+        )
+
+
+def _equipe_carregar_com_id():
+    _equipe_garantir_persistencia()
+
+    colunas = [
+        "_id", "Tipo", "Nome", "Turno",
+        "Data_Cadastro", "Operador_Cadastro"
+    ]
+
+    if not tabela_existe(ARQUIVO_EQUIPE):
+        return pd.DataFrame(columns=colunas)
+
+    try:
+        tab = _quote_identifier(ARQUIVO_EQUIPE)
+        result = turso_request(
+            f"""SELECT
+                    rowid AS "_id",
+                    "Tipo",
+                    "Nome",
+                    "Turno",
+                    "Data_Cadastro",
+                    "Operador_Cadastro"
+                FROM {tab}
+                ORDER BY "Turno", "Nome", rowid""",
+            want_rows=True,
+        )
+
+        cols = [c.get("name") for c in result.get("cols", [])]
+        rows = [
+            [_turso_decode(v) for v in row]
+            for row in result.get("rows", [])
+        ]
+        df = pd.DataFrame(rows, columns=cols)
+
+        if df.empty:
+            return pd.DataFrame(columns=colunas)
+
+        for col in colunas:
+            if col not in df.columns:
+                df[col] = ""
+
+        return df[colunas]
+    except Exception:
+        return pd.DataFrame(columns=colunas)
+
+
+def _equipe_remover_id(rowid):
+    if not tabela_existe(ARQUIVO_EQUIPE):
+        return
+
+    tab = _quote_identifier(ARQUIVO_EQUIPE)
+    turso_request(
+        f'DELETE FROM {tab} WHERE rowid=?',
+        [int(rowid)],
+        want_rows=False,
+    )
+    _invalidar_cache_turso(ARQUIVO_EQUIPE)
+
+
+def _equipe_salvar_persistente(tipo, nome, turno):
+    tipo = str(tipo or "").strip()
+    nome = str(nome or "").strip().upper()
+    turno = str(turno or "").strip()
+
+    if not nome:
+        raise RuntimeError("Informe o nome do colaborador.")
+    if turno not in _EQUIPE_TURNOS:
+        raise RuntimeError("Selecione um turno válido.")
+
+    agora = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M")
+    operador = str(
+        st.session_state.get("operador", "SISTEMA") or "SISTEMA"
+    ).strip()
+
+    if not tabela_existe(ARQUIVO_EQUIPE):
+        salvar_csv(
+            {
+                "Tipo": tipo,
+                "Nome": nome,
+                "Turno": turno,
+                "Data_Cadastro": agora,
+                "Operador_Cadastro": operador,
+            },
+            ARQUIVO_EQUIPE,
+        )
+        return "incluido"
+
+    _equipe_garantir_persistencia()
+    df = _equipe_carregar_com_id()
+
+    existente = df[
+        df["Nome"].astype(str).str.upper().eq(nome)
+        & df["Turno"].astype(str).eq(turno)
+    ]
+
+    if not existente.empty:
+        rowid = int(existente.iloc[-1]["_id"])
+        tab = _quote_identifier(ARQUIVO_EQUIPE)
+        turso_request(
+            f"""UPDATE {tab}
+                SET
+                    "Tipo"=?,
+                    "Data_Cadastro"=?,
+                    "Operador_Cadastro"=?
+                WHERE rowid=?""",
+            [tipo, agora, operador, rowid],
+            want_rows=False,
+        )
+        _invalidar_cache_turso(ARQUIVO_EQUIPE)
+        return "atualizado"
+
+    salvar_csv(
+        {
+            "Tipo": tipo,
+            "Nome": nome,
+            "Turno": turno,
+            "Data_Cadastro": agora,
+            "Operador_Cadastro": operador,
+        },
+        ARQUIVO_EQUIPE,
+    )
+    return "incluido"
+
+
+def _equipe_do_turno(turno):
+    df = _equipe_carregar_com_id()
+    if df.empty:
+        return df
+
+    turno = str(turno or "").strip()
+    return df[
+        df["Turno"].astype(str).eq(turno)
+    ].copy()
+
+
+
+def gerar_textos_fechamento(data_alvo, df_completo, turno_alvo=None):
     setup_mask = df_completo['Status'].str.match(r'^(?i)(PREPARAÇÃO|PREPARACAO|SEQUÊNCIA|SEQUENCIA|AGUARDANDO|PREPARANDO)') if not df_completo.empty else pd.Series(dtype=bool)
     maquinas_com_setup = df_completo[setup_mask]['Maquina'].unique() if not df_completo.empty else []
 
@@ -2884,13 +3087,23 @@ def gerar_textos_fechamento(data_alvo, df_completo):
     texto_padrao += str_afc if str_afc else "N/A\n\n"
     
     texto_padrao += "*EQUIPE / AUSÊNCIAS*\n\n"
-    if os.path.exists(ARQUIVO_EQUIPE):
-        df_eq = pd.read_csv(ARQUIVO_EQUIPE)
-        if df_eq.empty: texto_padrao += "N/A\n\n"
+    try:
+        df_eq = (
+            _equipe_do_turno(turno_alvo)
+            if turno_alvo
+            else _equipe_carregar_com_id()
+        )
+
+        if df_eq.empty:
+            texto_padrao += "N/A\n\n"
         else:
-            for _, row in df_eq.iterrows(): texto_padrao += f"{row['Nome']} - {row['Tipo'].upper()}\n"
+            for _, row in df_eq.iterrows():
+                texto_padrao += (
+                    f"{row['Nome']} - {str(row['Tipo']).upper()}\n"
+                )
             texto_padrao += "\n"
-    else: texto_padrao += "N/A\n\n"
+    except Exception:
+        texto_padrao += "N/A\n\n"
 
     texto_tempos = f"*RELATÓRIO DE DESEMPENHO E TEMPOS - {data_alvo}*\n\n"
     texto_tempos += "*RETIFICAS*\n\n"
@@ -2904,7 +3117,7 @@ def gerar_textos_fechamento(data_alvo, df_completo):
 
 def executar_fechamento_silencioso(data_alvo, turno_alvo):
     df_completo = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
-    texto_padrao, texto_tempos = gerar_textos_fechamento(data_alvo, df_completo)
+    texto_padrao, texto_tempos = gerar_textos_fechamento(data_alvo, df_completo, turno_alvo)
     
     novo_hist = pd.DataFrame([{"Data": data_alvo, "Turno": turno_alvo, "Relatorio_Padrao": texto_padrao, "Relatorio_Tempos": texto_tempos}])
     # Histórico é append-only: não baixa e regrava tudo a cada fechamento.
@@ -2940,9 +3153,14 @@ def executar_fechamento_silencioso(data_alvo, turno_alvo):
                 df_recorte = last_row
         df_novo.append(df_recorte)
     
-    if df_novo: pd.concat(df_novo).to_csv(ARQUIVO_DADOS, index=False)
-    else: pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"]).to_csv(ARQUIVO_DADOS, index=False)
-    if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
+    if df_novo:
+        pd.concat(df_novo).to_csv(ARQUIVO_DADOS, index=False)
+    else:
+        pd.DataFrame(
+            columns=["Setor", "Maquina", "Operador", "Status", "Hora"]
+        ).to_csv(ARQUIVO_DADOS, index=False)
+
+    # Equipe/Ausências permanece cadastrada até remoção manual.
 
 def checar_e_auto_encerrar():
     curr_d, curr_t = get_turno_logico()
@@ -8165,20 +8383,169 @@ def tela_rtf():
 
 def tela_equipe():
     botao_navegar("⬅️ Voltar ao Menu", 'menu')
-    st.markdown("#### 👥 Gestão de Equipe")
-    with st.container():
-        with st.form("form_equipe", clear_on_submit=True):
-            tipo = st.radio("Selecione o Motivo:", ["Ausência / Falta", "Treinamento", "Férias", "Atestado"], horizontal=True)
-            nome = st.text_input("Nome do Colaborador:")
-            if st.form_submit_button("💾 REGISTRAR COLABORADOR", type="primary"):
-                if nome:
-                    salvar_csv({"Tipo": tipo, "Nome": nome.upper()}, ARQUIVO_EQUIPE)
-                    st.success(f"✅ {nome.upper()} registrado como {tipo}!")
+    st.markdown("#### 👥 Gestão de Equipe / Ausências")
+
+    st.markdown(
+        "<div style='padding:10px 12px;border-radius:12px;"
+        "background:rgba(139,92,246,.07);"
+        "border:1px solid rgba(139,92,246,.18);"
+        "margin-bottom:14px;color:#D4D4D8;font-size:12px;'>"
+        "<b style='color:#C4B5FD;'>Cadastro persistente:</b> "
+        "o colaborador continua no turno todos os dias até alguém "
+        "removê-lo manualmente."
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    turno_sessao = str(st.session_state.get("turno", "") or "")
+    turno_default = (
+        _EQUIPE_TURNOS.index(turno_sessao)
+        if turno_sessao in _EQUIPE_TURNOS
+        else 0
+    )
+
+    with st.form("form_equipe_persistente", clear_on_submit=True):
+        c_turno, c_nome = st.columns([1.05, 1.8])
+
+        turno = c_turno.selectbox(
+            "Turno:",
+            _EQUIPE_TURNOS,
+            index=turno_default,
+        )
+
+        nome = c_nome.text_input(
+            "Nome do Colaborador:",
+            placeholder="Digite o nome..."
+        )
+
+        tipo = st.radio(
+            "Selecione o Motivo:",
+            [
+                "Ausência / Falta",
+                "Treinamento",
+                "Férias",
+                "Atestado",
+            ],
+            horizontal=True,
+        )
+
+        if st.form_submit_button(
+            "💾 REGISTRAR / ATUALIZAR",
+            type="primary",
+            use_container_width=True,
+        ):
+            if not nome.strip():
+                st.error("⚠️ Informe o nome do colaborador.")
+            else:
+                try:
+                    acao = _equipe_salvar_persistente(
+                        tipo,
+                        nome,
+                        turno,
+                    )
+                    verbo = (
+                        "atualizado"
+                        if acao == "atualizado"
+                        else "registrado"
+                    )
+                    st.success(
+                        f"✅ {nome.strip().upper()} {verbo} no {turno}."
+                    )
                     st.rerun()
+                except Exception as exc:
+                    st.error(f"Não foi possível salvar: {exc}")
+
     st.divider()
-    if os.path.exists(ARQUIVO_EQUIPE):
-        df_eq = pd.read_csv(ARQUIVO_EQUIPE)
-        if not df_eq.empty: st.dataframe(df_eq, use_container_width=True, hide_index=True)
+    st.markdown("### 📌 Nomes ativos por turno")
+    st.caption(
+        "Para corrigir um lançamento feito por engano, selecione o nome "
+        "e clique em **Remover do turno**."
+    )
+
+    try:
+        df_eq = _equipe_carregar_com_id()
+    except Exception as exc:
+        st.error(f"Não foi possível carregar a equipe: {exc}")
+        return
+
+    tabs = st.tabs([
+        "1º Turno",
+        "2º Turno",
+        "3º Turno",
+    ])
+
+    for aba, turno_nome in zip(tabs, _EQUIPE_TURNOS):
+        with aba:
+            df_turno = df_eq[
+                df_eq["Turno"].astype(str).eq(turno_nome)
+            ].copy()
+
+            if df_turno.empty:
+                st.info(
+                    f"Nenhum colaborador cadastrado no {turno_nome}."
+                )
+                continue
+
+            exibir = df_turno[
+                [
+                    "Nome",
+                    "Tipo",
+                    "Data_Cadastro",
+                    "Operador_Cadastro",
+                ]
+            ].rename(
+                columns={
+                    "Nome": "Colaborador",
+                    "Tipo": "Situação",
+                    "Data_Cadastro": "Cadastrado em",
+                    "Operador_Cadastro": "Registrado por",
+                }
+            )
+
+            st.dataframe(
+                exibir,
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            mapa = {}
+            for _, row in df_turno.iterrows():
+                rid = int(row["_id"])
+                label = f"{row['Nome']} — {row['Tipo']}"
+                if label in mapa.values():
+                    label += f" · #{rid}"
+                mapa[rid] = label
+
+            c_sel, c_del = st.columns([2.5, 1])
+
+            escolhido = c_sel.selectbox(
+                "Selecione para remover:",
+                options=list(mapa.keys()),
+                format_func=lambda rid, _mapa=mapa: _mapa[rid],
+                key=f"equipe_remover_sel_{turno_nome}",
+            )
+
+            confirmar = c_del.checkbox(
+                "Confirmar",
+                key=f"equipe_remover_conf_{turno_nome}",
+            )
+
+            if c_del.button(
+                "🗑️ Remover do turno",
+                key=f"equipe_remover_btn_{turno_nome}",
+                use_container_width=True,
+                disabled=not confirmar,
+            ):
+                try:
+                    nome_removido = mapa.get(escolhido, "Registro")
+                    _equipe_remover_id(escolhido)
+                    st.success(
+                        f"✅ {nome_removido} removido do {turno_nome}."
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Não foi possível remover: {exc}")
+
 
 def _normalizar_hora_edicao(valor):
     """Normaliza valores vindos do data_editor para HH:MM."""
@@ -8275,9 +8642,12 @@ def tela_editar():
     if perfil == 'adm':
         col_salvar, col_apagar = st.columns([2, 1])
         if col_apagar.button("🗑️ ZERAR DADOS DO TURNO", use_container_width=True):
-            if os.path.exists(ARQUIVO_DADOS): os.remove(ARQUIVO_DADOS)
-            if os.path.exists(ARQUIVO_EQUIPE): os.remove(ARQUIVO_EQUIPE)
-            st.success("✅ Banco de dados apagado com sucesso!")
+            if os.path.exists(ARQUIVO_DADOS):
+                os.remove(ARQUIVO_DADOS)
+            st.success(
+                "✅ Apontamentos do turno apagados. "
+                "A lista de equipe/ausências foi mantida."
+            )
             st.rerun()
     else: col_salvar = st.container()
         
@@ -8365,7 +8735,7 @@ def tela_relatorio():
     if gerar or encerrar:
         curr_d, curr_t = get_turno_logico()
         df_completo = pd.read_csv(ARQUIVO_DADOS) if os.path.exists(ARQUIVO_DADOS) else pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
-        texto_padrao, texto_tempos = gerar_textos_fechamento(curr_d, df_completo)
+        texto_padrao, texto_tempos = gerar_textos_fechamento(curr_d, df_completo, curr_t)
 
         st.markdown("##### 📄 Relatório 1 (Padrão e Limpo)")
         st.code(texto_padrao, language="text")
