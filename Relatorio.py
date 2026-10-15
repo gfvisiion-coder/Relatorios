@@ -2661,7 +2661,7 @@ def processar_padrao(df_all, maquinas, prefixo_setor):
 
             is_setup_wait = st_upper.startswith("PREPARAÇÃO") or st_upper.startswith("PREPARACAO") or st_upper.startswith("SEQUÊNCIA") or st_upper.startswith("SEQUENCIA") or st_upper.startswith("AGUARDANDO")
             is_preparando = st_upper.startswith("PREPARANDO")
-            is_conclusao = st_upper.startswith("PRODUZINDO") or st_upper.startswith("PARADA") or st_upper.startswith("MANUTENÇÃO")
+            is_conclusao = st_upper.startswith("PRODUZINDO") or st_upper.startswith("AJUSTE") or st_upper.startswith("PARADA") or st_upper.startswith("MANUTENÇÃO")
 
             if is_setup_wait:
                 if not ciclo_ativo:
@@ -2695,6 +2695,7 @@ def processar_padrao(df_all, maquinas, prefixo_setor):
                     if "[Obs:" in st_val:
                         try: str_prep += f" (Obs: {st_val.split('[Obs:')[1].split(']')[0].strip()})"
                         except: pass
+                elif st_upper.startswith("AJUSTE"): status_final = "SETUP INTERROMPIDO (AJUSTE)"
                 elif st_upper.startswith("MANUTENÇÃO"): status_final = "SETUP INTERROMPIDO (MANUTENÇÃO)"
                 else: status_final = "SETUP INTERROMPIDO (PARADA)"
                 
@@ -2716,7 +2717,7 @@ def gerar_relatorio_tempos(df_all, maquinas, prefixo):
         st_final_up = str(st_final).strip().upper()
         
         is_finished = st_final_up.startswith("PRODUZINDO")
-        is_interrompido = st_final_up.startswith("PARADA") or st_final_up.startswith("MANUTENÇÃO")
+        is_interrompido = st_final_up.startswith("AJUSTE") or st_final_up.startswith("PARADA") or st_final_up.startswith("MANUTENÇÃO")
         
         if h_inicio is None and h_fim is not None:
             h_inicio = h_fim 
@@ -2775,7 +2776,7 @@ def gerar_relatorio_tempos(df_all, maquinas, prefixo):
             
             is_setup_wait = st_upper.startswith("PREPARAÇÃO") or st_upper.startswith("PREPARACAO") or st_upper.startswith("SEQUÊNCIA") or st_upper.startswith("SEQUENCIA") or st_upper.startswith("AGUARDANDO")
             is_preparando = st_upper.startswith("PREPARANDO")
-            is_conclusao = st_upper.startswith("PRODUZINDO") or st_upper.startswith("PARADA") or st_upper.startswith("MANUTENÇÃO")
+            is_conclusao = st_upper.startswith("PRODUZINDO") or st_upper.startswith("AJUSTE") or st_upper.startswith("PARADA") or st_upper.startswith("MANUTENÇÃO")
             
             if is_setup_wait:
                 if not ciclo_ativo:
@@ -3410,6 +3411,7 @@ def buscar_item_por_ordem(ordem_alvo):
 def get_status_icon(status_str):
     if "AGUARDANDO PREPARADOR" in status_str: return "🟠"
     elif "AGENDADO" in status_str or "AGENDADA" in status_str: return "🔵"
+    elif str(status_str).strip().upper().startswith("AJUSTE"): return "🎯"
     elif "SEQUÊNCIA" in status_str: return "🟣"
     elif "PREPARAÇÃO" in status_str or "PREPARANDO" in status_str: return "🟡"
     elif "MANUTENÇÃO" in status_str: return "🛠️"
@@ -3624,13 +3626,18 @@ def painel_controle_maquina(maq_id, setor):
             or status_atual_up.startswith("SEQUÊNCIA")
             or status_atual_up.startswith("SEQUENCIA")
             or status_atual_up.startswith("PREPARANDO")
+            or status_atual_up.startswith("AJUSTE")
         ) and info:
             try:
                 dt_reg = datetime.strptime(f"{datetime.now(FUSO_BR).strftime('%Y-%m-%d')} {hora_atual}", "%Y-%m-%d %H:%M")
                 tempo_decorrido = datetime.now(FUSO_BR) - dt_reg.replace(tzinfo=FUSO_BR)
                 minutos = int(tempo_decorrido.total_seconds() // 60)
-                if "MANUTENÇÃO" in status_atual: timer_str = f" (Em manutenção há {minutos} min)"
-                else: timer_str = f" (Em preparação há {minutos} min)"
+                if "MANUTENÇÃO" in status_atual:
+                    timer_str = f" (Em manutenção há {minutos} min)"
+                elif status_atual_up.startswith("AJUSTE"):
+                    timer_str = f" (Em ajuste há {minutos} min)"
+                else:
+                    timer_str = f" (Em preparação há {minutos} min)"
             except: pass
 
         st.markdown("<div style='margin-top: 8px;'></div>", unsafe_allow_html=True)
@@ -3641,7 +3648,17 @@ def painel_controle_maquina(maq_id, setor):
             status_exibicao = re.sub(r' \[Prep:.*?\]', '', status_exibicao)
             status_exibicao = re.sub(r' \[Prog:.*?\]', '', status_exibicao)
             
-        if "TROCA DE REBOLO ADIANTADA" in status_atual.upper():
+        if status_atual.strip().upper().startswith("AJUSTE"):
+            st.markdown(
+                f"<div style='padding:12px 14px;border-radius:10px;"
+                f"background:#500724;border:1px solid #EC4899;"
+                f"color:#FCE7F3;font-weight:800;'>"
+                f"🎯 AJUSTE EM ANDAMENTO · {html.escape(status_exibicao)} "
+                f"desde {html.escape(str(hora_atual))}{html.escape(str(timer_str))}"
+                f"</div>",
+                unsafe_allow_html=True
+            )
+        elif "TROCA DE REBOLO ADIANTADA" in status_atual.upper():
             st.markdown(
                 f"<div style='padding:12px 14px;border-radius:10px;"
                 f"background:#2E1065;border:1px solid #8B5CF6;"
@@ -3958,6 +3975,7 @@ def painel_controle_maquina(maq_id, setor):
                     st.rerun()
                     
             st.button("🟡 PREPARAÇÃO / SEQUÊNCIA", key=f"st_prep_{maq_id}", use_container_width=True, on_click=definir_estado, args=(flow_key, "detalhe_prep"))
+            st.button("🎯 AJUSTE", key=f"st_ajuste_{maq_id}", use_container_width=True, on_click=definir_estado, args=(flow_key, "detalhe_ajuste"))
             st.button("🛠️ MANUTENÇÃO", key=f"st_man_{maq_id}", use_container_width=True, on_click=definir_estado, args=(flow_key, "detalhe_man"))
             st.button("🔴 PARADA", key=f"st_par_{maq_id}", use_container_width=True, on_click=definir_estado, args=(flow_key, "detalhe_parada"))
 
@@ -4003,10 +4021,69 @@ def painel_controle_maquina(maq_id, setor):
                         st.success("✅ Apontamento registrado! Máquina em Produção.")
                         st.rerun()
 
+        elif st.session_state[flow_key] == "detalhe_ajuste":
+            with st.form(f"form_ajuste_{maq_id}"):
+                st.markdown("🎯 **Registro de Ajuste de Máquina**")
+                st.caption(
+                    "Use este status quando a máquina estiver sendo regulada/ajustada, "
+                    "sem classificar como preparação, parada ou manutenção."
+                )
+
+                tipo_ajuste = st.selectbox(
+                    "Tipo de Ajuste:",
+                    [
+                        "Ajuste de Medida",
+                        "Ajuste de Processo",
+                        "Ajuste de Ferramenta / Rebolo",
+                        "Ajuste de Programa",
+                        "Regulagem Geral",
+                        "Outro",
+                    ],
+                    key=f"tipo_ajuste_{maq_id}"
+                )
+                detalhe_ajuste = st.text_input(
+                    "Detalhes (Opcional):",
+                    placeholder="Ex: corrigindo medida, regulando pressão, alinhamento..."
+                )
+
+                if st.form_submit_button("🎯 INICIAR AJUSTE", type="primary"):
+                    if tipo_ajuste == "Outro" and not detalhe_ajuste.strip():
+                        st.error("⚠️ Informe o detalhe do ajuste.")
+                    else:
+                        hora_br_str = datetime.now(FUSO_BR).strftime("%H:%M")
+                        info_atual = obter_info_maquina(maq_id, setor)
+                        st_atual = str(info_atual['Status']) if info_atual else ""
+
+                        tags_prod = extrair_tags_producao(st_atual)
+
+                        descricao = tipo_ajuste
+                        if detalhe_ajuste.strip():
+                            descricao += f" - {detalhe_ajuste.strip()}"
+
+                        st_final = (
+                            f"AJUSTE - Motivo: {descricao} {tags_prod}"
+                        ).strip()
+
+                        salvar_csv(
+                            {
+                                "Setor": setor,
+                                "Maquina": f"{setor} {maq_id}",
+                                "Operador": st.session_state['operador'],
+                                "Status": st_final,
+                                "Hora": hora_br_str,
+                            },
+                            ARQUIVO_DADOS
+                        )
+
+                        st.session_state['maq_ativa'] = None
+                        del st.session_state[flow_key]
+                        st.success("🎯 Máquina registrada em AJUSTE!")
+                        st.rerun()
+
         elif st.session_state[flow_key] == "detalhe_parada":
             with st.form(f"form_par_{maq_id}"):
                 st.markdown("🔴 **Registro de Máquina Parada**")
-                motivo = st.selectbox("Motivo da Parada:", ["Falta de Operador", "Falta de Material", "Ajuste de Processo", "Manutenção Corretiva", "Outros"])
+                motivo = st.selectbox("Motivo da Parada:", ["Falta de Operador", "Falta de Material", "Manutenção Corretiva", "Outros"])
                 op_faltante = st.text_input("Nome do Operador Faltante (Se aplicável):", placeholder="Ex: João Silva")
                 detalhe = st.text_input("Outros Detalhes (Opcional):")
                 
@@ -4806,7 +4883,9 @@ def _eh_aguardando_setup_home(status):
 
 
 def _classificar_status_home(status):
-    up = str(status).upper()
+    up = str(status).strip().upper()
+    if up.startswith('AJUSTE'):
+        return 'ajuste'
     if 'MANUTENÇÃO' in up or 'MANUTENCAO' in up:
         return 'manutencao'
     if up.startswith('PARADA') or ' PARADA' in up:
@@ -4822,17 +4901,21 @@ def _resumo_setor_home(status_dict, setor, maquinas):
     """Resumo operacional da Home.
 
     Preparação aguardando é programação futura: a máquina continua em produção.
-    Ela só sai do KPI de produção em PREPARANDO, PARADA ou MANUTENÇÃO.
+    Ela sai do KPI de produção em PREPARANDO, AJUSTE, PARADA ou MANUTENÇÃO.
     """
     r = {
         'producao':0, 'preparacao':0, 'prep_ativa':0, 'prep_aguardando':0,
-        'parada':0, 'manutencao':0, 'outros':0, 'total':len(maquinas)
+        'ajuste':0, 'parada':0, 'manutencao':0, 'outros':0,
+        'total':len(maquinas)
     }
     for m in maquinas:
         st_val = status_dict.get(f'{setor} {m}', 'PRODUZINDO')
         up = str(st_val).upper()
         prep = _classificar_preparacao_home(st_val)
 
+        if up.startswith('AJUSTE'):
+            r['ajuste'] += 1
+            continue
         if 'MANUTENÇÃO' in up or 'MANUTENCAO' in up:
             r['manutencao'] += 1
             continue
@@ -4888,6 +4971,7 @@ def _render_setor_bar(nome, resumo):
 <span>Produção <b>{prod}</b></span>
 <span>Prep. ativa <b>{resumo['prep_ativa']}</b></span>
 <span>Aguard. <b>{resumo['prep_aguardando']}</b></span>
+<span style="color:#F472B6">Ajuste <b>{resumo['ajuste']}</b></span>
 <span>Parada <b>{resumo['parada']}</b></span>
 <span>Manut. <b>{resumo['manutencao']}</b></span>
 </div>'''
@@ -5315,7 +5399,11 @@ def _metricas_setups_mes_home(agora=None):
                 categoria_ativa = None
                 categoria_pendente = None
                 continue
-            if up.startswith('PARADA') or up.startswith('MANUTENCAO'):
+            if (
+                up.startswith('AJUSTE')
+                or up.startswith('PARADA')
+                or up.startswith('MANUTENCAO')
+            ):
                 inicio_ativo = None
                 categoria_ativa = None
                 categoria_pendente = None
@@ -5329,80 +5417,35 @@ def _metricas_setups_mes_home(agora=None):
 
 
 def _metricas_centerless_mes_9999(agora=None):
-    """Resumo mensal das medições Centerless para o painel gerencial 9999."""
     agora = agora or datetime.now(FUSO_BR)
     mes_ref = agora.strftime("%m/%Y")
-
     saida = {
-        "17": {
-            "qtd": 0,
-            "ciclo_medio": 0.0,
-            "melhor_ciclo": 0.0,
-            "pecas_hora": 0.0,
-            "tempo_medio_medicao_s": 0.0,
-        },
-        "6": {
-            "qtd": 0,
-            "ciclo_medio": 0.0,
-            "melhor_ciclo": 0.0,
-            "pecas_hora": 0.0,
-            "tempo_medio_medicao_s": 0.0,
-        },
+        "17": {"qtd":0,"ciclo_medio":0.0,"melhor_ciclo":0.0,"pecas_hora":0.0,"tempo_medio_medicao_s":0.0},
+        "6": {"qtd":0,"ciclo_medio":0.0,"melhor_ciclo":0.0,"pecas_hora":0.0,"tempo_medio_medicao_s":0.0},
         "materiais": pd.DataFrame(),
     }
-
     try:
-        if not tabela_existe(ARQUIVO_CENTERLESS):
-            return saida
-
+        if not tabela_existe(ARQUIVO_CENTERLESS): return saida
         tab = _quote_identifier(ARQUIVO_CENTERLESS)
         result = turso_request(
-            f"""SELECT
-                    "Data",
-                    "Maquina",
-                    "Material",
-                    "Tempo_Total_s",
-                    "Quantidade",
-                    "Tempo_Ciclo_s",
-                    "Pecas_Hora"
-                FROM {tab}
-                WHERE substr("Data", 4, 7)=?""",
-            [mes_ref],
-            want_rows=True,
+            f"""SELECT "Data","Maquina","Material","Tempo_Total_s","Quantidade","Tempo_Ciclo_s","Pecas_Hora"
+                FROM {tab} WHERE substr("Data", 4, 7)=?""",
+            [mes_ref], want_rows=True,
         )
         df = _resultado_turso_df(result)
-
-        if df.empty:
-            return saida
-
-        for col in [
-            "Tempo_Total_s",
-            "Quantidade",
-            "Tempo_Ciclo_s",
-            "Pecas_Hora",
-        ]:
-            if col not in df.columns:
-                df[col] = 0
+        if df.empty: return saida
+        for col in ["Tempo_Total_s","Quantidade","Tempo_Ciclo_s","Pecas_Hora"]:
+            if col not in df.columns: df[col] = 0
             df[col] = pd.to_numeric(df[col], errors="coerce")
-
-        for col in ["Maquina", "Material"]:
-            if col not in df.columns:
-                df[col] = ""
+        for col in ["Maquina","Material"]:
+            if col not in df.columns: df[col] = ""
             df[col] = df[col].fillna("").astype(str).str.strip()
-
-        # Cards por máquina
-        for maq in ("17", "6"):
-            d = df[
-                df["Maquina"].str.upper().eq(f"CENTERLESS {maq}")
-            ].copy()
-
+        for maq in ("17","6"):
+            d = df[df["Maquina"].str.upper().eq(f"CENTERLESS {maq}")].copy()
             ciclos = d["Tempo_Ciclo_s"].dropna()
             ritmos = d["Pecas_Hora"].dropna()
             tempos = d["Tempo_Total_s"].dropna()
-
-            if ciclos.empty:
-                continue
-
+            if ciclos.empty: continue
             saida[maq] = {
                 "qtd": int(len(ciclos)),
                 "ciclo_medio": float(ciclos.mean()),
@@ -5410,76 +5453,42 @@ def _metricas_centerless_mes_9999(agora=None):
                 "pecas_hora": float(ritmos.mean()) if not ritmos.empty else 0.0,
                 "tempo_medio_medicao_s": float(tempos.mean()) if not tempos.empty else 0.0,
             }
-
-        # Resumo por máquina + material
-        validos = df[
-            df["Material"].ne("")
-            & df["Tempo_Ciclo_s"].notna()
-        ].copy()
-
+        validos = df[df["Material"].ne("") & df["Tempo_Ciclo_s"].notna()].copy()
         if not validos.empty:
-            resumo = (
-                validos
-                .groupby(["Maquina", "Material"], dropna=False)
-                .agg(
-                    Medicoes=("Tempo_Ciclo_s", "count"),
-                    Ciclo_Medio_s=("Tempo_Ciclo_s", "mean"),
-                    Melhor_Ciclo_s=("Tempo_Ciclo_s", "min"),
-                    Pecas_Hora_Media=("Pecas_Hora", "mean"),
-                    Qtd_Media=("Quantidade", "mean"),
-                )
-                .reset_index()
-            )
-
+            resumo = validos.groupby(["Maquina","Material"], dropna=False).agg(
+                Medicoes=("Tempo_Ciclo_s","count"),
+                Ciclo_Medio_s=("Tempo_Ciclo_s","mean"),
+                Melhor_Ciclo_s=("Tempo_Ciclo_s","min"),
+                Pecas_Hora_Media=("Pecas_Hora","mean"),
+                Qtd_Media=("Quantidade","mean"),
+            ).reset_index()
             resumo["Ciclo_Medio_s"] = resumo["Ciclo_Medio_s"].round(2)
             resumo["Melhor_Ciclo_s"] = resumo["Melhor_Ciclo_s"].round(2)
             resumo["Pecas_Hora_Media"] = resumo["Pecas_Hora_Media"].round(1)
             resumo["Qtd_Media"] = resumo["Qtd_Media"].round(1)
-
-            resumo = resumo.rename(
-                columns={
-                    "Maquina": "Máquina",
-                    "Material": "Material",
-                    "Medicoes": "Medições",
-                    "Ciclo_Medio_s": "Ciclo médio (s/pç)",
-                    "Melhor_Ciclo_s": "Melhor ciclo (s/pç)",
-                    "Pecas_Hora_Media": "Média (pç/h)",
-                    "Qtd_Media": "Qtd. média medida",
-                }
-            ).sort_values(
-                ["Máquina", "Medições", "Material"],
-                ascending=[True, False, True],
-            )
-
+            resumo = resumo.rename(columns={
+                "Maquina":"Máquina","Material":"Material","Medicoes":"Medições",
+                "Ciclo_Medio_s":"Ciclo médio (s/pç)","Melhor_Ciclo_s":"Melhor ciclo (s/pç)",
+                "Pecas_Hora_Media":"Média (pç/h)","Qtd_Media":"Qtd. média medida",
+            }).sort_values(["Máquina","Medições","Material"], ascending=[True,False,True])
             saida["materiais"] = resumo
-
     except Exception:
-        # O painel gerencial não pode quebrar por falta de dados Centerless.
         return saida
-
     return saida
-
 
 def _render_centerless_metric_card(titulo, dados, icone, cor):
     qtd = int(dados.get("qtd", 0) or 0)
     ciclo = float(dados.get("ciclo_medio", 0) or 0)
     melhor = float(dados.get("melhor_ciclo", 0) or 0)
     ph = float(dados.get("pecas_hora", 0) or 0)
-
     ciclo_txt = f"{ciclo:.2f}" if qtd else "—"
-    rodape = (
-        f"{qtd} med. · {ph:.1f} pç/h"
-        if qtd
-        else "sem medições no mês"
-    )
+    rodape = f"{qtd} med. · {ph:.1f} pç/h" if qtd else "sem medições no mês"
     melhor_txt = f"{melhor:.2f} s/pç" if qtd else "—"
-
     return f"""<div class="setup-metric-card" style="--setup-color:{cor}">
 <div class="setup-metric-head"><span>{html.escape(titulo)}</span><b>{icone}</b></div>
 <div class="setup-metric-main"><strong>{ciclo_txt}</strong><span>s / peça</span></div>
 <div class="setup-metric-average"><span>{html.escape(rodape)}</span><b>{melhor_txt}</b></div>
 </div>"""
-
 
 
 def _render_setup_metric_card(titulo, dados, icone, cor):
@@ -6472,7 +6481,7 @@ def _tela_menu_dashboard_9999():
     estado_meta = _estado_atual_home()
     resumo_afc = _resumo_setor_home(status_dict, 'AFC', TODAS_AFC)
     resumo_rtf = _resumo_setor_home(status_dict, 'RTF', TODAS_RTF)
-    chaves_total = ['producao','preparacao','prep_ativa','prep_aguardando','parada','manutencao','outros']
+    chaves_total = ['producao','preparacao','prep_ativa','prep_aguardando','ajuste','parada','manutencao','outros']
     totais = {chave: resumo_afc[chave] + resumo_rtf[chave] for chave in chaves_total}
     total_maquinas = len(TODAS_AFC) + len(TODAS_RTF)
 
@@ -6709,18 +6718,8 @@ def _tela_menu_dashboard_9999():
         f'<div class="setup-month-badge">{meses_pt.get(agora.month, agora.strftime("%m"))} / {agora.year}</div>'
         '</div>'
         '<div class="setup-month-grid setup-month-grid-2x2">'
-        + _render_centerless_metric_card(
-            'Centerless 17',
-            metricas_centerless['17'],
-            '17',
-            '#A78BFA'
-        )
-        + _render_centerless_metric_card(
-            'Centerless 6',
-            metricas_centerless['6'],
-            '6',
-            '#2DD4BF'
-        )
+        + _render_centerless_metric_card('Centerless 17',metricas_centerless['17'],'17','#A78BFA')
+        + _render_centerless_metric_card('Centerless 6',metricas_centerless['6'],'6','#2DD4BF')
         + '</div></div>'
     )
 
@@ -6775,27 +6774,12 @@ def _tela_menu_dashboard_9999():
 
         with aba_media_centerless:
             st.markdown(html_centerless_medias, unsafe_allow_html=True)
-
-            df_centerless_material = metricas_centerless.get(
-                "materiais",
-                pd.DataFrame()
-            )
-
+            df_centerless_material = metricas_centerless.get("materiais", pd.DataFrame())
             if df_centerless_material is None or df_centerless_material.empty:
-                st.info(
-                    "Ainda não existem medições Centerless finalizadas "
-                    "neste mês."
-                )
+                st.info("Ainda não existem medições Centerless finalizadas neste mês.")
             else:
-                st.caption(
-                    "Médias por material calculadas somente com as medições "
-                    "finalizadas pelo login 5555 no mês atual."
-                )
-                st.dataframe(
-                    df_centerless_material,
-                    use_container_width=True,
-                    hide_index=True,
-                )
+                st.caption("Médias por material calculadas somente com as medições finalizadas pelo login 5555 no mês atual.")
+                st.dataframe(df_centerless_material, use_container_width=True, hide_index=True)
 
     with col_dir:
         st.markdown(html_preparacoes, unsafe_allow_html=True)
@@ -6935,7 +6919,7 @@ def _tela_menu_dashboard_preset():
     resumo_rtf = _resumo_setor_home(status_dict, 'RTF', TODAS_RTF)
     totais = {
         chave: resumo_afc[chave] + resumo_rtf[chave]
-        for chave in ['producao','preparacao','prep_ativa','prep_aguardando','parada','manutencao','outros']
+        for chave in ['producao','preparacao','prep_ativa','prep_aguardando','ajuste','parada','manutencao','outros']
     }
 
     agora = datetime.now(FUSO_BR)
@@ -7435,6 +7419,8 @@ def _mapa_processo_rodando_rtf(status_dict):
 
 def _estado_gerencial_maquina(status):
     up = _normalizar_setup_home(status)
+    if up.startswith('AJUSTE'):
+        return 'AJUSTE', '#EC4899'
     if 'TROCA DE REBOLO ADIANTADA' in up:
         return 'REBOLO ADIANTADO', '#8B5CF6'
     if up.startswith('MANUTENCAO'):
@@ -7517,11 +7503,13 @@ def tela_visao_geral():
         ]
 
         def resumo_status(lista, setor):
-            prod = prep = espera = problema = 0
+            prod = prep = espera = ajuste = problema = 0
             for m in lista:
                 s = status_dict.get(f'{setor} {m}', 'PRODUZINDO')
                 up = _normalizar_setup_home(s)
-                if up.startswith('PREPARANDO'):
+                if up.startswith('AJUSTE'):
+                    ajuste += 1
+                elif up.startswith('PREPARANDO'):
                     prep += 1
                 elif up.startswith('PARADA') or up.startswith('MANUTENCAO'):
                     problema += 1
@@ -7530,15 +7518,15 @@ def tela_visao_geral():
                     prod += 1
                 else:
                     prod += 1
-            return prod, prep, espera, problema
+            return prod, prep, espera, ajuste, problema
 
         summary_html = []
         for nome, lista, setor, cor in grupos:
-            prod, prep, espera, problema = resumo_status(lista, setor)
+            prod, prep, espera, ajuste, problema = resumo_status(lista, setor)
             summary_html.append(f'''<div class="mgr-summary-card" style="border-top:2px solid {cor}">
                 <div class="mgr-summary-label">{html.escape(nome)}</div>
                 <div class="mgr-summary-num">{len(lista)}</div>
-                <div class="mgr-summary-meta">{prod} rodando · {prep} setup ativo · {espera} aguardando · {problema} parada/manut.</div>
+                <div class="mgr-summary-meta">{prod} rodando · {prep} setup ativo · {espera} aguardando · {ajuste} ajuste · {problema} parada/manut.</div>
             </div>''')
 
         conteudo = f'''
@@ -7587,6 +7575,25 @@ def tela_visao_geral():
             st.markdown(bloco, unsafe_allow_html=True)
         st.markdown("<div style='margin-top:15px;'></div>", unsafe_allow_html=True)
 
+# Cor dedicada para máquinas em AJUSTE nas listas de Afiação / Retífica.
+st.markdown(
+    """
+    <style>
+    div[class*="st-key-ajuste_machine_"] div[data-testid="stButton"] > button {
+        background: #083344 !important;
+        border: 1px solid #06B6D4 !important;
+        color: #CFFAFE !important;
+        box-shadow: 0 0 0 1px rgba(6,182,212,.08), 0 8px 22px rgba(6,182,212,.08) !important;
+    }
+    div[class*="st-key-ajuste_machine_"] div[data-testid="stButton"] > button:hover {
+        background: #164E63 !important;
+        border-color: #22D3EE !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 def render_grid_vertical(lista_maquinas, setor, status_dict):
     for maq in ordenar_maquinas(lista_maquinas):
         if maq != "":
@@ -7594,7 +7601,25 @@ def render_grid_vertical(lista_maquinas, setor, status_dict):
             status_atual = status_dict.get(chave_busca, "PRODUZINDO")
             icone = get_status_icon(status_atual)
             label_botao = f"{icone} Máquina {maq} — {status_atual}"
-            st.button(label_botao, key=f"btn_vert_{setor}_{maq}", use_container_width=True, on_click=definir_estados, args=({'maq_ativa': maq, 'setor_ativo': setor},))
+
+            if str(status_atual).strip().upper().startswith("AJUSTE"):
+                maq_key = re.sub(r'[^0-9A-Za-z_]+', '_', str(maq))
+                with st.container(key=f"ajuste_machine_{setor}_{maq_key}"):
+                    st.button(
+                        label_botao,
+                        key=f"btn_vert_{setor}_{maq}",
+                        use_container_width=True,
+                        on_click=definir_estados,
+                        args=({'maq_ativa': maq, 'setor_ativo': setor},)
+                    )
+            else:
+                st.button(
+                    label_botao,
+                    key=f"btn_vert_{setor}_{maq}",
+                    use_container_width=True,
+                    on_click=definir_estados,
+                    args=({'maq_ativa': maq, 'setor_ativo': setor},)
+                )
 
 def tela_checkup():
     botao_navegar("⬅️ Voltar ao Menu", 'menu')
@@ -7692,6 +7717,7 @@ def tela_checkup():
                         is_seq = "SEQUÊNCIA" in st_m.upper() or "SEQUENCIA" in st_m.upper()
                         is_prep = "PREPARAÇÃO" in st_m.upper() or "PREPARACAO" in st_m.upper() or "PREPARANDO" in st_m.upper()
                         is_preparando = "PREPARANDO" in st_m.upper()
+                        is_ajuste = st_m.strip().upper().startswith("AJUSTE")
 
                         processo_rtf = None
                         if setor_m == "RTF":
@@ -7701,7 +7727,9 @@ def tela_checkup():
                         is_guia = (processo_rtf == "GUIA") or ("GUIA" in st_m.upper())
 
                         tipo_setup = "Outro (Parada/Manut.)"
-                        if is_seq:
+                        if is_ajuste:
+                            tipo_setup = "Ajuste"
+                        elif is_seq:
                             tipo_setup = "Sequência"
                         elif is_prep:
                             if setor_m == "RTF" and processo_rtf in ["HASTE", "GUIA", "FACETADO"]:
@@ -7791,7 +7819,28 @@ def tela_checkup():
                         valor_tempo = h_alvo
                         cabecalho_maq = f"⚙️ {setor_m} {maq_m}"
 
-                        if "MANUTENÇÃO" in st_m.upper():
+                        if is_ajuste:
+                            bg_color, bd_color = "#FCE7F3", "#EC4899"
+                            cabecalho_maq = f"🎯 {setor_m} {maq_m} (AJUSTE)"
+                            titulo_tempo = "⏳ Tempo em Ajuste:"
+                            valor_tempo = "0 min"
+                            info_maq = obter_info_maquina(maq_m, setor_m)
+                            if info_maq:
+                                h_inicio = info_maq.get('Hora', '--:--')
+                                if h_inicio != '--:--':
+                                    try:
+                                        dt_reg = datetime.strptime(
+                                            f"{datetime.now(FUSO_BR).strftime('%Y-%m-%d')} {h_inicio}",
+                                            "%Y-%m-%d %H:%M"
+                                        )
+                                        t_decorrido = (
+                                            datetime.now(FUSO_BR)
+                                            - dt_reg.replace(tzinfo=FUSO_BR)
+                                        )
+                                        valor_tempo = f"{int(t_decorrido.total_seconds() // 60)} min"
+                                    except:
+                                        pass
+                        elif "MANUTENÇÃO" in st_m.upper():
                             bg_color, bd_color = "#FECACA", "#DC2626" 
                             cabecalho_maq = f"🛠 {setor_m} {maq_m} (MANUTENÇÃO)"
                         elif "PARADA" in st_m.upper():
