@@ -3486,47 +3486,194 @@ def exibir_alertas_preparador():
         html_alertas += "</div>"
         st.markdown(html_alertas, unsafe_allow_html=True)
 
-def dar_baixa_armario(ordem_alvo, operador_nome="SISTEMA"):
-    if not ordem_alvo or not str(ordem_alvo).strip() or not os.path.exists(ARQUIVO_ARMARIOS): return
+
+def dar_baixa_armario(
+    ordem_alvo,
+    operador_nome="SISTEMA",
+    maq_id=None,
+    setor=None,
+):
+    # Regras:
+    # AFC Preparação: baixa.
+    # AFC Sequência: baixa.
+    # RTF Haste: baixa.
+    # RTF Guia: NÃO baixa.
+    if not ordem_alvo or not str(ordem_alvo).strip():
+        return False
+    if not os.path.exists(ARQUIVO_ARMARIOS):
+        return False
+
+    def _norm_op(valor):
+        txt = str(valor or "").strip().upper().replace(".0", "")
+        txt = txt.lstrip("0")
+        return txt or "0"
+
+    def _norm_txt(valor):
+        txt = unicodedata.normalize("NFKD", str(valor or ""))
+        return "".join(
+            c for c in txt
+            if not unicodedata.combining(c)
+        ).upper().strip()
+
+    ordem_formatada = _norm_op(ordem_alvo)
+
     try:
-        ordem_formatada = str(ordem_alvo).strip().upper().replace(".0", "").lstrip("0")
-        df_arm = pd.read_csv(ARQUIVO_ARMARIOS, dtype={'Ordem': str, 'Item': str, 'Status': str, 'Data_Hora': str, 'Posicao': str, 'Armario': str, 'Observacao': str})
-        if 'Item' not in df_arm.columns: df_arm['Item'] = ""
-        if 'Observacao' not in df_arm.columns: df_arm['Observacao'] = ""
-        
-        df_arm['Ordem_busca'] = df_arm['Ordem'].astype(str).str.strip().str.upper().str.replace(".0", "", regex=False).str.lstrip("0")
-        idx_ordem = df_arm[df_arm['Ordem_busca'] == ordem_formatada].index
-        if not idx_ordem.empty:
-            item_removido = str(df_arm.loc[idx_ordem[0], 'Item'])
-            maq_removida = str(df_arm.loc[idx_ordem[0], 'Posicao'])
-            armario_removido = str(df_arm.loc[idx_ordem[0], 'Armario'])
-            
-            hora_br_str = datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M")
-            novo_alerta = {
-                "Data_Hora": hora_br_str, "Armario": armario_removido, "Maquina": maq_removida, 
-                "Ordem_Retirada": ordem_formatada, "Item": item_removido, "Preparador": operador_nome
-            }
-            
-            if os.path.exists(ARQUIVO_ALERTAS):
-                df_alerta = pd.read_csv(ARQUIVO_ALERTAS)
-                df_alerta = pd.concat([df_alerta, pd.DataFrame([novo_alerta])], ignore_index=True)
-                df_alerta.tail(100).to_csv(ARQUIVO_ALERTAS, index=False)
-            else:
-                pd.DataFrame([novo_alerta]).to_csv(ARQUIVO_ALERTAS, index=False)
-            
-            _atualizar_gaveta_armario_rapido(
-                armario_removido,
-                maq_removida,
-                {
-                    "Ordem": "",
-                    "Item": "",
-                    "Status": "VAZIO",
-                    "Data_Hora": datetime.now(FUSO_BR).strftime("%H:%M"),
-                    "Observacao": "",
-                },
-                origem="baixa_inicio_setup"
+        df_arm = pd.read_csv(
+            ARQUIVO_ARMARIOS,
+            dtype=str,
+        ).fillna("")
+    except Exception as exc:
+        raise RuntimeError(
+            f"Não foi possível consultar o armário para baixar a OP {ordem_formatada}: {exc}"
+        )
+
+    if df_arm.empty:
+        return False
+
+    for col in [
+        "Armario", "Posicao", "Ordem", "Item",
+        "Status", "Data_Hora", "Observacao", "Rebolo"
+    ]:
+        if col not in df_arm.columns:
+            df_arm[col] = ""
+
+    ordem_busca = df_arm["Ordem"].map(_norm_op)
+    candidatos = df_arm[ordem_busca.eq(ordem_formatada)].copy()
+
+    if not candidatos.empty and setor:
+        setor_norm = _norm_txt(setor)
+        if setor_norm == "AFC":
+            filtro_setor = candidatos["Armario"].map(
+                lambda x: "AFIADOR" in _norm_txt(x)
             )
-    except: pass
+        elif setor_norm == "RTF":
+            filtro_setor = candidatos["Armario"].map(
+                lambda x: "RETIFIC" in _norm_txt(x)
+            )
+        else:
+            filtro_setor = pd.Series(
+                [True] * len(candidatos),
+                index=candidatos.index,
+            )
+
+        filtrados = candidatos[filtro_setor]
+        if not filtrados.empty:
+            candidatos = filtrados
+
+    if not candidatos.empty and maq_id is not None:
+        m = re.search(r"\d+", str(maq_id))
+        if m:
+            pos_alvo = int(m.group(0))
+            pos_num = pd.to_numeric(
+                candidatos["Posicao"],
+                errors="coerce",
+            )
+            filtrados = candidatos[pos_num.eq(pos_alvo)]
+            if not filtrados.empty:
+                candidatos = filtrados
+
+    # Fallback por máquina + setor se a OP não bater por formatação.
+    if candidatos.empty and maq_id is not None and setor:
+        m = re.search(r"\d+", str(maq_id))
+        if m:
+            pos_alvo = int(m.group(0))
+            pos_num = pd.to_numeric(
+                df_arm["Posicao"],
+                errors="coerce",
+            )
+            setor_norm = _norm_txt(setor)
+
+            if setor_norm == "AFC":
+                filtro_setor = df_arm["Armario"].map(
+                    lambda x: "AFIADOR" in _norm_txt(x)
+                )
+            elif setor_norm == "RTF":
+                filtro_setor = df_arm["Armario"].map(
+                    lambda x: "RETIFIC" in _norm_txt(x)
+                )
+            else:
+                filtro_setor = pd.Series(
+                    [True] * len(df_arm),
+                    index=df_arm.index,
+                )
+
+            candidatos = df_arm[
+                pos_num.eq(pos_alvo)
+                & filtro_setor
+                & df_arm["Status"].astype(str).str.upper().ne("VAZIO")
+            ].copy()
+
+    if candidatos.empty:
+        return False
+
+    linha = candidatos.iloc[0]
+    armario_removido = str(linha["Armario"]).strip()
+    maq_removida = str(linha["Posicao"]).strip()
+    item_removido = str(linha["Item"]).strip()
+    rebolo_removido = str(linha["Rebolo"]).strip()
+
+    # PRIMEIRO: baixa obrigatória da gaveta.
+    _atualizar_gaveta_armario_rapido(
+        armario_removido,
+        maq_removida,
+        {
+            "Ordem": "",
+            "Item": "",
+            "Status": "VAZIO",
+            "Data_Hora": datetime.now(FUSO_BR).strftime("%H:%M"),
+            "Observacao": "",
+            "Rebolo": "",
+        },
+        origem="baixa_inicio_setup",
+    )
+
+    # Confirma a posição alterada.
+    tab = _quote_identifier(ARQUIVO_ARMARIOS)
+    result = turso_request(
+        f"""SELECT "Ordem","Item","Status","Rebolo"
+            FROM {tab}
+            WHERE "Armario"=?
+            AND CAST("Posicao" AS INTEGER)=?
+            LIMIT 1""",
+        [armario_removido, int(float(maq_removida))],
+        want_rows=True,
+    )
+    df_check = _resultado_turso_df(result)
+
+    if df_check.empty:
+        raise RuntimeError("Gaveta não encontrada após a baixa.")
+
+    check = df_check.iloc[0]
+    if (
+        str(check.get("Ordem", "") or "").strip()
+        or str(check.get("Item", "") or "").strip()
+        or str(check.get("Rebolo", "") or "").strip()
+        or str(check.get("Status", "") or "").strip().upper() != "VAZIO"
+    ):
+        raise RuntimeError(
+            f"A OP {ordem_formatada} não foi retirada da gaveta."
+        )
+
+    # DEPOIS: histórico/alerta. Se falhar, a baixa continua válida.
+    try:
+        salvar_csv(
+            {
+                "Data_Hora": datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M"),
+                "Armario": armario_removido,
+                "Maquina": maq_removida,
+                "Ordem_Retirada": ordem_formatada,
+                "Item": item_removido,
+                "Rebolo": rebolo_removido,
+                "Preparador": operador_nome,
+            },
+            ARQUIVO_ALERTAS,
+        )
+    except Exception:
+        pass
+
+    return True
+
+
 
 def buscar_dados_armario_maquina(maq_id, setor):
     """Retorna (OP, Item, Rebolo) da gaveta física da máquina.
@@ -4120,7 +4267,12 @@ def painel_controle_maquina(maq_id, setor):
                     
                     if "[Ordem:" in st_atual and "GUIA" not in st_atual.upper():
                         op_ext = st_atual.split("[Ordem:")[1].split("]")[0].strip()
-                        dar_baixa_armario(op_ext, st.session_state.get('operador', 'SISTEMA'))
+                        dar_baixa_armario(
+                            op_ext,
+                            st.session_state.get('operador', 'SISTEMA'),
+                            maq_id=maq_id,
+                            setor=setor,
+                        )
                     
                     salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
                     st.session_state['maq_ativa'] = None
@@ -4232,7 +4384,12 @@ def painel_controle_maquina(maq_id, setor):
                         if obs.strip(): st_final += f" [Obs: {obs.strip()}]"
                         
                         if "GUIA" not in st_atual.upper():
-                            dar_baixa_armario(ordem_limpa, st.session_state.get('operador', 'SISTEMA'))
+                            dar_baixa_armario(
+                                ordem_limpa,
+                                st.session_state.get('operador', 'SISTEMA'),
+                                maq_id=maq_id,
+                                setor=setor,
+                            )
                         salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": st_final, "Hora": hora_br_str}, ARQUIVO_DADOS)
                         st.session_state['maq_ativa'] = None
                         del st.session_state[flow_key]
@@ -4876,7 +5033,9 @@ def painel_controle_maquina(maq_id, setor):
                                 st_andamento += f" [Novo Item: {item_buscado}]"
                                 dar_baixa_armario(
                                     nova_ordem_limpa,
-                                    st.session_state.get('operador', 'SISTEMA')
+                                    st.session_state.get('operador', 'SISTEMA'),
+                                    maq_id=maq_id,
+                                    setor=setor,
                                 )
 
                             elif is_comum:
@@ -4885,17 +5044,23 @@ def painel_controle_maquina(maq_id, setor):
                                 st_andamento += f" [Novo Item: {item_buscado}]"
                                 dar_baixa_armario(
                                     nova_ordem_limpa,
-                                    st.session_state.get('operador', 'SISTEMA')
+                                    st.session_state.get('operador', 'SISTEMA'),
+                                    maq_id=maq_id,
+                                    setor=setor,
                                 )
 
                             elif is_seq:
-                                # Sequência mantém o item atual e troca somente a OP.
+                                # AFC SEQUÊNCIA: a OP sai da gaveta ao iniciar.
+                                # Mantém o item atual e troca somente a OP.
                                 st_andamento += f" [Ordem: {nova_ordem_limpa}]"
                                 dar_baixa_armario(
                                     nova_ordem_limpa,
-                                    st.session_state.get('operador', 'SISTEMA')
+                                    st.session_state.get('operador', 'SISTEMA'),
+                                    maq_id=maq_id,
+                                    setor=setor,
                                 )
                         else:
+                            # RTF GUIA: NÃO retirar a OP da gaveta.
                             if nova_ordem_limpa:
                                 st_andamento += f" [Ordem: {nova_ordem_limpa}]"
                             
@@ -6115,7 +6280,7 @@ def _centerless_acionar(
         )
 
 
-def _centerless_finalizar(maq, qtd_key):
+def _centerless_finalizar(maq, qtd_key, material_key):
     try:
         maq = str(maq)
         e = _centerless_estado(maq)
@@ -6167,8 +6332,16 @@ def _centerless_finalizar(maq, qtd_key):
         )
 
         _centerless_salvar_estado(maq, "PRONTO")
-        st.session_state.pop(qtd_key, None)
-        st.session_state.pop(f"centerless_material_{maq}", None)
+
+        # Garante que a próxima medição comece com Material e QTD vazios.
+        # Mudamos a revisão da chave do widget para não reaproveitar o valor
+        # antigo mantido pelo navegador/Streamlit.
+        _centerless_nova_revisao_campos(
+            maq,
+            material_key=material_key,
+            qtd_key=qtd_key,
+        )
+
         _centerless_mensagem(
             f"Centerless {maq}: ciclo {ciclo_s:.2f} s/peça · {ph:.1f} peças/h.",
             "success",
@@ -6178,12 +6351,15 @@ def _centerless_finalizar(maq, qtd_key):
         _centerless_mensagem(f"Erro ao finalizar Centerless {maq}: {exc}", "error")
 
 
-def _centerless_cancelar(maq):
+def _centerless_cancelar(maq, material_key, qtd_key):
     try:
         maq = str(maq)
         _centerless_salvar_estado(maq, "PRONTO")
-        st.session_state.pop(f"centerless_qtd_{maq}", None)
-        st.session_state.pop(f"centerless_material_{maq}", None)
+        _centerless_nova_revisao_campos(
+            maq,
+            material_key=material_key,
+            qtd_key=qtd_key,
+        )
         _centerless_mensagem(
             f"Centerless {maq}: medição cancelada e zerada.",
             "warning",
@@ -6353,6 +6529,155 @@ def _centerless_historico():
         return pd.DataFrame()
 
 
+def _centerless_historico_com_id(limite=200):
+    """Lê medições Centerless com rowid para edição/exclusão pontual."""
+    if not tabela_existe(ARQUIVO_CENTERLESS):
+        return pd.DataFrame()
+
+    try:
+        limite = max(1, min(int(limite), 1000))
+        tab = _quote_identifier(ARQUIVO_CENTERLESS)
+        result = turso_request(
+            f"""SELECT
+                    rowid AS "_id",
+                    "Data",
+                    "Hora_Registro",
+                    "Maquina",
+                    "Material",
+                    "Inicio",
+                    "Fim",
+                    "Tempo_Total_s",
+                    "Tempo_Total",
+                    "Quantidade",
+                    "Tempo_Ciclo_s",
+                    "Pecas_Hora",
+                    "Operador"
+                FROM {tab}
+                ORDER BY rowid DESC
+                LIMIT {limite}""",
+            want_rows=True,
+        )
+        return _resultado_turso_df(result)
+    except Exception:
+        return pd.DataFrame()
+
+
+def _centerless_atualizar_medicao(
+    rowid,
+    maquina,
+    material,
+    quantidade,
+):
+    """Corrige uma medição sem alterar o tempo físico originalmente medido."""
+    if not tabela_existe(ARQUIVO_CENTERLESS):
+        raise RuntimeError("Histórico Centerless não encontrado.")
+
+    maquina = str(maquina or "").strip().upper()
+    material = str(material or "").strip().upper()
+
+    if maquina not in ("CENTERLESS 17", "CENTERLESS 6"):
+        raise RuntimeError("Máquina inválida.")
+    if not material:
+        raise RuntimeError("Informe o material.")
+
+    try:
+        quantidade = int(quantidade)
+    except Exception:
+        quantidade = 0
+
+    if quantidade <= 0:
+        raise RuntimeError("A quantidade deve ser maior que zero.")
+
+    tab = _quote_identifier(ARQUIVO_CENTERLESS)
+
+    atual = turso_request(
+        f"""SELECT "Tempo_Total_s"
+            FROM {tab}
+            WHERE rowid=?
+            LIMIT 1""",
+        [int(rowid)],
+        want_rows=True,
+    )
+    df_atual = _resultado_turso_df(atual)
+
+    if df_atual.empty:
+        raise RuntimeError("A medição selecionada não existe mais.")
+
+    try:
+        tempo_total_s = float(
+            pd.to_numeric(
+                pd.Series([df_atual.iloc[0]["Tempo_Total_s"]]),
+                errors="coerce",
+            ).iloc[0]
+        )
+    except Exception:
+        tempo_total_s = 0.0
+
+    if not math.isfinite(tempo_total_s) or tempo_total_s <= 0:
+        raise RuntimeError(
+            "O tempo original desta medição é inválido e não pode ser recalculado."
+        )
+
+    ciclo_s = tempo_total_s / quantidade
+    pecas_hora = 3600.0 / ciclo_s if ciclo_s > 0 else 0.0
+
+    turso_request(
+        f"""UPDATE {tab}
+            SET
+                "Maquina"=?,
+                "Material"=?,
+                "Quantidade"=?,
+                "Tempo_Ciclo_s"=?,
+                "Pecas_Hora"=?
+            WHERE rowid=?""",
+        [
+            maquina,
+            material,
+            quantidade,
+            round(ciclo_s, 3),
+            round(pecas_hora, 2),
+            int(rowid),
+        ],
+        want_rows=False,
+    )
+
+    _invalidar_cache_turso(ARQUIVO_CENTERLESS)
+    return ciclo_s, pecas_hora
+
+
+def _centerless_excluir_medicao(rowid):
+    """Exclui somente a medição escolhida."""
+    if not tabela_existe(ARQUIVO_CENTERLESS):
+        return
+
+    tab = _quote_identifier(ARQUIVO_CENTERLESS)
+    turso_request(
+        f'DELETE FROM {tab} WHERE rowid=?',
+        [int(rowid)],
+        want_rows=False,
+    )
+    _invalidar_cache_turso(ARQUIVO_CENTERLESS)
+
+
+def _centerless_nova_revisao_campos(maq, material_key=None, qtd_key=None):
+    """Força novos widgets vazios após finalizar/cancelar."""
+    maq = str(maq)
+
+    if material_key:
+        st.session_state.pop(material_key, None)
+    if qtd_key:
+        st.session_state.pop(qtd_key, None)
+
+    chave_rev = f"centerless_rev_{maq}"
+    try:
+        rev_atual = int(st.session_state.get(chave_rev, 0) or 0)
+    except Exception:
+        rev_atual = 0
+
+    st.session_state[chave_rev] = rev_atual + 1
+
+
+
 def _centerless_metricas(df, maq, material):
     if df is None or df.empty or not material:
         return None
@@ -6379,8 +6704,16 @@ def _centerless_metricas(df, maq, material):
 
 def _centerless_card(maq, estado, hist):
     estado_txt = estado["Estado"]
-    mat_key = f"centerless_material_{maq}"
-    qtd_key = f"centerless_qtd_{maq}"
+
+    try:
+        rev_campos = int(
+            st.session_state.get(f"centerless_rev_{maq}", 0) or 0
+        )
+    except Exception:
+        rev_campos = 0
+
+    mat_key = f"centerless_material_{maq}_{rev_campos}"
+    qtd_key = f"centerless_qtd_{maq}_{rev_campos}"
 
     if estado_txt in ("RODANDO", "PARADO") and estado["Material"]:
         st.session_state[mat_key] = estado["Material"]
@@ -6462,7 +6795,7 @@ def _centerless_card(maq, estado, hist):
             type="primary",
             use_container_width=True,
             on_click=_centerless_finalizar,
-            args=(maq, qtd_key),
+            args=(maq, qtd_key, mat_key),
         )
         liberar = c2.checkbox(
             "Liberar cancelar",
@@ -6474,7 +6807,7 @@ def _centerless_card(maq, estado, hist):
             disabled=not liberar,
             use_container_width=True,
             on_click=_centerless_cancelar,
-            args=(maq,),
+            args=(maq, mat_key, qtd_key),
         )
 
     mat_ref = estado["Material"] if estado_txt != "PRONTO" else str(material or "").strip().upper()
@@ -6590,7 +6923,184 @@ def tela_centerless():
         "Tempo_Total", "Quantidade", "Tempo_Ciclo_s", "Pecas_Hora", "Operador"
     ]
     cols = [c for c in preferidas if c in df.columns]
-    st.dataframe(df[cols].iloc[::-1].head(100), use_container_width=True, hide_index=True)
+    st.dataframe(
+        df[cols].iloc[::-1].head(100),
+        use_container_width=True,
+        hide_index=True,
+    )
+
+    st.markdown("<div style='margin-top:16px'></div>", unsafe_allow_html=True)
+
+    with st.expander("✏️ Corrigir / excluir medições", expanded=False):
+        st.caption(
+            "Use esta área somente quando algum material, quantidade ou máquina "
+            "for lançado incorretamente. O tempo físico medido é preservado."
+        )
+
+        df_corr = _centerless_historico_com_id(150)
+
+        if df_corr.empty:
+            st.info("Nenhuma medição disponível para correção.")
+        else:
+            registros = {}
+
+            for _, row in df_corr.iterrows():
+                try:
+                    rid = int(row["_id"])
+                except Exception:
+                    continue
+
+                data_txt = str(row.get("Data", "") or "")
+                hora_txt = str(row.get("Hora_Registro", "") or "")
+                maq_txt = str(row.get("Maquina", "") or "")
+                mat_txt = str(row.get("Material", "") or "")
+                qtd_txt = str(row.get("Quantidade", "") or "")
+
+                registros[rid] = (
+                    f"#{rid} · {data_txt} {hora_txt} · "
+                    f"{maq_txt} · {mat_txt} · QTD {qtd_txt}"
+                )
+
+            if not registros:
+                st.info("Nenhuma medição válida para correção.")
+            else:
+                medicao_id = st.selectbox(
+                    "Selecione a medição:",
+                    options=list(registros.keys()),
+                    format_func=lambda rid, _r=registros: _r[rid],
+                    key="centerless_correcao_id",
+                )
+
+                linha = df_corr[
+                    pd.to_numeric(
+                        df_corr["_id"],
+                        errors="coerce",
+                    ).eq(int(medicao_id))
+                ].iloc[0]
+
+                maquina_atual = str(
+                    linha.get("Maquina", "CENTERLESS 17") or "CENTERLESS 17"
+                ).strip().upper()
+                if maquina_atual not in ("CENTERLESS 17", "CENTERLESS 6"):
+                    maquina_atual = "CENTERLESS 17"
+
+                material_atual = str(
+                    linha.get("Material", "") or ""
+                ).strip().upper()
+
+                try:
+                    qtd_atual = int(
+                        float(str(linha.get("Quantidade", 1) or 1))
+                    )
+                except Exception:
+                    qtd_atual = 1
+
+                try:
+                    tempo_original = float(
+                        str(linha.get("Tempo_Total_s", 0) or 0)
+                    )
+                except Exception:
+                    tempo_original = 0.0
+
+                c_maq, c_mat, c_qtd = st.columns([1.0, 1.5, 1.0])
+
+                maquina_nova = c_maq.selectbox(
+                    "Máquina correta:",
+                    ["CENTERLESS 17", "CENTERLESS 6"],
+                    index=(
+                        0
+                        if maquina_atual == "CENTERLESS 17"
+                        else 1
+                    ),
+                    key=f"centerless_edit_maq_{medicao_id}",
+                )
+
+                material_novo = c_mat.text_input(
+                    "Material correto:",
+                    value=material_atual,
+                    key=f"centerless_edit_mat_{medicao_id}",
+                )
+
+                quantidade_nova = c_qtd.number_input(
+                    "Quantidade correta:",
+                    min_value=1,
+                    step=1,
+                    value=max(1, qtd_atual),
+                    key=f"centerless_edit_qtd_{medicao_id}",
+                )
+
+                if tempo_original > 0:
+                    ciclo_prev = tempo_original / int(quantidade_nova)
+                    ph_prev = (
+                        3600.0 / ciclo_prev
+                        if ciclo_prev > 0
+                        else 0.0
+                    )
+
+                    p1, p2, p3 = st.columns(3)
+                    p1.metric(
+                        "Tempo original",
+                        _centerless_tempo_txt(tempo_original),
+                    )
+                    p2.metric(
+                        "Novo ciclo",
+                        f"{ciclo_prev:.2f} s/pç",
+                    )
+                    p3.metric(
+                        "Novo ritmo",
+                        f"{ph_prev:.1f} pç/h",
+                    )
+
+                c_salvar, c_excluir = st.columns([2.2, 1.0])
+
+                if c_salvar.button(
+                    "💾 SALVAR CORREÇÃO",
+                    key=f"centerless_edit_save_{medicao_id}",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    try:
+                        ciclo_corr, ph_corr = _centerless_atualizar_medicao(
+                            medicao_id,
+                            maquina_nova,
+                            material_novo,
+                            quantidade_nova,
+                        )
+
+                        st.success(
+                            f"✅ Medição #{medicao_id} corrigida. "
+                            f"Ciclo: {ciclo_corr:.2f} s/pç · "
+                            f"{ph_corr:.1f} pç/h."
+                        )
+
+                        # Força nova leitura do histórico e das médias do 9999.
+                        st.session_state["_centerless_historico_atualizado"] = True
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Não foi possível corrigir: {exc}")
+
+                confirmar_exclusao = c_excluir.checkbox(
+                    "Confirmar exclusão",
+                    key=f"centerless_edit_del_conf_{medicao_id}",
+                )
+
+                if c_excluir.button(
+                    "🗑️ EXCLUIR",
+                    key=f"centerless_edit_del_{medicao_id}",
+                    disabled=not confirmar_exclusao,
+                    use_container_width=True,
+                ):
+                    try:
+                        _centerless_excluir_medicao(medicao_id)
+
+                        st.success(
+                            f"✅ Medição #{medicao_id} excluída."
+                        )
+
+                        st.session_state["_centerless_historico_atualizado"] = True
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Não foi possível excluir: {exc}")
 
 
 def tela_login():
