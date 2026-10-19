@@ -8349,6 +8349,126 @@ def render_grid_vertical(lista_maquinas, setor, status_dict):
                     args=({'maq_ativa': maq, 'setor_ativo': setor},)
                 )
 
+def _formatar_linha_programacao(setor, maquina, status):
+    """Organiza a linha: Máquina · Operador · Horário · detalhes."""
+    status = str(status or "").strip()
+
+    operador = ""
+    for padrao in [
+        r"\[Prep\.\s*Sugerido:\s*([^\]]+)\]",
+        r"\[Prep:\s*([^\]]+)\]",
+    ]:
+        m = re.search(padrao, status, flags=re.IGNORECASE)
+        if m:
+            operador = m.group(1).strip()
+            break
+
+    if not operador:
+        try:
+            info = obter_info_maquina(maquina, setor)
+            if info:
+                operador = str(info.get("Operador", "") or "").strip()
+        except Exception:
+            operador = ""
+
+    operador = operador or "SEM OPERADOR"
+
+    horario = ""
+    m = re.search(
+        r"\[AGENDADO:\s*(\d{1,2}:\d{2})\s*\]",
+        status,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        horario = m.group(1)
+    else:
+        m = re.search(
+            r"AGENDADA\s+PARA\s+(\d{1,2}:\d{2})",
+            status,
+            flags=re.IGNORECASE,
+        )
+        if m:
+            horario = m.group(1)
+
+    if not horario:
+        try:
+            info = obter_info_maquina(maquina, setor)
+            if info:
+                horario = str(info.get("Hora", "") or "").strip()
+        except Exception:
+            horario = ""
+
+    horario = horario or "--:--"
+
+    base = status.split("[", 1)[0].strip()
+    base = re.sub(
+        r"(?i)^AGUARDANDO\s+PREPARADOR\s*-\s*",
+        "",
+        base,
+    ).strip()
+    base = re.sub(
+        r"(?i)\s*AGENDADA\s+PARA\s+\d{1,2}:\d{2}\s*$",
+        "",
+        base,
+    ).strip()
+
+    detalhes = [base] if base else []
+    item_ja_adicionado = False
+
+    for tag in re.findall(r"\[([^\]]+)\]", status):
+        tag_limpa = str(tag).strip()
+        tag_up = tag_limpa.upper()
+
+        if (
+            tag_up.startswith("PREP:")
+            or tag_up.startswith("PREP. SUGERIDO:")
+            or tag_up.startswith("AGENDADO:")
+        ):
+            continue
+
+        if tag_up.startswith("ORDEM:"):
+            detalhes.append(
+                f"OP: {tag_limpa.split(':', 1)[1].strip()}"
+            )
+            continue
+
+        if (
+            tag_up.startswith("ITEM ATUAL:")
+            or tag_up.startswith("NOVO ITEM:")
+            or tag_up.startswith("ITEM:")
+        ):
+            if not item_ja_adicionado:
+                detalhes.append(
+                    f"Item: {tag_limpa.split(':', 1)[1].strip()}"
+                )
+                item_ja_adicionado = True
+            continue
+
+        if tag_up.startswith("PROG:"):
+            detalhes.append(
+                f"Prog: {tag_limpa.split(':', 1)[1].strip()}"
+            )
+            continue
+
+        detalhes.append(tag_limpa)
+
+    detalhes_unicos = []
+    vistos = set()
+    for detalhe in detalhes:
+        chave = detalhe.upper().strip()
+        if detalhe and chave not in vistos:
+            detalhes_unicos.append(detalhe)
+            vistos.add(chave)
+
+    resto = " · ".join(detalhes_unicos) if detalhes_unicos else "Sem detalhes"
+
+    return (
+        f"{maquina} · {operador.upper()} · {horario} "
+        f"— {setor} · {resto}"
+    )
+
+
+
 def tela_checkup():
     botao_navegar("⬅️ Voltar ao Menu", 'menu')
     st.markdown("#### 🔍 Programação e Incidências")
@@ -8648,7 +8768,21 @@ def tela_checkup():
             else:
                 for setor_m, maq_m, st_m in incidencias_turno_atual:
                     icone = get_status_icon(st_m)
-                    st.button(f"{icone} {setor_m} {maq_m} — {st_m}", key=f"chk_at_{setor_m}_{maq_m}", use_container_width=True, on_click=definir_estados, args=({'maq_ativa': maq_m, 'setor_ativo': setor_m},))
+                    linha_prog = _formatar_linha_programacao(
+                        setor_m, maq_m, st_m
+                    )
+                    st.button(
+                        f"{icone} {linha_prog}",
+                        key=f"chk_at_{setor_m}_{maq_m}",
+                        use_container_width=True,
+                        on_click=definir_estados,
+                        args=(
+                            {
+                                'maq_ativa': maq_m,
+                                'setor_ativo': setor_m,
+                            },
+                        ),
+                    )
 
     with aba_futuro:
         st.markdown("**Programação de Setups e Paradas por Turno**")
@@ -8661,7 +8795,21 @@ def tela_checkup():
             else:
                 for setor_m, maq_m, st_m in lista_futura:
                     icone = get_status_icon(st_m)
-                    st.button(f"{icone} {setor_m} {maq_m} — {st_m}", key=f"chk_fut_{setor_m}_{maq_m}", use_container_width=True, on_click=definir_estados, args=({'maq_ativa': maq_m, 'setor_ativo': setor_m},))
+                    linha_prog = _formatar_linha_programacao(
+                        setor_m, maq_m, st_m
+                    )
+                    st.button(
+                        f"{icone} {linha_prog}",
+                        key=f"chk_fut_{setor_m}_{maq_m}",
+                        use_container_width=True,
+                        on_click=definir_estados,
+                        args=(
+                            {
+                                'maq_ativa': maq_m,
+                                'setor_ativo': setor_m,
+                            },
+                        ),
+                    )
 
     with aba_previsao:
         st.markdown("#### ⏱️ Lançar Previsão de Parada por Fila")
