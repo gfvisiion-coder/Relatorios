@@ -94,11 +94,68 @@ def _http_session():
     return sess
 
 
-def _post_turso(payload, timeout=30):
+def _reset_http_session():
+    """Descarta conexões HTTP possivelmente quebradas do pool."""
     try:
-        return _http_session().post(TURSO_PIPELINE_URL, json=payload, timeout=(5, timeout))
-    except requests.RequestException as exc:
-        raise RuntimeError(f"Não foi possível acessar o Turso: {exc}") from exc
+        sess = _http_session()
+        sess.close()
+    except Exception:
+        pass
+    try:
+        _http_session.clear()
+    except Exception:
+        pass
+
+
+def _post_turso(payload, timeout=30, retry_safe=False):
+    """POST no Turso com recuperação de conexão para leituras seguras.
+
+    Escritas não são repetidas automaticamente para evitar INSERT/UPDATE duplicado
+    caso o servidor tenha processado a requisição antes de fechar a conexão.
+    """
+    tentativas = 3 if retry_safe else 1
+    ultimo_erro = None
+
+    for tentativa in range(tentativas):
+        try:
+            resp = _http_session().post(
+                TURSO_PIPELINE_URL,
+                json=payload,
+                timeout=(5, timeout),
+            )
+
+            # Erros temporários podem ser repetidos somente em leituras.
+            if (
+                retry_safe
+                and resp.status_code in {429, 500, 502, 503, 504}
+                and tentativa < tentativas - 1
+            ):
+                _reset_http_session()
+                time.sleep(0.35 * (2 ** tentativa))
+                continue
+
+            return resp
+
+        except (
+            requests.ConnectionError,
+            requests.Timeout,
+            requests.exceptions.ChunkedEncodingError,
+        ) as exc:
+            ultimo_erro = exc
+            _reset_http_session()
+
+            if not retry_safe or tentativa >= tentativas - 1:
+                break
+
+            time.sleep(0.35 * (2 ** tentativa))
+
+        except requests.RequestException as exc:
+            ultimo_erro = exc
+            break
+
+    raise RuntimeError(
+        f"Não foi possível acessar o Turso após {tentativas} tentativa(s): {ultimo_erro}"
+    ) from ultimo_erro
 
 
 @st.cache_resource(show_spinner=False)
@@ -165,7 +222,14 @@ def turso_request(sql, args=None, want_rows=True, timeout=30):
         ],
     }
 
-    resp = _post_turso(payload, timeout=timeout)
+    sql_inicio = str(sql or "").lstrip().upper()
+    leitura_segura = sql_inicio.startswith("SELECT") or sql_inicio.startswith("PRAGMA")
+
+    resp = _post_turso(
+        payload,
+        timeout=timeout,
+        retry_safe=leitura_segura,
+    )
 
     if resp.status_code != 200:
         raise RuntimeError(f"Turso HTTP {resp.status_code}: {resp.text[:1000]}")
@@ -3319,7 +3383,24 @@ def exibir_alertas_preset():
     if st.session_state.get('perfil') not in ['preset', 'adm']: return
     
     if os.path.exists(ARQUIVO_ALERTAS):
-        df_alertas_toast = pd.read_csv(ARQUIVO_ALERTAS)
+        # O alerta é informativo; uma oscilação de rede nunca deve derrubar
+        # a tela inteira de Armários. Leituras do Turso já tentam novamente,
+        # e aqui há uma última proteção para manter a página funcionando.
+        try:
+            df_alertas_toast = pd.read_csv(ARQUIVO_ALERTAS)
+        except Exception as exc:
+            df_alertas_toast = pd.DataFrame()
+            chave_erro = "_toast_turso_alertas_indisponivel"
+            if not st.session_state.get(chave_erro):
+                st.session_state[chave_erro] = True
+                st.toast(
+                    "Conexão com o Turso oscilou. Os armários continuam disponíveis; "
+                    "o alerta de retirada será tentado novamente na próxima atualização.",
+                    icon="⚠️",
+                )
+        else:
+            st.session_state.pop("_toast_turso_alertas_indisponivel", None)
+
         if not df_alertas_toast.empty:
             ultimo_alerta = df_alertas_toast.iloc[-1]
             if 'ultimo_alerta_visto' not in st.session_state or st.session_state['ultimo_alerta_visto'] != str(ultimo_alerta.to_dict()):
