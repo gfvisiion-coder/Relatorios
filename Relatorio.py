@@ -472,9 +472,22 @@ def _carregar_ultimos_apontamentos():
     rows = [[_turso_decode(v) for v in row] for row in result.get("rows", [])]
     df = pd.DataFrame(rows, columns=cols)
     if df.empty:
-        df = pd.DataFrame(columns=["Setor", "Maquina", "Operador", "Status", "Hora"])
+        df = pd.DataFrame(
+            columns=["Setor", "Maquina", "Operador", "Status", "Hora"]
+        )
+
+    # Normalização central:
+    # todas as telas passam a receber o MESMO estado operacional.
+    if "Status" in df.columns and not df.empty:
+        normalizador = globals().get(
+            "_normalizar_status_operacional_atual"
+        )
+        if callable(normalizador):
+            df["Status"] = df["Status"].apply(normalizador)
+
     with cache["lock"]:
         cache["latest"] = (agora, df)
+
     return df.copy()
 
 
@@ -3943,20 +3956,89 @@ def executar_manutencao_periodica():
 
 
 def _normalizar_status_operacional_atual(status):
-    """Corrige envelopes inválidos de PARADA/MANUTENÇÃO sobre um estado real."""
+    """Retorna o estado operacional real quando há um envelope inválido.
+
+    Corrige registros herdados como:
+        PARADA - Motivo: PRODUZINDO [...]
+        MANUTENÇÃO - Motivo: PRODUZINDO [...]
+        PARADA - PRODUZINDO [...]
+
+    Uma parada real, como "PARADA - Motivo: Falta de Material",
+    permanece PARADA.
+    """
     txt = str(status or "").strip()
     if not txt:
         return txt
+
     txt = txt.replace(" [Energia Restaurada]", "").strip()
-    padrao = re.match(
-        r"^\s*(?:PARADA|MANUTENÇÃO|MANUTENCAO)\s*"
-        r"(?:-\s*)?(?:MOTIVO\s*:\s*)?"
-        r"(PRODUZINDO\b.*|PREPARANDO\b.*|PREPARAÇÃO\b.*|PREPARACAO\b.*|"
-        r"SEQUÊNCIA\b.*|SEQUENCIA\b.*|AGUARDANDO\s+PREPARADOR\b.*|AJUSTE\b.*)$",
-        txt, flags=re.IGNORECASE,
+
+    estados_operacionais = (
+        "PRODUZINDO",
+        "PREPARANDO",
+        "PREPARAÇÃO",
+        "PREPARACAO",
+        "SEQUÊNCIA",
+        "SEQUENCIA",
+        "AGUARDANDO PREPARADOR",
+        "AJUSTE",
     )
-    if padrao:
-        return padrao.group(1).strip()
+
+    def _eh_estado_operacional(valor):
+        up = str(valor or "").strip().upper()
+        return any(
+            up.startswith(prefixo)
+            for prefixo in estados_operacionais
+        )
+
+    up = txt.upper()
+
+    # Se já é um estado válido, não mexe.
+    if _eh_estado_operacional(txt):
+        return txt
+
+    # Só tenta desembrulhar quando começa efetivamente como parada/manutenção.
+    if not (
+        up.startswith("PARADA")
+        or up.startswith("MANUTENÇÃO")
+        or up.startswith("MANUTENCAO")
+    ):
+        return txt
+
+    candidatos = []
+
+    # Caso mais comum: "PARADA - Motivo: PRODUZINDO ..."
+    m = re.search(
+        r"(?is)\bMOTIVO\s*:\s*(.+)$",
+        txt,
+    )
+    if m:
+        candidatos.append(m.group(1).strip())
+
+    # Caso legado: "PARADA - PRODUZINDO ..."
+    sem_prefixo = re.sub(
+        r"(?is)^\s*(?:PARADA|MANUTENÇÃO|MANUTENCAO)\s*(?:-|:)?\s*",
+        "",
+        txt,
+    ).strip()
+    if sem_prefixo:
+        candidatos.append(sem_prefixo)
+
+    # Alguns registros podem ficar "Motivo: Motivo: PRODUZINDO..."
+    candidatos_expandidos = []
+    for cand in candidatos:
+        candidatos_expandidos.append(cand)
+        cand2 = re.sub(
+            r"(?is)^\s*MOTIVO\s*:\s*",
+            "",
+            cand,
+        ).strip()
+        if cand2 != cand:
+            candidatos_expandidos.append(cand2)
+
+    for cand in candidatos_expandidos:
+        if _eh_estado_operacional(cand):
+            return cand
+
     return txt
 
 
@@ -5592,7 +5674,9 @@ def _resumo_setor_home(status_dict, setor, maquinas):
         'total':len(maquinas)
     }
     for m in maquinas:
-        st_val = status_dict.get(f'{setor} {m}', 'PRODUZINDO')
+        st_val = _normalizar_status_operacional_atual(
+            status_dict.get(f'{setor} {m}', 'PRODUZINDO')
+        )
         up = str(st_val).upper()
         prep = _classificar_preparacao_home(st_val)
 
@@ -5676,7 +5760,9 @@ def _estado_atual_home():
         saida[chave] = {
             'hora': str(row.get('Hora', '') or '').strip(),
             'operador': str(row.get('Operador', '') or '').strip(),
-            'status': str(row.get('Status', '') or '').strip(),
+            'status': _normalizar_status_operacional_atual(
+                row.get('Status', '')
+            ),
         }
     return saida
 
@@ -5723,6 +5809,21 @@ def _interrupcoes_home(status_dict, estado_meta):
                 status_dict.get(chave, 'PRODUZINDO')
             )
             up = str(status).strip().upper()
+
+            # Proteção extra: se depois da normalização virou estado
+            # operacional, jamais pode aparecer no alerta vermelho.
+            if (
+                up.startswith("PRODUZINDO")
+                or up.startswith("PREPARANDO")
+                or up.startswith("PREPARAÇÃO")
+                or up.startswith("PREPARACAO")
+                or up.startswith("SEQUÊNCIA")
+                or up.startswith("SEQUENCIA")
+                or up.startswith("AGUARDANDO PREPARADOR")
+                or up.startswith("AJUSTE")
+            ):
+                continue
+
             if 'MANUTENÇÃO' in up or 'MANUTENCAO' in up:
                 tipo = 'manutencao'
                 rotulo = 'MANUTENÇÃO'
