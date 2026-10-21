@@ -3855,6 +3855,7 @@ def buscar_item_por_ordem(ordem_alvo):
     return "SEM CADASTRO"
 
 def get_status_icon(status_str):
+    status_str = _normalizar_status_operacional_atual(status_str)
     if "AGUARDANDO PREPARADOR" in status_str: return "🟠"
     elif "AGENDADO" in status_str or "AGENDADA" in status_str: return "🔵"
     elif str(status_str).strip().upper().startswith("AJUSTE"): return "🎯"
@@ -3941,58 +3942,231 @@ def executar_manutencao_periodica():
     verificar_virada_turno()
 
 
+def _normalizar_status_operacional_atual(status):
+    """Corrige envelopes inválidos de PARADA/MANUTENÇÃO sobre um estado real."""
+    txt = str(status or "").strip()
+    if not txt:
+        return txt
+    txt = txt.replace(" [Energia Restaurada]", "").strip()
+    padrao = re.match(
+        r"^\s*(?:PARADA|MANUTENÇÃO|MANUTENCAO)\s*"
+        r"(?:-\s*)?(?:MOTIVO\s*:\s*)?"
+        r"(PRODUZINDO\b.*|PREPARANDO\b.*|PREPARAÇÃO\b.*|PREPARACAO\b.*|"
+        r"SEQUÊNCIA\b.*|SEQUENCIA\b.*|AGUARDANDO\s+PREPARADOR\b.*|AJUSTE\b.*)$",
+        txt, flags=re.IGNORECASE,
+    )
+    if padrao:
+        return padrao.group(1).strip()
+    return txt
+
+
+def _normalizar_horario_agendamento(valor):
+    """Aceita H:MM ou HH:MM e devolve HH:MM validado."""
+    txt = str(valor or "").strip()
+    if not re.fullmatch(r"(?:[01]?\d|2[0-3]):[0-5]\d", txt):
+        return ""
+    try:
+        return datetime.strptime(txt, "%H:%M").strftime("%H:%M")
+    except Exception:
+        return ""
+
+
+def _extrair_horario_agendamento(status):
+    """Lê o horário; se houver duplicado, usa a ÚLTIMA tag canônica."""
+    txt = str(status or "")
+
+    canonicos = re.findall(
+        r"\[AGENDADO:\s*((?:[01]?\d|2[0-3]):[0-5]\d)\s*\]",
+        txt,
+        flags=re.IGNORECASE,
+    )
+    if canonicos:
+        return _normalizar_horario_agendamento(canonicos[-1])
+
+    legados = re.findall(
+        r"AGENDADA\s+PARA\s+((?:[01]?\d|2[0-3]):[0-5]\d)",
+        txt,
+        flags=re.IGNORECASE,
+    )
+    if legados:
+        return _normalizar_horario_agendamento(legados[-1])
+
+    return ""
+
+
+def _extrair_data_agendamento(status):
+    txt = str(status or "")
+    datas = re.findall(
+        r"\[AGENDADO_DATA:\s*(\d{4}-\d{2}-\d{2})\s*\]",
+        txt,
+        flags=re.IGNORECASE,
+    )
+    if not datas:
+        return None
+    try:
+        return datetime.strptime(datas[-1], "%Y-%m-%d").date()
+    except Exception:
+        return None
+
+
+def _resolver_agendamento_status(status, agora=None):
+    """Retorna (HH:MM, datetime alvo) sem a ambiguidade do antigo limite de 12h."""
+    hora = _extrair_horario_agendamento(status)
+    if not hora:
+        return "", None
+
+    agora = agora or datetime.now(FUSO_BR)
+
+    try:
+        h = datetime.strptime(hora, "%H:%M").time()
+    except Exception:
+        return hora, None
+
+    data_exata = _extrair_data_agendamento(status)
+    if data_exata is not None:
+        return hora, datetime.combine(data_exata, h, tzinfo=FUSO_BR)
+
+    # Compatibilidade para agendas antigas que ainda não possuem data.
+    try:
+        data_logica_str, _ = get_turno_logico(agora)
+        data_logica = datetime.strptime(data_logica_str, "%d/%m/%Y").date()
+        alvo = datetime.combine(data_logica, h, tzinfo=FUSO_BR)
+
+        # Madrugada do 3º turno pertence ao dia seguinte do dia lógico.
+        if obter_turno_por_horario(hora) == "3° TURNO" and h < dtime(6, 30):
+            alvo += timedelta(days=1)
+
+        # Só corrige legado claramente muito atrasado.
+        # NÃO transforma mais um horário futuro >12h em "ontem".
+        if (agora - alvo).total_seconds() > 12 * 3600:
+            alvo += timedelta(days=1)
+
+        return hora, alvo
+    except Exception:
+        return hora, datetime.combine(agora.date(), h, tzinfo=FUSO_BR)
+
+
+def _remover_agendamentos_do_status(status):
+    """Remove todos os horários/data antigos antes de reagendar."""
+    txt = str(status or "")
+
+    txt = re.sub(
+        r"\s*AGENDADA\s+PARA\s+(?:[01]?\d|2[0-3]):[0-5]\d",
+        "",
+        txt,
+        flags=re.IGNORECASE,
+    )
+    txt = re.sub(
+        r"\s*\[AGENDADO:\s*(?:[01]?\d|2[0-3]):[0-5]\d\s*\]",
+        "",
+        txt,
+        flags=re.IGNORECASE,
+    )
+    txt = re.sub(
+        r"\s*\[AGENDADO_DATA:\s*\d{4}-\d{2}-\d{2}\s*\]",
+        "",
+        txt,
+        flags=re.IGNORECASE,
+    )
+
+    # Ao adiar, deixa de estar aguardando até o NOVO horário chegar.
+    txt = re.sub(
+        r"^\s*AGUARDANDO\s+PREPARADOR\s*-\s*",
+        "",
+        txt,
+        flags=re.IGNORECASE,
+    )
+
+    return re.sub(r"[ \t]{2,}", " ", txt).strip()
+
+
+def _reagendar_status_setup(status, novo_horario, agora=None):
+    """Reagenda de forma determinística e grava também a data."""
+    agora = agora or datetime.now(FUSO_BR)
+    novo_hhmm = _normalizar_horario_agendamento(novo_horario)
+
+    if not novo_hhmm:
+        raise ValueError("Horário inválido. Use HH:MM, por exemplo 14:30.")
+
+    _, alvo_antigo = _resolver_agendamento_status(status, agora)
+    if alvo_antigo is None:
+        alvo_antigo = agora
+
+    nova_hora = datetime.strptime(novo_hhmm, "%H:%M").time()
+    alvo_novo = datetime.combine(
+        alvo_antigo.date(),
+        nova_hora,
+        tzinfo=FUSO_BR,
+    )
+
+    # A ação é ADIAR: o novo momento deve ficar depois do antigo.
+    if alvo_novo <= alvo_antigo:
+        alvo_novo += timedelta(days=1)
+
+    # E nunca pode ficar no passado.
+    while alvo_novo <= agora:
+        alvo_novo += timedelta(days=1)
+
+    base = _remover_agendamentos_do_status(status)
+
+    novo_status = (
+        f"{base} "
+        f"[AGENDADO:{novo_hhmm}] "
+        f"[AGENDADO_DATA:{alvo_novo.strftime('%Y-%m-%d')}]"
+    )
+    novo_status = re.sub(r"[ \t]{2,}", " ", novo_status).strip()
+
+    return novo_status, novo_hhmm, alvo_novo
+
+
+
 def ler_status_atual():
     executar_manutencao_periodica()
+
     try:
         df = _carregar_ultimos_apontamentos().copy()
     except Exception:
         return {}
+
     if df.empty:
         return {}
+
     try:
         status_calculado = {}
         agora_br_dt = datetime.now(FUSO_BR)
+
         for _, row in df.iterrows():
-            maq = row['Maquina']
-            st_raw = str(row['Status']).replace(" [Energia Restaurada]", "") 
-            
-            hora_alvo = ""
-            if "AGENDADA PARA" in st_raw:
-                try: hora_alvo = st_raw.split("AGENDADA PARA")[1].strip().split(" ")[0]
-                except: pass
-            elif "[AGENDADO:" in st_raw:
-                try: hora_alvo = st_raw.split("[AGENDADO:")[1].split("]")[0].strip()
-                except: pass
-                
-            if hora_alvo:
-                try:
-                    h_alvo_dt = datetime.strptime(hora_alvo, "%H:%M").replace(
-                        year=agora_br_dt.year, month=agora_br_dt.month, day=agora_br_dt.day, tzinfo=FUSO_BR
+            maq = row["Maquina"]
+            st_raw = _normalizar_status_operacional_atual(
+                row.get("Status", "")
+            )
+
+            hora_alvo, alvo_dt = _resolver_agendamento_status(
+                st_raw,
+                agora_br_dt,
+            )
+
+            if hora_alvo and alvo_dt is not None:
+                st_limpo = re.sub(
+                    r"^\s*AGUARDANDO\s+PREPARADOR\s*-\s*",
+                    "",
+                    st_raw,
+                    flags=re.IGNORECASE,
+                ).strip()
+
+                if agora_br_dt >= alvo_dt:
+                    status_calculado[maq] = (
+                        f"AGUARDANDO PREPARADOR - {st_limpo}"
                     )
-                    
-                    if h_alvo_dt < agora_br_dt and (agora_br_dt - h_alvo_dt).total_seconds() > 12 * 3600: 
-                        h_alvo_dt += timedelta(days=1)
-                    elif agora_br_dt < h_alvo_dt and (h_alvo_dt - agora_br_dt).total_seconds() > 12 * 3600: 
-                        h_alvo_dt -= timedelta(days=1)
-                        
-                    if agora_br_dt >= h_alvo_dt:
-                        tipo_agendado = st_raw.split(" AGENDADA PARA")[0] if "AGENDADA PARA" in st_raw else st_raw.split(" [AGENDADO:")[0]
-                        tipo_agendado = tipo_agendado.replace("AGUARDANDO PREPARADOR - ", "").strip()
-                        
-                        st_base = f"AGUARDANDO PREPARADOR - {tipo_agendado}"
-                        sug = f" [Prep. Sugerido: {st_raw.split('[Prep. Sugerido:')[1].split(']')[0].strip()}]" if "[Prep. Sugerido:" in st_raw else ""
-                        tags = extrair_tags_producao(st_raw)
-                        status_calculado[maq] = f"{st_base}{sug} {tags}".strip()
-                    else:
-                        st_limpo = st_raw.replace("AGUARDANDO PREPARADOR - ", "").strip()
-                        status_calculado[maq] = st_limpo
-                except:
-                    status_calculado[maq] = st_raw
+                else:
+                    status_calculado[maq] = st_limpo
             else:
                 status_calculado[maq] = st_raw
-                
+
         return status_calculado
-    except: return {}
+    except Exception:
+        return {}
+
 
 def obter_info_maquina(maq_id, setor):
     try:
@@ -4003,7 +4177,11 @@ def obter_info_maquina(maq_id, setor):
         maq_full = f"{setor} {maq_id}"
         df_maq = df[df['Maquina'] == maq_full]
         if not df_maq.empty:
-            return df_maq.iloc[-1].to_dict()
+            info = df_maq.iloc[-1].to_dict()
+            info["Status"] = _normalizar_status_operacional_atual(
+                info.get("Status", "")
+            )
+            return info
     except Exception:
         pass
     return None
@@ -5028,22 +5206,62 @@ def painel_controle_maquina(maq_id, setor):
                     st.rerun()
 
                 if btn_adiar:
-                    if novo_horario_adiar.strip():
+                    novo_horario_digitado = str(
+                        novo_horario_adiar or ""
+                    ).strip()
+
+                    if not novo_horario_digitado:
+                        st.error("⚠️ Informe o novo horário para adiar!")
+                    else:
                         info_atual = obter_info_maquina(maq_id, setor)
-                        if info_atual:
-                            raw_st = str(info_atual['Status'])
-                            raw_st = re.sub(r'AGENDADA PARA \d{2}:\d{2}', '', raw_st, flags=re.IGNORECASE)
-                            raw_st = re.sub(r'\[AGENDADO:\d{2}:\d{2}\]', '', raw_st, flags=re.IGNORECASE)
-                            raw_st = raw_st.strip()
-                            raw_st += f" [AGENDADO:{novo_horario_adiar.strip()}]"
-                            
-                            salvar_csv({"Setor": setor, "Maquina": f"{setor} {maq_id}", "Operador": st.session_state['operador'], "Status": raw_st, "Hora": novo_horario_adiar.strip()}, ARQUIVO_DADOS)
-                            st.session_state['maq_ativa'] = None
-                            del st.session_state[flow_key]
-                            st.success(f"✅ Agendamento adiado para {novo_horario_adiar.strip()}!")
-                            st.rerun()
-                    else: st.error("⚠️ Informe o novo horário para adiar!")
-                    
+
+                        if not info_atual:
+                            st.error(
+                                "⚠️ Não consegui localizar o status atual da máquina."
+                            )
+                        else:
+                            try:
+                                raw_st = str(
+                                    info_atual.get("Status", "") or ""
+                                )
+
+                                novo_status, novo_hhmm, alvo_dt = (
+                                    _reagendar_status_setup(
+                                        raw_st,
+                                        novo_horario_digitado,
+                                        datetime.now(FUSO_BR),
+                                    )
+                                )
+
+                                salvar_csv(
+                                    {
+                                        "Setor": setor,
+                                        "Maquina": f"{setor} {maq_id}",
+                                        "Operador": st.session_state["operador"],
+                                        "Status": novo_status,
+                                        "Hora": novo_hhmm,
+                                    },
+                                    ARQUIVO_DADOS,
+                                )
+
+                                st.session_state["maq_ativa"] = None
+                                if flow_key in st.session_state:
+                                    del st.session_state[flow_key]
+
+                                st.success(
+                                    f"✅ Agendamento adiado para "
+                                    f"{novo_hhmm} em "
+                                    f"{alvo_dt.strftime('%d/%m')}!"
+                                )
+                                st.rerun()
+
+                            except ValueError as exc:
+                                st.error(f"⚠️ {exc}")
+                            except Exception as exc:
+                                st.error(
+                                    f"⚠️ Não foi possível adiar: {exc}"
+                                )
+
                 if btn_sugerir:
                     if not nome_input.strip():
                         st.error("⚠️ Informe um nome para sugerir!")
@@ -5347,6 +5565,7 @@ def _eh_aguardando_setup_home(status):
 
 
 def _classificar_status_home(status):
+    status = _normalizar_status_operacional_atual(status)
     up = str(status).strip().upper()
     if up.startswith('AJUSTE'):
         return 'ajuste'
@@ -5500,8 +5719,10 @@ def _interrupcoes_home(status_dict, estado_meta):
     for setor, maquinas in [('AFC', TODAS_AFC), ('RTF', TODAS_RTF)]:
         for maq in maquinas:
             chave = f'{setor} {maq}'
-            status = str(status_dict.get(chave, 'PRODUZINDO') or '')
-            up = status.strip().upper()
+            status = _normalizar_status_operacional_atual(
+                status_dict.get(chave, 'PRODUZINDO')
+            )
+            up = str(status).strip().upper()
             if 'MANUTENÇÃO' in up or 'MANUTENCAO' in up:
                 tipo = 'manutencao'
                 rotulo = 'MANUTENÇÃO'
@@ -5616,41 +5837,57 @@ def _extrair_hora_programada_home(status):
 
 
 def _info_programacao_home(status, agora=None):
-    """Retorna a programação como 'em X' ou 'atrasada X'.
+    """Retorna programação usando o datetime real do agendamento."""
+    agora = agora or datetime.now(FUSO_BR)
 
-    A referência é o DIA LÓGICO do turno do app. Assim 06:30/14:30/22:30 são
-    posicionados no dia correto, inclusive durante o 3º turno após meia-noite.
-    """
-    hora = _extrair_hora_programada_home(status)
-    if not hora:
-        return {'hora':'', 'prefixo':'', 'tempo':'Sem horário', 'delta':None, 'ordem':10**9}
+    hora, alvo = _resolver_agendamento_status(status, agora)
+
+    if not hora or alvo is None:
+        return {
+            "hora": "",
+            "prefixo": "",
+            "tempo": "Sem horário",
+            "delta": None,
+            "ordem": 10**9,
+        }
+
     try:
-        agora = agora or datetime.now(FUSO_BR)
-        h = datetime.strptime(hora, '%H:%M').time()
-        data_logica_str, _ = get_turno_logico(agora)
-        data_logica = datetime.strptime(data_logica_str, '%d/%m/%Y').date()
-        alvo = datetime.combine(data_logica, h, tzinfo=FUSO_BR)
-
-        # Horários da madrugada pertencem ao 3º turno iniciado no dia lógico.
-        turno_prog = obter_turno_por_horario(hora)
-        if turno_prog == '3° TURNO' and h < dtime(6, 30):
-            alvo += timedelta(days=1)
-
         delta = int((alvo - agora).total_seconds() // 60)
-        # Se ficou mais de 12h para trás, trata como a próxima ocorrência do
-        # horário. É apenas uma proteção porque o status não guarda a data.
-        if delta < -(12 * 60):
-            alvo += timedelta(days=1)
-            delta = int((alvo - agora).total_seconds() // 60)
 
         if delta > 0:
-            return {'hora':hora, 'prefixo':f'programada {hora}', 'tempo':f'em {_tempo_curto_home(delta)}', 'delta':delta, 'ordem':delta}
+            return {
+                "hora": hora,
+                "prefixo": f"programada {hora}",
+                "tempo": f"em {_tempo_curto_home(delta)}",
+                "delta": delta,
+                "ordem": delta,
+            }
+
         if delta < 0:
             atraso = abs(delta)
-            return {'hora':hora, 'prefixo':f'programada {hora}', 'tempo':f'atrasada {_tempo_curto_home(atraso)}', 'delta':delta, 'ordem':-100000-atraso}
-        return {'hora':hora, 'prefixo':f'programada {hora}', 'tempo':'agora', 'delta':0, 'ordem':-100000}
+            return {
+                "hora": hora,
+                "prefixo": f"programada {hora}",
+                "tempo": f"atrasada {_tempo_curto_home(atraso)}",
+                "delta": delta,
+                "ordem": -100000 - atraso,
+            }
+
+        return {
+            "hora": hora,
+            "prefixo": f"programada {hora}",
+            "tempo": "agora",
+            "delta": 0,
+            "ordem": -100000,
+        }
     except Exception:
-        return {'hora':hora, 'prefixo':f'programada {hora}', 'tempo':'—', 'delta':None, 'ordem':10**9}
+        return {
+            "hora": hora,
+            "prefixo": f"programada {hora}",
+            "tempo": "—",
+            "delta": None,
+            "ordem": 10**9,
+        }
 
 
 def _inicios_preparacao_ativa_home():
@@ -8227,6 +8464,7 @@ def _mapa_processo_rodando_rtf(status_dict):
 
 
 def _estado_gerencial_maquina(status):
+    status = _normalizar_status_operacional_atual(status)
     up = _normalizar_setup_home(status)
     if up.startswith('AJUSTE'):
         return 'AJUSTE', '#EC4899'
@@ -8407,7 +8645,9 @@ def render_grid_vertical(lista_maquinas, setor, status_dict):
     for maq in ordenar_maquinas(lista_maquinas):
         if maq != "":
             chave_busca = f"{setor} {maq}"
-            status_atual = status_dict.get(chave_busca, "PRODUZINDO")
+            status_atual = _normalizar_status_operacional_atual(
+                status_dict.get(chave_busca, "PRODUZINDO")
+            )
             icone = get_status_icon(status_atual)
             label_botao = f"{icone} Máquina {maq} — {status_atual}"
 
