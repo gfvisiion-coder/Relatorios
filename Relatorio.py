@@ -1118,45 +1118,6 @@ CSS_APP = """
     .kpi-value {color:#FFFFFF;font-size:34px;font-weight:950;letter-spacing:-1.3px;line-height:1;margin-top:17px;}
     .kpi-foot {display:flex;align-items:center;gap:6px;color:#777782;font-size:10px;font-weight:750;margin-top:8px;}
     .kpi-dot {width:6px;height:6px;border-radius:99px;background:var(--kpi-color);box-shadow:0 0 12px var(--kpi-color);}
-
-    /* KPIs clicáveis da Home 9999 */
-    div[class*="st-key-kpi_click_"] {
-        position:relative;
-        margin-bottom:16px;
-    }
-    div[class*="st-key-kpi_click_"] .kpi-card {
-        margin:0!important;
-        min-height:132px;
-        transition:transform .14s ease,border-color .14s ease,box-shadow .14s ease;
-    }
-    div[class*="st-key-kpi_click_"]:hover .kpi-card {
-        transform:translateY(-2px);
-        border-color:rgba(255,255,255,.18);
-        box-shadow:0 18px 42px rgba(0,0,0,.25);
-    }
-    div[class*="st-key-kpi_click_"] div[data-testid="stButton"] {
-        position:absolute!important;
-        inset:0!important;
-        z-index:20!important;
-        margin:0!important;
-        width:100%!important;
-        height:100%!important;
-    }
-    div[class*="st-key-kpi_click_"] div[data-testid="stButton"] > button {
-        position:absolute!important;
-        inset:0!important;
-        width:100%!important;
-        height:100%!important;
-        min-height:132px!important;
-        opacity:0!important;
-        cursor:pointer!important;
-        border:0!important;
-        padding:0!important;
-    }
-    div[class*="st-key-kpi_click_"] div[data-testid="stButton"] > button:focus-visible {
-        opacity:.05!important;
-        outline:2px solid #A78BFA!important;
-    }
     .dashboard-grid {display:grid;grid-template-columns:minmax(0,1.1fr) minmax(360px,.9fr);gap:14px;margin-top:14px;align-items:start;}
     .dash-panel {background:linear-gradient(180deg,rgba(26,26,35,.94),rgba(18,18,25,.96));border:1px solid rgba(255,255,255,.085);border-radius:18px;padding:17px;box-shadow:0 14px 38px rgba(0,0,0,.17);height:auto;align-self:start;}
     .sector-panel {padding:13px 15px;}
@@ -5762,290 +5723,6 @@ def _resumo_setor_home(status_dict, setor, maquinas):
     return r
 
 
-def _listas_status_home(status_dict, estado_meta=None):
-    """Fonte única para os KPIs e para o detalhe clicável da Home 9999.
-
-    Importante:
-    - PARADA só existe quando o estado operacional COMEÇA por PARADA.
-    - MANUTENÇÃO só existe quando começa por MANUTENÇÃO.
-    - Texto dentro de [Obs: ...] nunca interfere.
-    - Preparação aguardando continua contabilizada como PRODUÇÃO.
-    """
-    estado_meta = estado_meta or {}
-
-    saida = {
-        "producao": [],
-        "prep_ativa": [],
-        "prep_aguardando": [],
-        "ajuste": [],
-        "parada": [],
-        "manutencao": [],
-        "outros": [],
-    }
-
-    for setor, maquinas in [("AFC", TODAS_AFC), ("RTF", TODAS_RTF)]:
-        for maq in maquinas:
-            chave = f"{setor} {maq}"
-
-            status_original = _normalizar_status_operacional_atual(
-                status_dict.get(chave, "PRODUZINDO")
-            )
-            status_limpo = _status_operacional_sem_observacao(
-                status_original
-            )
-            up = str(status_limpo or "").strip().upper()
-
-            meta = estado_meta.get(chave, {}) or {}
-            hora = str(meta.get("hora", "") or "").strip()
-            operador = str(meta.get("operador", "") or "").strip()
-
-            item_base = {
-                "setor": setor,
-                "maq": str(maq),
-                "maquina": chave,
-                "status": status_limpo,
-                "status_original": status_original,
-                "hora": hora,
-                "operador": operador,
-                "motivo": "",
-                "situacao": "",
-            }
-
-            # 1) Estados que retiram a máquina da produção
-            if up.startswith("AJUSTE"):
-                item = dict(item_base)
-                item["situacao"] = "AJUSTE"
-                saida["ajuste"].append(item)
-                continue
-
-            if (
-                up.startswith("MANUTENÇÃO")
-                or up.startswith("MANUTENCAO")
-            ):
-                item = dict(item_base)
-                item["situacao"] = "MANUTENÇÃO"
-                item["motivo"] = _extrair_motivo_interrupcao_home(
-                    status_original
-                )
-                saida["manutencao"].append(item)
-                continue
-
-            if up.startswith("PARADA"):
-                item = dict(item_base)
-                item["situacao"] = "PARADA"
-                item["motivo"] = _extrair_motivo_interrupcao_home(
-                    status_original
-                )
-                saida["parada"].append(item)
-                continue
-
-            # 2) Preparações
-            prep = _classificar_preparacao_home(status_limpo)
-
-            if prep == "ativa":
-                item = dict(item_base)
-                item["situacao"] = "PREPARAÇÃO ATIVA"
-                saida["prep_ativa"].append(item)
-                continue
-
-            if prep == "aguardando":
-                item = dict(item_base)
-                item["situacao"] = "AGUARDANDO PREPARAÇÃO"
-                saida["prep_aguardando"].append(item)
-
-                # Regra já existente: aguardando setup continua produzindo.
-                item_prod = dict(item_base)
-                item_prod["situacao"] = "PRODUZINDO · SETUP AGUARDANDO"
-                saida["producao"].append(item_prod)
-                continue
-
-            # 3) Tudo que não está realmente fora de produção permanece produzindo
-            item_prod = dict(item_base)
-            item_prod["situacao"] = "PRODUZINDO"
-            saida["producao"].append(item_prod)
-
-            if not up.startswith("PRODUZINDO"):
-                item_outro = dict(item_base)
-                item_outro["situacao"] = "OUTRO / NÃO CLASSIFICADO"
-                saida["outros"].append(item_outro)
-
-    return saida
-
-
-def _totais_status_home(listas_status):
-    """Totais derivados EXCLUSIVAMENTE das listas reais."""
-    prep_ativa = len(listas_status.get("prep_ativa", []))
-    prep_aguardando = len(listas_status.get("prep_aguardando", []))
-
-    return {
-        "producao": len(listas_status.get("producao", [])),
-        "preparacao": prep_ativa + prep_aguardando,
-        "prep_ativa": prep_ativa,
-        "prep_aguardando": prep_aguardando,
-        "ajuste": len(listas_status.get("ajuste", [])),
-        "parada": len(listas_status.get("parada", [])),
-        "manutencao": len(listas_status.get("manutencao", [])),
-        "outros": len(listas_status.get("outros", [])),
-    }
-
-
-def _selecionar_kpi_home(tipo):
-    atual = st.session_state.get("home_kpi_detalhe")
-    st.session_state["home_kpi_detalhe"] = (
-        None if atual == tipo else tipo
-    )
-
-
-def _render_kpi_clicavel_home(
-    coluna,
-    tipo,
-    label,
-    valor,
-    icone,
-    cor,
-    detalhe,
-    prep_ativas=None,
-    prep_aguardando=None,
-):
-    """Renderiza o card visual existente com uma área clicável invisível."""
-    with coluna:
-        with st.container(key=f"kpi_click_{tipo}"):
-            if tipo == "preparacoes":
-                html_card = _render_prep_kpi(
-                    int(prep_ativas or 0),
-                    int(prep_aguardando or 0),
-                )
-            else:
-                html_card = _render_kpi(
-                    label,
-                    valor,
-                    icone,
-                    cor,
-                    detalhe,
-                )
-
-            st.markdown(html_card, unsafe_allow_html=True)
-
-            st.button(
-                f"Abrir {label}",
-                key=f"kpi_click_btn_{tipo}",
-                use_container_width=True,
-                help=f"Clique para ver as máquinas em {label.lower()}",
-                on_click=_selecionar_kpi_home,
-                args=(tipo,),
-            )
-
-
-def _df_detalhe_kpi_home(tipo, listas_status):
-    """DataFrame exibido ao clicar em um KPI."""
-    if tipo == "preparacoes":
-        itens = (
-            list(listas_status.get("prep_ativa", []))
-            + list(listas_status.get("prep_aguardando", []))
-        )
-    else:
-        itens = list(listas_status.get(tipo, []))
-
-    linhas = []
-    for item in itens:
-        status = str(item.get("status", "") or "").strip()
-
-        # A observação continua fora do detalhe operacional.
-        status = re.sub(
-            r"\s*\[Obs\s*:\s*.*?\]",
-            "",
-            status,
-            flags=re.IGNORECASE,
-        )
-        status = re.sub(r"[ \t]{2,}", " ", status).strip()
-
-        linhas.append(
-            {
-                "Máquina": item.get("maquina", ""),
-                "Situação": item.get("situacao", ""),
-                "Horário": item.get("hora", "") or "—",
-                "Operador / Preparador": item.get("operador", "") or "—",
-                "Motivo": item.get("motivo", "") or "—",
-                "Status": status,
-            }
-        )
-
-    if not linhas:
-        return pd.DataFrame(
-            columns=[
-                "Máquina",
-                "Situação",
-                "Horário",
-                "Operador / Preparador",
-                "Motivo",
-                "Status",
-            ]
-        )
-
-    return pd.DataFrame(linhas)
-
-
-def _render_detalhe_kpi_home(listas_status):
-    tipo = st.session_state.get("home_kpi_detalhe")
-    if not tipo:
-        return
-
-    mapa_titulos = {
-        "producao": ("▶ Máquinas produzindo", "#2DD4BF"),
-        "preparacoes": ("⚙ Preparações", "#F59E0B"),
-        "parada": ("■ Máquinas paradas", "#EF4444"),
-        "manutencao": ("⌁ Máquinas em manutenção", "#8B5CF6"),
-    }
-
-    if tipo not in mapa_titulos:
-        return
-
-    titulo, cor = mapa_titulos[tipo]
-    df = _df_detalhe_kpi_home(tipo, listas_status)
-
-    with st.container(key="home_kpi_detail_panel"):
-        c_titulo, c_fechar = st.columns([5.3, 0.7])
-
-        c_titulo.markdown(
-            f"""
-            <div style="
-                padding:10px 12px;
-                border-left:3px solid {cor};
-                border-radius:9px;
-                background:rgba(255,255,255,.025);
-                margin-top:2px;
-            ">
-                <div style="font-size:13px;font-weight:900;color:#F4F4F5;">
-                    {html.escape(titulo)}
-                </div>
-                <div style="font-size:10px;color:#8B8B98;margin-top:2px;">
-                    {len(df)} máquina(s) nesta situação agora
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-        c_fechar.button(
-            "✕ Fechar",
-            key="home_kpi_detail_close",
-            use_container_width=True,
-            on_click=_selecionar_kpi_home,
-            args=(tipo,),
-        )
-
-        if df.empty:
-            st.success("✅ Nenhuma máquina nesta situação.")
-        else:
-            st.dataframe(
-                df,
-                use_container_width=True,
-                hide_index=True,
-                height=min(390, 72 + len(df) * 35),
-            )
-
-
-
 def _render_kpi(label, valor, icone, cor, detalhe):
     return f'''<div class="kpi-card" style="--kpi-color:{cor}">
 <div class="kpi-head"><div class="kpi-label">{label}</div><div class="kpi-icon">{icone}</div></div>
@@ -6141,48 +5818,59 @@ def _extrair_motivo_interrupcao_home(status):
 
 
 def _interrupcoes_home(status_dict, estado_meta):
-    """Lista real de PARADA/MANUTENÇÃO, compartilhada com os KPIs."""
-    listas = _listas_status_home(
-        status_dict,
-        estado_meta,
-    )
-
+    """Lista máquinas atualmente em PARADA ou MANUTENÇÃO para o dashboard."""
     itens = []
-
-    for tipo, rotulo, prioridade in [
-        ("parada", "PARADA", 0),
-        ("manutencao", "MANUTENÇÃO", 1),
-    ]:
-        for origem in listas.get(tipo, []):
-            hora_inicio = str(origem.get("hora", "") or "").strip()
-            mins = (
-                _minutos_status_home(hora_inicio)
-                if hora_inicio
-                else 0
+    for setor, maquinas in [('AFC', TODAS_AFC), ('RTF', TODAS_RTF)]:
+        for maq in maquinas:
+            chave = f'{setor} {maq}'
+            status_original = _normalizar_status_operacional_atual(
+                status_dict.get(chave, 'PRODUZINDO')
             )
+            status = _status_operacional_sem_observacao(status_original)
+            up = str(status).strip().upper()
 
-            itens.append(
-                {
-                    "setor": origem.get("setor", ""),
-                    "maq": origem.get("maq", ""),
-                    "maquina": origem.get("maquina", ""),
-                    "tipo": tipo,
-                    "rotulo": rotulo,
-                    "motivo": origem.get("motivo", "") or "Sem motivo informado",
-                    "hora": hora_inicio,
-                    "mins": mins,
-                    "prioridade": prioridade,
-                }
-            )
+            # Proteção extra: se depois da normalização virou estado
+            # operacional, jamais pode aparecer no alerta vermelho.
+            if (
+                up.startswith("PRODUZINDO")
+                or up.startswith("PREPARANDO")
+                or up.startswith("PREPARAÇÃO")
+                or up.startswith("PREPARACAO")
+                or up.startswith("SEQUÊNCIA")
+                or up.startswith("SEQUENCIA")
+                or up.startswith("AGUARDANDO PREPARADOR")
+                or up.startswith("AJUSTE")
+            ):
+                continue
 
-    itens.sort(
-        key=lambda x: (
-            x["prioridade"],
-            -x["mins"],
-            x["setor"],
-            x["maq"],
-        )
-    )
+            if up.startswith('MANUTENÇÃO') or up.startswith('MANUTENCAO'):
+                tipo = 'manutencao'
+                rotulo = 'MANUTENÇÃO'
+                prioridade = 1
+            elif up.startswith('PARADA'):
+                tipo = 'parada'
+                rotulo = 'PARADA'
+                prioridade = 0
+            else:
+                continue
+
+            meta = estado_meta.get(chave, {}) or {}
+            hora_inicio = str(meta.get('hora', '') or '').strip()
+            mins = _minutos_status_home(hora_inicio) if hora_inicio else 0
+            itens.append({
+                'setor': setor,
+                'maq': str(maq),
+                'maquina': chave,
+                'tipo': tipo,
+                'rotulo': rotulo,
+                'motivo': _extrair_motivo_interrupcao_home(status_original),
+                'hora': hora_inicio,
+                'mins': mins,
+                'prioridade': prioridade,
+            })
+
+    # Paradas primeiro; dentro de cada grupo, as mais antigas primeiro.
+    itens.sort(key=lambda x: (x['prioridade'], -x['mins'], x['setor'], x['maq']))
     return itens
 
 
@@ -7951,6 +7639,96 @@ def tela_hub_relatorios():
         </div>
         """, unsafe_allow_html=True)
         botao_navegar("ACESSAR LIRS", 'lirs', use_container_width=True, type="primary")
+def _detalhe_kpi_home_simples(
+    tipo,
+    status_dict,
+    estado_meta,
+    interrupcoes,
+):
+    """Monta o detalhe dos KPIs usando apenas dados já carregados da Home."""
+    linhas = []
+
+    paradas = {
+        x["maquina"]: x
+        for x in interrupcoes
+        if x.get("tipo") == "parada"
+    }
+    manutencoes = {
+        x["maquina"]: x
+        for x in interrupcoes
+        if x.get("tipo") == "manutencao"
+    }
+
+    for setor, maquinas in [("AFC", TODAS_AFC), ("RTF", TODAS_RTF)]:
+        for maq in maquinas:
+            chave = f"{setor} {maq}"
+            status = _status_operacional_sem_observacao(
+                status_dict.get(chave, "PRODUZINDO")
+            )
+            up = str(status or "").strip().upper()
+            meta = estado_meta.get(chave, {}) or {}
+            prep = _classificar_preparacao_home(status)
+
+            incluir = False
+            situacao = ""
+            motivo = ""
+
+            if tipo == "parada":
+                if chave in paradas:
+                    incluir = True
+                    situacao = "PARADA"
+                    motivo = paradas[chave].get("motivo", "")
+
+            elif tipo == "manutencao":
+                if chave in manutencoes:
+                    incluir = True
+                    situacao = "MANUTENÇÃO"
+                    motivo = manutencoes[chave].get("motivo", "")
+
+            elif tipo == "preparacoes":
+                if prep == "ativa":
+                    incluir = True
+                    situacao = "PREPARAÇÃO ATIVA"
+                elif prep == "aguardando":
+                    incluir = True
+                    situacao = "AGUARDANDO PREPARAÇÃO"
+
+            elif tipo == "producao":
+                # Aguardando preparação continua em produção.
+                fora = (
+                    prep == "ativa"
+                    or up.startswith("AJUSTE")
+                    or chave in paradas
+                    or chave in manutencoes
+                )
+                if not fora:
+                    incluir = True
+                    situacao = (
+                        "PRODUZINDO · SETUP AGUARDANDO"
+                        if prep == "aguardando"
+                        else "PRODUZINDO"
+                    )
+
+            if not incluir:
+                continue
+
+            linhas.append(
+                {
+                    "Máquina": chave,
+                    "Situação": situacao,
+                    "Horário": str(meta.get("hora", "") or "") or "—",
+                    "Operador / Preparador": (
+                        str(meta.get("operador", "") or "") or "—"
+                    ),
+                    "Motivo": motivo or "—",
+                    "Status": status,
+                }
+            )
+
+    return pd.DataFrame(linhas)
+
+
+
 def _tela_menu_dashboard_9999():
     exibir_alertas_preset()
     exibir_alertas_preparador()
@@ -7958,36 +7736,85 @@ def _tela_menu_dashboard_9999():
     status_dict = ler_status_atual()
     estado_meta = _estado_atual_home()
 
-    # Uma única fonte de verdade para os KPIs.
-    listas_status = _listas_status_home(
+    resumo_afc = _resumo_setor_home(
+        status_dict,
+        'AFC',
+        TODAS_AFC,
+    )
+    resumo_rtf = _resumo_setor_home(
+        status_dict,
+        'RTF',
+        TODAS_RTF,
+    )
+
+    chaves_total = [
+        'producao',
+        'preparacao',
+        'prep_ativa',
+        'prep_aguardando',
+        'ajuste',
+        'parada',
+        'manutencao',
+        'outros',
+    ]
+    totais = {
+        chave: resumo_afc[chave] + resumo_rtf[chave]
+        for chave in chaves_total
+    }
+
+    total_maquinas = len(TODAS_AFC) + len(TODAS_RTF)
+
+    # Fonte real das máquinas fora de produção.
+    interrupcoes_reais = _interrupcoes_home(
         status_dict,
         estado_meta,
     )
-    totais = _totais_status_home(listas_status)
+    paradas_reais = [
+        x for x in interrupcoes_reais
+        if x.get("tipo") == "parada"
+    ]
+    manutencoes_reais = [
+        x for x in interrupcoes_reais
+        if x.get("tipo") == "manutencao"
+    ]
 
-    # Mantém os resumos por setor para as barras inferiores.
-    resumo_afc = _resumo_setor_home(status_dict, 'AFC', TODAS_AFC)
-    resumo_rtf = _resumo_setor_home(status_dict, 'RTF', TODAS_RTF)
+    totais["parada"] = len(paradas_reais)
+    totais["manutencao"] = len(manutencoes_reais)
 
-    # Sincroniza também Parada/Manutenção por setor usando a mesma regra.
-    resumo_afc['parada'] = sum(
-        1 for x in listas_status['parada']
-        if x['setor'] == 'AFC'
-    )
-    resumo_rtf['parada'] = sum(
-        1 for x in listas_status['parada']
-        if x['setor'] == 'RTF'
-    )
-    resumo_afc['manutencao'] = sum(
-        1 for x in listas_status['manutencao']
-        if x['setor'] == 'AFC'
-    )
-    resumo_rtf['manutencao'] = sum(
-        1 for x in listas_status['manutencao']
-        if x['setor'] == 'RTF'
+    # Produção é o total menos SOMENTE os estados que realmente
+    # retiram a máquina de produção.
+    totais["producao"] = max(
+        0,
+        total_maquinas
+        - totais["prep_ativa"]
+        - totais["ajuste"]
+        - totais["parada"]
+        - totais["manutencao"],
     )
 
-    total_maquinas = len(TODAS_AFC) + len(TODAS_RTF)
+    # Mantém as barras por setor sincronizadas com a mesma regra real.
+    for setor_nome, resumo in [
+        ("AFC", resumo_afc),
+        ("RTF", resumo_rtf),
+    ]:
+        resumo["parada"] = sum(
+            1
+            for x in paradas_reais
+            if x.get("setor") == setor_nome
+        )
+        resumo["manutencao"] = sum(
+            1
+            for x in manutencoes_reais
+            if x.get("setor") == setor_nome
+        )
+        resumo["producao"] = max(
+            0,
+            resumo["total"]
+            - resumo["prep_ativa"]
+            - resumo["ajuste"]
+            - resumo["parada"]
+            - resumo["manutencao"],
+        )
 
     agora = datetime.now(FUSO_BR)
     metricas_mes = _metricas_setups_mes_home(agora)
@@ -8011,60 +7838,196 @@ def _tela_menu_dashboard_9999():
     )
     st.markdown(html_boas_vindas, unsafe_allow_html=True)
 
-    # O alerta usa a mesma fonte de verdade dos cards.
-    # Se "Paradas" for 0, nenhuma parada pode aparecer aqui.
-    html_interrupcoes = _render_interrupcoes_home(
-        status_dict,
-        estado_meta,
+    # O alerta e o KPI usam a mesma fonte.
+    if interrupcoes_reais:
+        qtd_parada = len(paradas_reais)
+        qtd_manut = len(manutencoes_reais)
+
+        detalhes_alerta = []
+        if qtd_parada:
+            detalhes_alerta.append(
+                f"{qtd_parada} parada"
+                + ("s" if qtd_parada != 1 else "")
+            )
+        if qtd_manut:
+            detalhes_alerta.append(
+                f"{qtd_manut} em manutenção"
+            )
+
+        cards_alerta = []
+        for x in interrupcoes_reais:
+            hora_alerta = (
+                html.escape(x["hora"])
+                if x.get("hora")
+                else "—"
+            )
+            tempo_alerta = (
+                _tempo_curto_home(x["mins"])
+                if x.get("hora")
+                else "Sem horário"
+            )
+
+            cards_alerta.append(
+                f'<div class="stop-alert-item {x["tipo"]}">'
+                f'<div class="stop-alert-badge">'
+                f'{html.escape(x["rotulo"])}</div>'
+                '<div>'
+                f'<div class="stop-alert-machine">'
+                f'{html.escape(x["maquina"])}</div>'
+                f'<div class="stop-alert-reason">'
+                f'{html.escape(x["motivo"])}</div>'
+                '</div>'
+                f'<div class="stop-alert-time">'
+                f'<span>desde {hora_alerta}</span>'
+                f'há {html.escape(tempo_alerta)}</div>'
+                '</div>'
+            )
+
+        html_interrupcoes = (
+            '<div class="stop-alert">'
+            '<div class="stop-alert-head">'
+            '<div class="stop-alert-title-wrap">'
+            '<div class="stop-alert-icon">⚠</div>'
+            '<div>'
+            '<div class="stop-alert-title">'
+            'ATENÇÃO · MÁQUINAS FORA DE PRODUÇÃO'
+            '</div>'
+            f'<div class="stop-alert-sub">'
+            f'{" · ".join(detalhes_alerta)}'
+            ' — verifique máquina e motivo'
+            '</div>'
+            '</div></div>'
+            f'<div class="stop-alert-count">'
+            f'{len(interrupcoes_reais)}</div>'
+            '</div>'
+            f'<div class="stop-alert-list">'
+            f'{"".join(cards_alerta)}</div>'
+            '</div>'
+        )
+        st.markdown(
+            html_interrupcoes,
+            unsafe_allow_html=True,
+        )
+
+    html_kpis = (
+        '<div class="kpi-grid">'
+        + _render_kpi(
+            'Produzindo',
+            totais['producao'],
+            '▶',
+            '#2DD4BF',
+            f'de {total_maquinas} máquinas',
+        )
+        + _render_prep_kpi(
+            totais['prep_ativa'],
+            totais['prep_aguardando'],
+        )
+        + _render_kpi(
+            'Paradas',
+            totais['parada'],
+            '■',
+            '#EF4444',
+            'requerem acompanhamento',
+        )
+        + _render_kpi(
+            'Manutenção',
+            totais['manutencao'],
+            '⌁',
+            '#8B5CF6',
+            'máquinas em manutenção',
+        )
+        + '</div>'
     )
-    if html_interrupcoes:
-        st.markdown(html_interrupcoes, unsafe_allow_html=True)
+    st.markdown(
+        html_kpis,
+        unsafe_allow_html=True,
+    )
 
-    kpi_cols = st.columns(4, gap="small")
+    # Botões nativos e simples. Sem CSS sobreposto e sem callback.
+    c_ver_prod, c_ver_prep, c_ver_par, c_ver_man = st.columns(4)
 
-    _render_kpi_clicavel_home(
-        kpi_cols[0],
+    if c_ver_prod.button(
+        "👁 Ver Produzindo",
+        key="home_kpi_ver_produzindo",
+        use_container_width=True,
+    ):
+        st.session_state["home_kpi_detalhe"] = "producao"
+
+    if c_ver_prep.button(
+        "👁 Ver Preparações",
+        key="home_kpi_ver_preparacoes",
+        use_container_width=True,
+    ):
+        st.session_state["home_kpi_detalhe"] = "preparacoes"
+
+    if c_ver_par.button(
+        "👁 Ver Paradas",
+        key="home_kpi_ver_paradas",
+        use_container_width=True,
+    ):
+        st.session_state["home_kpi_detalhe"] = "parada"
+
+    if c_ver_man.button(
+        "👁 Ver Manutenção",
+        key="home_kpi_ver_manutencao",
+        use_container_width=True,
+    ):
+        st.session_state["home_kpi_detalhe"] = "manutencao"
+
+    detalhe_tipo = st.session_state.get(
+        "home_kpi_detalhe"
+    )
+
+    if detalhe_tipo in {
         "producao",
-        "Produzindo",
-        totais["producao"],
-        "▶",
-        "#2DD4BF",
-        f"de {total_maquinas} máquinas",
-    )
-
-    _render_kpi_clicavel_home(
-        kpi_cols[1],
         "preparacoes",
-        "Preparações",
-        totais["preparacao"],
-        "⚙",
-        "#F59E0B",
-        "setup ativo / aguardando",
-        prep_ativas=totais["prep_ativa"],
-        prep_aguardando=totais["prep_aguardando"],
-    )
-
-    _render_kpi_clicavel_home(
-        kpi_cols[2],
         "parada",
-        "Paradas",
-        totais["parada"],
-        "■",
-        "#EF4444",
-        "requerem acompanhamento",
-    )
-
-    _render_kpi_clicavel_home(
-        kpi_cols[3],
         "manutencao",
-        "Manutenção",
-        totais["manutencao"],
-        "⌁",
-        "#8B5CF6",
-        "máquinas em manutenção",
-    )
+    }:
+        titulos_detalhe = {
+            "producao": "▶ Máquinas Produzindo",
+            "preparacoes": "⚙ Preparações",
+            "parada": "■ Máquinas Paradas",
+            "manutencao": "⌁ Máquinas em Manutenção",
+        }
 
-    _render_detalhe_kpi_home(listas_status)
+        c_det_titulo, c_det_fechar = st.columns([5, 1])
+        c_det_titulo.markdown(
+            f"### {titulos_detalhe[detalhe_tipo]}"
+        )
+
+        if c_det_fechar.button(
+            "✕ Fechar",
+            key="home_kpi_fechar_detalhe",
+            use_container_width=True,
+        ):
+            st.session_state.pop(
+                "home_kpi_detalhe",
+                None,
+            )
+            st.rerun()
+
+        df_detalhe = _detalhe_kpi_home_simples(
+            detalhe_tipo,
+            status_dict,
+            estado_meta,
+            interrupcoes_reais,
+        )
+
+        if df_detalhe.empty:
+            st.success(
+                "✅ Nenhuma máquina nesta situação."
+            )
+        else:
+            st.dataframe(
+                df_detalhe,
+                use_container_width=True,
+                hide_index=True,
+                height=min(
+                    420,
+                    80 + len(df_detalhe) * 35,
+                ),
+            )
 
     # Recuperação rápida dos armários para o próprio Pré-Set.
     # O backup representa o estado COMPLETO imediatamente anterior à última
