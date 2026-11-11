@@ -680,6 +680,86 @@ def remover_tabela(nome_tabela):
 # (Mantenha o restante das suas variáveis globais aqui, como FUSO_BR, TODAS_AFC, etc)
 # Obs: O ARQUIVO_REBOLOS (Excel) pode continuar igual, pois planilhas estáticas de leitura ficam no código fonte.
 
+
+# =============================================================
+# USINAGEM DIGITAL
+# =============================================================
+
+USINAGEM_GRUPOS = {
+    "Planta A · Máquinas": [
+        "02-252","03-254","04-253","05-255","06-256","07-258","08-259","09-260",
+        "10-261","11-262","15-264","17-266","18-267","16-265","19-268","20-875",
+        "21-272","22-273","23-270","24-271","25-036","26-033","27-032","28-034",
+        "29-030","30-027","31-023","32-022","33-021","34-019","35-012","36-011",
+        "37-035","38-038","39-037","40-039","41-040","42-048","43-049","44-060",
+        "45-056","54-052","55-063","56-062","57-061","70-057","71-053","72-042",
+    ],
+    "Planta A · Tornos": [
+        "N01-011","N02-013","N03-012","N04-015","N05-014","N06-017","N07-016",
+        "N08-118","N09-119","N10-120","N11-266","N12-267","N13-269","N14-270",
+        "N15-273","N16-279","N17-278","N18-283","N19-282","N20-280","N21-281",
+        "N22-284","N23-285","N24-010","N25-009","N26-008","N27-268","N28-276",
+        "N29-275","N30-272","N31-271","N32-274","N33-277","N34-664","N35-665",
+        "N36-668","N37-669","N38-667","N39-666","N40-294",
+    ],
+    "Planta B · TNL": [
+        "01-087","111-098","112-097","113-091","114-096","115-094","116-092",
+        "117-093","118-095","119-090","120-086","121-088","12-134","122-085",
+        "123-087","124-089","125-084","126-065","127-101","128-102","129-099",
+        "130-103","131-104","13-140","132-105","133-106","134-100","135-113",
+        "136-115","137-116","138-114","139-117","140-118","141-120","14-136",
+        "142-119","143-141","144-143","145-142","146-135","147-148","148-145",
+        "149-144","150-147","151-149","152-146","153-150","154-129","155-130",
+        "46-161","47-162","48-163","49-164","50-170","51-168","52-178","53-185",
+        "58-215","59-216","60-206","61-194","62-197","63-190","64-229","65-231",
+        "66-234","67-232","68-230","69-235","73-217","74-221","75-220","76-228",
+        "77-237","78-236","79-274","80-275","81-276","82-007",
+    ],
+    "Planta B · Tornos": [
+        "G01-429","G02-351","G03-352","N41-673","N42-672",
+        "N43-670","N44-671","N45-222","N46-574","N47-575",
+    ],
+    "Planta B · Citizen": [
+        "C01-315","C01-790","C02-520","C03-518","C04-519","C05-517",
+        "C06-525","C07-530","C17-757","C18-756","C23-761",
+    ],
+}
+
+USINAGEM_GRUPO_PLANTA = {
+    "Planta A · Máquinas": "PLANTA A",
+    "Planta A · Tornos": "PLANTA A",
+    "Planta B · TNL": "PLANTA B",
+    "Planta B · Tornos": "PLANTA B",
+    "Planta B · Citizen": "PLANTA B",
+}
+
+USINAGEM_TODAS_MAQUINAS = [
+    maquina
+    for maquinas in USINAGEM_GRUPOS.values()
+    for maquina in maquinas
+]
+
+# Códigos provisórios, totalmente separados da Afiação.
+# Depois basta trocar somente este bloco.
+CODIGOS_USINAGEM = {
+    "8888": ("GERAL", "GERÊNCIA USINAGEM", "usi_adm"),
+    "8101": ("1° TURNO", "PLANTA A", "usi_operador"),
+    "8201": ("2° TURNO", "PLANTA A", "usi_operador"),
+    "8301": ("3° TURNO", "PLANTA A", "usi_operador"),
+    "8102": ("1° TURNO", "PLANTA B", "usi_operador"),
+    "8202": ("2° TURNO", "PLANTA B", "usi_operador"),
+    "8302": ("3° TURNO", "PLANTA B", "usi_operador"),
+}
+
+USINAGEM_STATUS_VALIDOS = [
+    "PRODUZINDO",
+    "PREPARAÇÃO",
+    "AJUSTE",
+    "PARADA",
+    "MANUTENÇÃO",
+]
+
+
 # --- CONFIGURAÇÃO BASE DO APP ---
 FUSO_BR = timezone(timedelta(hours=-3))
 
@@ -2177,6 +2257,10 @@ ARQUIVO_CNC = "banco_cnc.csv"
 ARQUIVO_FECHAMENTO = "ultimo_fechamento.csv"
 ARQUIVO_CENTERLESS = "centerless_ciclos.csv"
 ARQUIVO_CENTERLESS_ESTADO = "centerless_estado.csv"
+
+# Usinagem Digital usa persistência totalmente separada da Afiação.
+ARQUIVO_USINAGEM_DADOS = "banco_usinagem_operacao.csv"
+
 ARQUIVO_REBOLOS = "rebolos.xlsx"
 
 
@@ -2188,7 +2272,8 @@ TABELAS_TURSO = {
     ARQUIVO_HISTORICO_EVENTOS, ARQUIVO_ARMARIOS, ARQUIVO_ALERTAS,
     ARQUIVO_CNC, ARQUIVO_FECHAMENTO, "historico_devolucoes.csv",
     ARQUIVO_ARMARIOS_BACKUP, ARQUIVO_ARMARIOS_HISTORICO,
-    ARQUIVO_CENTERLESS, ARQUIVO_CENTERLESS_ESTADO
+    ARQUIVO_CENTERLESS, ARQUIVO_CENTERLESS_ESTADO,
+    ARQUIVO_USINAGEM_DADOS
 }
 
 # Referências estáveis às implementações reais restauradas no início do arquivo.
@@ -3887,7 +3972,10 @@ def extrair_tags_producao(status_str):
     return tags.strip()
 
 # --- INICIALIZAÇÃO DO SESSION STATE ---
-if 'tela_atual' not in st.session_state: st.session_state['tela_atual'] = 'login'
+if 'tela_atual' not in st.session_state: st.session_state['tela_atual'] = 'portal'
+if 'sistema_selecionado' not in st.session_state: st.session_state['sistema_selecionado'] = ''
+if 'usinagem_maquina_ativa' not in st.session_state: st.session_state['usinagem_maquina_ativa'] = None
+if 'usinagem_grupo_ativo' not in st.session_state: st.session_state['usinagem_grupo_ativo'] = None
 if 'operador' not in st.session_state: st.session_state['operador'] = ''
 if 'turno' not in st.session_state: st.session_state['turno'] = ''
 if 'setor_usuario' not in st.session_state: st.session_state['setor_usuario'] = ''
@@ -3903,7 +3991,11 @@ if 'lirs_maq_ativa' not in st.session_state: st.session_state['lirs_maq_ativa'] 
 
 # Login automático por UM cookie assinado.
 # O navegador só guarda um token validado; o código de acesso não é salvo.
-if not st.session_state['operador'] and not st.session_state['logout_realizado']:
+if (
+    st.session_state.get('sistema_selecionado') == 'afiacao'
+    and not st.session_state['operador']
+    and not st.session_state['logout_realizado']
+):
     token_cookie = cookies_salvos.get(COOKIE_LOGIN)
     acesso = validar_token_login(token_cookie) if token_cookie else None
     if acesso:
@@ -5529,6 +5621,9 @@ def _encerrar_sessao_topbar():
     st.session_state['turno'] = ''
     st.session_state['setor_usuario'] = ''
     st.session_state['perfil'] = ''
+    st.session_state['sistema_selecionado'] = ''
+    st.session_state['usinagem_maquina_ativa'] = None
+    st.session_state['usinagem_grupo_ativo'] = None
     st.session_state['maq_ativa'] = None
     st.session_state['celula_selecionada'] = None
     try:
@@ -5548,7 +5643,7 @@ def _encerrar_sessao_topbar():
                 pass
     except Exception:
         pass
-    mudar_tela('login', forcar_rerun=True)
+    mudar_tela('portal', forcar_rerun=True)
 
 
 def renderizar_topbar(tela_atual):
@@ -7541,7 +7636,826 @@ def tela_centerless():
                         st.error(f"Não foi possível excluir: {exc}")
 
 
+# =============================================================
+# PORTAL DE SISTEMAS
+# =============================================================
+
+def _selecionar_sistema(nome):
+    st.session_state["sistema_selecionado"] = nome
+    st.session_state["logout_realizado"] = False
+
+    if nome == "afiacao":
+        mudar_tela("login", forcar_rerun=True)
+    else:
+        mudar_tela("usinagem_login", forcar_rerun=True)
+
+
+def tela_portal():
+    st.markdown(
+        """
+        <div style="
+            max-width:980px;
+            margin:7vh auto 26px auto;
+            text-align:center;
+        ">
+            <div style="
+                font-size:11px;
+                font-weight:900;
+                letter-spacing:1.6px;
+                color:#A78BFA;
+            ">OPERAÇÃO DIGITAL · NEODENT</div>
+            <div style="
+                font-size:36px;
+                line-height:1.05;
+                font-weight:950;
+                color:#F4F4F5;
+                margin-top:8px;
+            ">Escolha o ambiente de operação</div>
+            <div style="
+                color:#8B8B98;
+                font-size:13px;
+                margin-top:9px;
+            ">Afiação e Usinagem compartilham o mesmo link, mas possuem acessos e dados independentes.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    c_afc, c_usi = st.columns(2, gap="large")
+
+    with c_afc:
+        st.markdown(
+            """
+            <div style="
+                min-height:220px;
+                padding:28px;
+                border-radius:20px;
+                border:1px solid #2B263A;
+                background:
+                    radial-gradient(circle at 90% 10%, rgba(139,92,246,.20), transparent 34%),
+                    linear-gradient(145deg,#111018,#0C0C11);
+            ">
+                <div style="font-size:30px">◉</div>
+                <div style="font-size:25px;font-weight:950;color:#F4F4F5;margin-top:14px;">
+                    AFIAÇÃO DIGITAL
+                </div>
+                <div style="font-size:12px;color:#A1A1AA;margin-top:8px;line-height:1.6;">
+                    Afiação, Retífica, Pré-Set, OTEC, Centerless, programação e relatórios.
+                </div>
+                <div style="margin-top:22px;color:#A78BFA;font-size:11px;font-weight:900;">
+                    AMBIENTE ATUAL
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.button(
+            "ENTRAR NA AFIAÇÃO",
+            key="portal_entrar_afiacao",
+            type="primary",
+            use_container_width=True,
+            on_click=_selecionar_sistema,
+            args=("afiacao",),
+        )
+
+    with c_usi:
+        st.markdown(
+            """
+            <div style="
+                min-height:220px;
+                padding:28px;
+                border-radius:20px;
+                border:1px solid #17383A;
+                background:
+                    radial-gradient(circle at 90% 10%, rgba(45,212,191,.18), transparent 34%),
+                    linear-gradient(145deg,#0D1515,#0B0E10);
+            ">
+                <div style="font-size:30px">▦</div>
+                <div style="font-size:25px;font-weight:950;color:#F4F4F5;margin-top:14px;">
+                    USINAGEM DIGITAL
+                </div>
+                <div style="font-size:12px;color:#A1A1AA;margin-top:8px;line-height:1.6;">
+                    Planta A, Planta B, TNL, Tornos e Citizen em uma operação independente.
+                </div>
+                <div style="margin-top:22px;color:#2DD4BF;font-size:11px;font-weight:900;">
+                    188 MÁQUINAS CADASTRADAS
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        st.button(
+            "ENTRAR NA USINAGEM",
+            key="portal_entrar_usinagem",
+            use_container_width=True,
+            on_click=_selecionar_sistema,
+            args=("usinagem",),
+        )
+
+
+# =============================================================
+# USINAGEM · DADOS E STATUS
+# =============================================================
+
+def _usinagem_grupos_permitidos():
+    perfil = st.session_state.get("perfil", "")
+    setor = str(st.session_state.get("setor_usuario", "") or "").upper()
+
+    if perfil == "usi_adm":
+        return list(USINAGEM_GRUPOS.keys())
+
+    return [
+        grupo
+        for grupo, planta in USINAGEM_GRUPO_PLANTA.items()
+        if planta == setor
+    ]
+
+
+def _usinagem_maquinas_permitidas():
+    maquinas = []
+    for grupo in _usinagem_grupos_permitidos():
+        maquinas.extend(USINAGEM_GRUPOS.get(grupo, []))
+    return maquinas
+
+
+def _usinagem_status_base(status):
+    up = str(status or "PRODUZINDO").strip().upper()
+    for nome in USINAGEM_STATUS_VALIDOS:
+        if up.startswith(nome):
+            return nome
+    return "PRODUZINDO"
+
+
+def _usinagem_status_atual():
+    """Uma consulta traz o último apontamento de cada máquina."""
+    saida = {
+        maq: {
+            "Grupo": "",
+            "Maquina": maq,
+            "Status": "PRODUZINDO",
+            "Motivo": "",
+            "Ordem": "",
+            "Item": "",
+            "Observacao": "",
+            "Operador": "",
+            "Turno": "",
+            "Data_Hora": "",
+        }
+        for maq in USINAGEM_TODAS_MAQUINAS
+    }
+
+    try:
+        if not tabela_existe(ARQUIVO_USINAGEM_DADOS):
+            return saida
+
+        tab = _quote_identifier(ARQUIVO_USINAGEM_DADOS)
+        result = turso_request(
+            f"""SELECT t.*
+                FROM {tab} AS t
+                INNER JOIN (
+                    SELECT "Maquina", MAX(rowid) AS rid
+                    FROM {tab}
+                    GROUP BY "Maquina"
+                ) AS x
+                ON x.rid=t.rowid""",
+            want_rows=True,
+        )
+        df = _resultado_turso_df(result)
+
+        if df.empty:
+            return saida
+
+        for _, row in df.iterrows():
+            maq = str(row.get("Maquina", "") or "").strip()
+            if maq not in saida:
+                continue
+            saida[maq] = {
+                "Grupo": str(row.get("Grupo", "") or "").strip(),
+                "Maquina": maq,
+                "Status": str(row.get("Status", "PRODUZINDO") or "PRODUZINDO").strip(),
+                "Motivo": str(row.get("Motivo", "") or "").strip(),
+                "Ordem": str(row.get("Ordem", "") or "").replace(".0", "").strip(),
+                "Item": str(row.get("Item", "") or "").replace(".0", "").strip(),
+                "Observacao": str(row.get("Observacao", "") or "").strip(),
+                "Operador": str(row.get("Operador", "") or "").strip(),
+                "Turno": str(row.get("Turno", "") or "").strip(),
+                "Data_Hora": str(row.get("Data_Hora", "") or "").strip(),
+            }
+
+    except Exception:
+        # Se a conexão oscilar, o módulo abre com estado padrão em vez de travar.
+        pass
+
+    return saida
+
+
+def _usinagem_grupo_maquina(maquina):
+    for grupo, maquinas in USINAGEM_GRUPOS.items():
+        if maquina in maquinas:
+            return grupo
+    return ""
+
+
+def _usinagem_salvar_status(
+    maquina,
+    status,
+    motivo="",
+    ordem="",
+    item="",
+    observacao="",
+):
+    maquina = str(maquina or "").strip()
+    if maquina not in USINAGEM_TODAS_MAQUINAS:
+        raise RuntimeError("Máquina de Usinagem inválida.")
+
+    status = _usinagem_status_base(status)
+    grupo = _usinagem_grupo_maquina(maquina)
+
+    salvar_csv(
+        {
+            "Data_Hora": datetime.now(FUSO_BR).strftime("%d/%m/%Y %H:%M:%S"),
+            "Grupo": grupo,
+            "Planta": USINAGEM_GRUPO_PLANTA.get(grupo, ""),
+            "Maquina": maquina,
+            "Status": status,
+            "Motivo": str(motivo or "").strip(),
+            "Ordem": str(ordem or "").strip().upper(),
+            "Item": str(item or "").strip().upper(),
+            "Observacao": str(observacao or "").strip(),
+            "Operador": str(st.session_state.get("operador", "") or ""),
+            "Turno": str(st.session_state.get("turno", "") or ""),
+        },
+        ARQUIVO_USINAGEM_DADOS,
+    )
+
+
+def _usinagem_totais(status_map, maquinas):
+    totais = {k: 0 for k in USINAGEM_STATUS_VALIDOS}
+    for maq in maquinas:
+        base = _usinagem_status_base(
+            status_map.get(maq, {}).get("Status", "PRODUZINDO")
+        )
+        totais[base] += 1
+    return totais
+
+
+def _usinagem_cor_status(status):
+    return {
+        "PRODUZINDO": "#2DD4BF",
+        "PREPARAÇÃO": "#F59E0B",
+        "AJUSTE": "#EC4899",
+        "PARADA": "#EF4444",
+        "MANUTENÇÃO": "#8B5CF6",
+    }.get(_usinagem_status_base(status), "#71717A")
+
+
+def _usinagem_icone_status(status):
+    return {
+        "PRODUZINDO": "▶",
+        "PREPARAÇÃO": "⚙",
+        "AJUSTE": "🎯",
+        "PARADA": "■",
+        "MANUTENÇÃO": "⌁",
+    }.get(_usinagem_status_base(status), "•")
+
+
+# =============================================================
+# USINAGEM · LOGIN
+# =============================================================
+
+def tela_usinagem_login():
+    c_voltar, _ = st.columns([1.2, 5])
+    if c_voltar.button(
+        "← Sistemas",
+        key="usinagem_login_voltar",
+        use_container_width=True,
+    ):
+        st.session_state["sistema_selecionado"] = ""
+        mudar_tela("portal", forcar_rerun=True)
+
+    st.markdown(
+        """
+        <div style="max-width:720px;margin:25px auto 18px auto;text-align:center;">
+            <div style="font-size:11px;font-weight:900;color:#2DD4BF;letter-spacing:1.5px;">
+                OPERAÇÃO DIGITAL · NEODENT
+            </div>
+            <div style="font-size:34px;font-weight:950;color:#F4F4F5;margin-top:8px;">
+                USINAGEM DIGITAL
+            </div>
+            <div style="font-size:13px;color:#8B8B98;margin-top:7px;">
+                Planta A · Planta B · TNL · Tornos · Citizen
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    with st.container():
+        cod = st.text_input(
+            "Código de acesso da Usinagem:",
+            type="password",
+            key="usinagem_login_codigo",
+            placeholder="Digite o código...",
+        )
+        nome = st.text_input(
+            "Nome do Colaborador / RE:",
+            key="usinagem_login_nome",
+            placeholder="Digite seu nome...",
+        )
+
+        if st.button(
+            "ACESSAR USINAGEM DIGITAL",
+            key="usinagem_login_entrar",
+            type="primary",
+            use_container_width=True,
+        ):
+            acesso = CODIGOS_USINAGEM.get(str(cod).strip())
+
+            if not acesso or not nome.strip():
+                st.error("⚠️ Código ou nome inválido.")
+                return
+
+            turno_val, setor_val, perfil_val = acesso
+
+            if perfil_val != "usi_adm" and not pode_logar(turno_val):
+                st.error(
+                    f"🚫 Acesso fora do horário permitido para o {turno_val}."
+                )
+                return
+
+            st.session_state["logout_realizado"] = False
+            st.session_state["sistema_selecionado"] = "usinagem"
+            st.session_state["turno"] = turno_val
+            st.session_state["setor_usuario"] = setor_val
+            st.session_state["perfil"] = perfil_val
+            st.session_state["operador"] = nome.strip().upper()
+            st.session_state["usinagem_maquina_ativa"] = None
+            st.session_state["usinagem_grupo_ativo"] = None
+
+            mudar_tela("usinagem_menu", forcar_rerun=True)
+
+
+# =============================================================
+# USINAGEM · TOPBAR
+# =============================================================
+
+def renderizar_topbar_usinagem(tela_atual):
+    nome = str(st.session_state.get("operador", "") or "Usuário")
+    turno = str(st.session_state.get("turno", "") or "")
+    setor = str(st.session_state.get("setor_usuario", "") or "")
+    inicial = nome[:1].upper() if nome else "U"
+
+    with st.container(key="usinagem_topbar"):
+        c_brand, c_user = st.columns([4.4, 1.6])
+
+        c_brand.markdown(
+            """
+            <div style="
+                padding:10px 14px;
+                min-height:56px;
+                border-radius:14px;
+                border:1px solid #203334;
+                background:#101416;
+                display:flex;
+                align-items:center;
+                gap:12px;
+            ">
+                <div style="
+                    width:34px;height:34px;border-radius:11px;
+                    display:flex;align-items:center;justify-content:center;
+                    background:rgba(45,212,191,.12);
+                    color:#2DD4BF;font-size:18px;font-weight:900;
+                ">U</div>
+                <div>
+                    <div style="font-size:13px;font-weight:950;color:#F4F4F5;">USINAGEM DIGITAL</div>
+                    <div style="font-size:9px;color:#71717A;margin-top:2px;">OPERAÇÃO EM TEMPO REAL · NEODENT</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        with c_user:
+            c_info, c_sair = st.columns([4, 1])
+            c_info.markdown(
+                f"""
+                <div style="text-align:right;padding-top:8px;">
+                    <div style="font-size:11px;font-weight:900;color:#F4F4F5;">{html.escape(nome)}</div>
+                    <div style="font-size:9px;color:#71717A;">{html.escape(turno)} · {html.escape(setor)}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            if c_sair.button(
+                f"{inicial} ↪",
+                key="usinagem_topbar_sair",
+                help="Sair",
+                use_container_width=True,
+            ):
+                _encerrar_sessao_topbar()
+
+    links = [
+        ("usinagem_menu", "⌂ Início"),
+        ("usinagem_maquinas", "▦ Máquinas"),
+        ("usinagem_historico", "↗ Histórico"),
+    ]
+
+    cols = st.columns(len(links))
+    for col, (destino, label) in zip(cols, links):
+        col.button(
+            label,
+            key=f"usi_nav_{destino}",
+            type="primary" if tela_atual == destino else "secondary",
+            use_container_width=True,
+            on_click=mudar_tela,
+            args=(destino,),
+        )
+
+
+# =============================================================
+# USINAGEM · DASHBOARD
+# =============================================================
+
+def tela_usinagem_menu():
+    maquinas = _usinagem_maquinas_permitidas()
+    status_map = _usinagem_status_atual()
+    totais = _usinagem_totais(status_map, maquinas)
+
+    nome = str(st.session_state.get("operador", "") or "")
+    st.markdown(
+        f"""
+        <div style="margin:18px 0 16px 0;">
+            <div style="font-size:10px;font-weight:900;color:#2DD4BF;letter-spacing:1px;">
+                PAINEL OPERACIONAL · USINAGEM
+            </div>
+            <div style="font-size:29px;font-weight:950;color:#F4F4F5;margin-top:4px;">
+                Olá, {html.escape(nome)}.
+            </div>
+            <div style="font-size:11px;color:#8B8B98;margin-top:4px;">
+                Visão atual das máquinas disponíveis para o seu acesso.
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    k1, k2, k3, k4, k5 = st.columns(5)
+
+    cards = [
+        (k1, "Produzindo", totais["PRODUZINDO"], "#2DD4BF", "▶"),
+        (k2, "Preparação", totais["PREPARAÇÃO"], "#F59E0B", "⚙"),
+        (k3, "Ajuste", totais["AJUSTE"], "#EC4899", "🎯"),
+        (k4, "Parada", totais["PARADA"], "#EF4444", "■"),
+        (k5, "Manutenção", totais["MANUTENÇÃO"], "#8B5CF6", "⌁"),
+    ]
+
+    for col, label, valor, cor, icon in cards:
+        col.markdown(
+            f"""
+            <div style="
+                min-height:112px;
+                padding:14px;
+                border-radius:14px;
+                border:1px solid #27272A;
+                border-top:3px solid {cor};
+                background:#121216;
+            ">
+                <div style="font-size:9px;font-weight:900;color:#8B8B98;">{label.upper()}</div>
+                <div style="font-size:29px;font-weight:950;color:#F4F4F5;margin-top:8px;">{valor}</div>
+                <div style="font-size:10px;color:{cor};margin-top:4px;">{icon} máquinas</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("### Produção por grupo")
+
+    grupos = _usinagem_grupos_permitidos()
+    for grupo in grupos:
+        lista = USINAGEM_GRUPOS[grupo]
+        t = _usinagem_totais(status_map, lista)
+        total = len(lista)
+        prod = t["PRODUZINDO"]
+        pct = (prod / total * 100) if total else 0
+
+        st.markdown(
+            f"""
+            <div style="
+                padding:12px 14px;
+                border-radius:12px;
+                border:1px solid #22272A;
+                background:#101214;
+                margin-bottom:8px;
+            ">
+                <div style="display:flex;justify-content:space-between;gap:12px;">
+                    <div>
+                        <div style="font-size:12px;font-weight:900;color:#F4F4F5;">{html.escape(grupo)}</div>
+                        <div style="font-size:9px;color:#71717A;margin-top:3px;">
+                            {prod} produzindo · {t["PREPARAÇÃO"]} preparação · {t["AJUSTE"]} ajuste · {t["PARADA"]} parada · {t["MANUTENÇÃO"]} manutenção
+                        </div>
+                    </div>
+                    <div style="font-size:12px;font-weight:900;color:#2DD4BF;">{pct:.0f}%</div>
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    if st.button(
+        "▦ ABRIR MÁQUINAS",
+        key="usinagem_home_abrir_maquinas",
+        type="primary",
+        use_container_width=True,
+    ):
+        mudar_tela("usinagem_maquinas", forcar_rerun=True)
+
+
+# =============================================================
+# USINAGEM · MÁQUINAS
+# =============================================================
+
+def _usinagem_painel_maquina(maquina, status_info):
+    grupo = _usinagem_grupo_maquina(maquina)
+    status_atual = _usinagem_status_base(
+        status_info.get("Status", "PRODUZINDO")
+    )
+    cor = _usinagem_cor_status(status_atual)
+
+    c_titulo, c_fechar = st.columns([5, 0.7])
+    c_titulo.markdown(
+        f"""
+        <div style="
+            padding:14px;
+            border-radius:13px;
+            border:1px solid #27272A;
+            border-left:4px solid {cor};
+            background:#111216;
+        ">
+            <div style="font-size:19px;font-weight:950;color:#F4F4F5;">{html.escape(maquina)}</div>
+            <div style="font-size:10px;color:#8B8B98;margin-top:3px;">{html.escape(grupo)}</div>
+            <div style="font-size:11px;font-weight:900;color:{cor};margin-top:8px;">{status_atual}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if c_fechar.button(
+        "✕",
+        key=f"usi_fechar_{maquina}",
+        use_container_width=True,
+    ):
+        st.session_state["usinagem_maquina_ativa"] = None
+        st.rerun()
+
+    op_atual = str(status_info.get("Ordem", "") or "")
+    item_atual = str(status_info.get("Item", "") or "")
+    obs_atual = str(status_info.get("Observacao", "") or "")
+
+    st.caption(
+        f"Último apontamento: {status_info.get('Data_Hora', '') or '—'} · "
+        f"{status_info.get('Operador', '') or '—'}"
+    )
+
+    with st.form(f"usi_form_status_{maquina}"):
+        novo_status = st.radio(
+            "Novo status:",
+            USINAGEM_STATUS_VALIDOS,
+            index=USINAGEM_STATUS_VALIDOS.index(status_atual),
+            horizontal=True,
+        )
+
+        c1, c2 = st.columns(2)
+        ordem = c1.text_input(
+            "Ordem / OP:",
+            value=op_atual,
+            placeholder="Opcional",
+        )
+        item = c2.text_input(
+            "Item / Material:",
+            value=item_atual,
+            placeholder="Opcional",
+        )
+
+        motivo = st.text_input(
+            "Motivo / detalhe:",
+            placeholder=(
+                "Ex: troca de ferramenta, ajuste de medida, falta de material..."
+            ),
+        )
+        observacao = st.text_area(
+            "Observação:",
+            value=obs_atual,
+            placeholder="Informação para histórico/relatório.",
+            height=80,
+        )
+
+        if st.form_submit_button(
+            "💾 SALVAR STATUS",
+            type="primary",
+            use_container_width=True,
+        ):
+            try:
+                _usinagem_salvar_status(
+                    maquina,
+                    novo_status,
+                    motivo,
+                    ordem,
+                    item,
+                    observacao,
+                )
+                st.success(
+                    f"✅ {maquina} atualizado para {novo_status}."
+                )
+                st.session_state["usinagem_maquina_ativa"] = None
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Não foi possível salvar: {exc}")
+
+
+def tela_usinagem_maquinas():
+    status_map = _usinagem_status_atual()
+    grupos = _usinagem_grupos_permitidos()
+
+    maq_ativa = st.session_state.get("usinagem_maquina_ativa")
+    if maq_ativa:
+        _usinagem_painel_maquina(
+            maq_ativa,
+            status_map.get(maq_ativa, {}),
+        )
+        return
+
+    st.markdown("## ▦ Máquinas · Usinagem")
+
+    c_busca, c_grupo = st.columns([1.5, 1])
+    busca = c_busca.text_input(
+        "Buscar máquina:",
+        key="usinagem_busca_maquina",
+        placeholder="Ex: N15-273, C03-518, 46-161...",
+    ).strip().upper()
+
+    grupo_sel = c_grupo.selectbox(
+        "Grupo:",
+        ["Todos"] + grupos,
+        key="usinagem_filtro_grupo",
+    )
+
+    if busca:
+        encontrados = []
+        for grupo in grupos:
+            for maq in USINAGEM_GRUPOS[grupo]:
+                if busca in maq.upper():
+                    encontrados.append((grupo, maq))
+
+        if not encontrados:
+            st.warning("Nenhuma máquina encontrada.")
+            return
+
+        st.markdown(f"### Resultado · {len(encontrados)}")
+        cols = st.columns(5)
+        for i, (grupo, maq) in enumerate(encontrados[:50]):
+            info = status_map.get(maq, {})
+            st_base = _usinagem_status_base(info.get("Status"))
+            cor = _usinagem_cor_status(st_base)
+            if cols[i % 5].button(
+                f"{_usinagem_icone_status(st_base)} {maq}\n{st_base}",
+                key=f"usi_busca_{grupo}_{maq}",
+                use_container_width=True,
+            ):
+                st.session_state["usinagem_maquina_ativa"] = maq
+                st.rerun()
+        return
+
+    grupos_exibir = (
+        grupos
+        if grupo_sel == "Todos"
+        else [grupo_sel]
+    )
+
+    for grupo in grupos_exibir:
+        maquinas = USINAGEM_GRUPOS[grupo]
+        st.markdown(f"### {grupo} · {len(maquinas)} máquinas")
+
+        cols = st.columns(6)
+        for i, maq in enumerate(maquinas):
+            info = status_map.get(maq, {})
+            st_base = _usinagem_status_base(info.get("Status"))
+            icone = _usinagem_icone_status(st_base)
+
+            if cols[i % 6].button(
+                f"{icone} {maq}\n{st_base}",
+                key=f"usi_maq_{grupo}_{maq}",
+                use_container_width=True,
+            ):
+                st.session_state["usinagem_maquina_ativa"] = maq
+                st.rerun()
+
+        st.divider()
+
+
+# =============================================================
+# USINAGEM · HISTÓRICO
+# =============================================================
+
+def tela_usinagem_historico():
+    st.markdown("## ↗ Histórico · Usinagem")
+
+    if not tabela_existe(ARQUIVO_USINAGEM_DADOS):
+        st.info("Ainda não existem apontamentos na Usinagem Digital.")
+        return
+
+    try:
+        tab = _quote_identifier(ARQUIVO_USINAGEM_DADOS)
+        result = turso_request(
+            f"""SELECT *
+                FROM {tab}
+                ORDER BY rowid DESC
+                LIMIT 500""",
+            want_rows=True,
+        )
+        df = _resultado_turso_df(result)
+    except Exception as exc:
+        st.error(f"Não foi possível carregar o histórico: {exc}")
+        return
+
+    if df.empty:
+        st.info("Ainda não existem apontamentos.")
+        return
+
+    grupos = _usinagem_grupos_permitidos()
+
+    if st.session_state.get("perfil") != "usi_adm":
+        df = df[
+            df["Grupo"].astype(str).isin(grupos)
+        ].copy()
+
+    c1, c2, c3 = st.columns(3)
+
+    filtro_grupo = c1.selectbox(
+        "Grupo:",
+        ["Todos"] + grupos,
+        key="usi_hist_grupo",
+    )
+    filtro_status = c2.selectbox(
+        "Status:",
+        ["Todos"] + USINAGEM_STATUS_VALIDOS,
+        key="usi_hist_status",
+    )
+    filtro_maq = c3.text_input(
+        "Máquina:",
+        key="usi_hist_maquina",
+        placeholder="Filtrar...",
+    ).strip().upper()
+
+    if filtro_grupo != "Todos":
+        df = df[
+            df["Grupo"].astype(str).eq(filtro_grupo)
+        ]
+    if filtro_status != "Todos":
+        df = df[
+            df["Status"].astype(str).str.upper().eq(filtro_status)
+        ]
+    if filtro_maq:
+        df = df[
+            df["Maquina"].astype(str).str.upper().str.contains(
+                re.escape(filtro_maq),
+                regex=True,
+                na=False,
+            )
+        ]
+
+    preferidas = [
+        "Data_Hora",
+        "Grupo",
+        "Maquina",
+        "Status",
+        "Motivo",
+        "Ordem",
+        "Item",
+        "Operador",
+        "Turno",
+        "Observacao",
+    ]
+    cols = [c for c in preferidas if c in df.columns]
+
+    st.dataframe(
+        df[cols],
+        use_container_width=True,
+        hide_index=True,
+        height=520,
+    )
+
+
+
 def tela_login():
+    c_voltar_login, _ = st.columns([1.2, 5])
+    if c_voltar_login.button(
+        "← Sistemas",
+        key="login_afc_voltar_portal",
+        use_container_width=True,
+    ):
+        st.session_state["sistema_selecionado"] = ""
+        mudar_tela("portal", forcar_rerun=True)
+
     st.markdown(textwrap.dedent(f"""
     <div class="login-hero">
         <div class="login-logo"><img src="data:image/png;base64,{LOGO_NEODENT_B64}" alt="Neodent"></div>
@@ -11859,14 +12773,48 @@ def tela_programador():
 # Navegação nativa: sem query string e sem reload completo do navegador.
 tela = st.session_state['tela_atual']
 
+ROTAS_AFIACAO_TOPBAR = {
+    'menu',
+    'visao_geral',
+    'checkup',
+    'minhas_incidencias',
+    'afc',
+    'rtf',
+    'armarios',
+    'equipe',
+    'editar',
+    'historico',
+    'hub_relatorios',
+    'relatorio',
+    'lirs',
+    'programador',
+}
+
+ROTAS_USINAGEM_TOPBAR = {
+    'usinagem_menu',
+    'usinagem_maquinas',
+    'usinagem_historico',
+}
+
 if (
-    tela != 'login'
+    tela in ROTAS_AFIACAO_TOPBAR
     and st.session_state.get('operador')
     and st.session_state.get('perfil') != 'centerless'
 ):
     renderizar_topbar(tela)
 
-if tela == 'login': tela_login()
+if (
+    tela in ROTAS_USINAGEM_TOPBAR
+    and st.session_state.get('operador')
+):
+    renderizar_topbar_usinagem(tela)
+
+if tela == 'portal': tela_portal()
+elif tela == 'login': tela_login()
+elif tela == 'usinagem_login': tela_usinagem_login()
+elif tela == 'usinagem_menu': tela_usinagem_menu()
+elif tela == 'usinagem_maquinas': tela_usinagem_maquinas()
+elif tela == 'usinagem_historico': tela_usinagem_historico()
 elif tela == 'menu': tela_menu()
 elif tela == 'visao_geral': tela_visao_geral()
 elif tela == 'checkup': tela_checkup()
