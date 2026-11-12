@@ -8037,6 +8037,424 @@ def _usi_tool_garantir_tabelas():
     st.session_state["_usi_tool_tables_ready"] = True
 
 
+def _usi_tool_estados_todos():
+    """Carrega todos os ciclos atuais em uma única consulta."""
+    _usi_tool_garantir_tabelas()
+
+    try:
+        tab = _quote_identifier(
+            ARQUIVO_USINAGEM_FERRAMENTA_ESTADO
+        )
+        result = turso_request(
+            f"""SELECT *
+                FROM {tab}""",
+            want_rows=True,
+        )
+        df = _resultado_turso_df(result)
+    except Exception:
+        return {}
+
+    if df.empty or "Maquina" not in df.columns:
+        return {}
+
+    saida = {}
+    for _, row in df.iterrows():
+        d = row.to_dict()
+        maq = str(d.get("Maquina", "") or "").strip()
+        if not maq:
+            continue
+        try:
+            d["Acumulado_Segundos"] = float(
+                d.get("Acumulado_Segundos", 0) or 0
+            )
+        except Exception:
+            d["Acumulado_Segundos"] = 0.0
+        saida[maq] = d
+
+    return saida
+
+
+def _usi_tool_metricas_lote():
+    """Médias por máquina+item+ferramenta em uma única consulta SQL."""
+    _usi_tool_garantir_tabelas()
+
+    try:
+        tab = _quote_identifier(
+            ARQUIVO_USINAGEM_FERRAMENTA_CICLOS
+        )
+        result = turso_request(
+            f"""SELECT
+                    "Maquina",
+                    "Item",
+                    "Ferramenta",
+                    SUM(
+                        CASE
+                            WHEN UPPER(COALESCE("Conta_Media", ''))='SIM'
+                             AND CAST(COALESCE("Vida_Util_Segundos", 0) AS REAL) > 0
+                            THEN 1 ELSE 0
+                        END
+                    ) AS "Qtd_Media",
+                    AVG(
+                        CASE
+                            WHEN UPPER(COALESCE("Conta_Media", ''))='SIM'
+                             AND CAST(COALESCE("Vida_Util_Segundos", 0) AS REAL) > 0
+                            THEN CAST("Vida_Util_Segundos" AS REAL)
+                            ELSE NULL
+                        END
+                    ) AS "Media_Vida_Segundos",
+                    AVG(
+                        CASE
+                            WHEN CAST(COALESCE("Tempo_Troca_Segundos", 0) AS REAL) > 0
+                            THEN CAST("Tempo_Troca_Segundos" AS REAL)
+                            ELSE NULL
+                        END
+                    ) AS "Media_Troca_Segundos"
+                FROM {tab}
+                GROUP BY "Maquina", "Item", "Ferramenta" """,
+            want_rows=True,
+        )
+        df = _resultado_turso_df(result)
+    except Exception:
+        return {}
+
+    if df.empty:
+        return {}
+
+    saida = {}
+    for _, row in df.iterrows():
+        maquina = str(row.get("Maquina", "") or "").strip()
+        item = str(row.get("Item", "") or "").strip().upper()
+        ferramenta = str(row.get("Ferramenta", "") or "").strip().upper()
+        if not maquina:
+            continue
+
+        try:
+            qtd = int(float(row.get("Qtd_Media", 0) or 0))
+        except Exception:
+            qtd = 0
+        try:
+            media = float(row.get("Media_Vida_Segundos", 0) or 0)
+        except Exception:
+            media = 0.0
+        try:
+            media_troca = float(row.get("Media_Troca_Segundos", 0) or 0)
+        except Exception:
+            media_troca = 0.0
+
+        saida[(maquina, item, ferramenta)] = {
+            "qtd_media": qtd,
+            "media_vida_s": media,
+            "limite_80_s": media * 0.80 if media > 0 else 0.0,
+            "media_troca_s": media_troca,
+        }
+
+    return saida
+
+
+def _usi_tool_excluir_ciclo_atual(maquina):
+    """Exclui somente o monitoramento/ciclo atual da máquina."""
+    _usi_tool_garantir_tabelas()
+
+    tab = _quote_identifier(
+        ARQUIVO_USINAGEM_FERRAMENTA_ESTADO
+    )
+    turso_request(
+        f'DELETE FROM {tab} WHERE "Maquina"=?',
+        [str(maquina)],
+        want_rows=False,
+    )
+    _invalidar_cache_turso(
+        ARQUIVO_USINAGEM_FERRAMENTA_ESTADO
+    )
+
+
+def _usi_tool_excluir_ciclo_historico(rowid):
+    """Exclui um ciclo finalizado. A média é recalculada automaticamente."""
+    _usi_tool_garantir_tabelas()
+
+    rid = int(rowid)
+    tab = _quote_identifier(
+        ARQUIVO_USINAGEM_FERRAMENTA_CICLOS
+    )
+    turso_request(
+        f'DELETE FROM {tab} WHERE rowid=?',
+        [rid],
+        want_rows=False,
+    )
+    _invalidar_cache_turso(
+        ARQUIVO_USINAGEM_FERRAMENTA_CICLOS
+    )
+
+
+def _usi_tool_card_grade(
+    maquina,
+    status_operacional,
+    estado,
+    metricas,
+):
+    """Card compacto com timer ao vivo para a própria grade de máquinas."""
+    status_base = _usinagem_status_base(
+        status_operacional
+    )
+    status_cor = _usinagem_cor_status(status_base)
+
+    item = str(
+        estado.get("Item", "") or ""
+    ).strip().upper()
+    ferramenta = str(
+        estado.get("Ferramenta", "") or ""
+    ).strip().upper()
+    estado_ciclo = str(
+        estado.get("Estado", "") or "PAUSADO"
+    ).upper()
+
+    try:
+        acumulado = float(
+            estado.get("Acumulado_Segundos", 0) or 0
+        )
+    except Exception:
+        acumulado = 0.0
+
+    media_s = float(
+        metricas.get("media_vida_s", 0) or 0
+    )
+    limite_s = float(
+        metricas.get("limite_80_s", 0) or 0
+    )
+    qtd_media = int(
+        metricas.get("qtd_media", 0) or 0
+    )
+
+    inicio_contagem = json.dumps(
+        str(estado.get("Inicio_Contagem_ISO", "") or "")
+    )
+    inicio_troca = json.dumps(
+        str(estado.get("Inicio_Troca_ISO", "") or "")
+    )
+
+    rodando = "true" if estado_ciclo == "RODANDO" else "false"
+    trocando = "true" if estado_ciclo == "TROCANDO" else "false"
+
+    uid = re.sub(
+        r"[^0-9A-Za-z]+",
+        "_",
+        f"{maquina}_{item}_{ferramenta}",
+    )
+
+    components.html(
+        f"""
+        <div style="
+            min-height:158px;
+            box-sizing:border-box;
+            padding:12px 13px;
+            border-radius:13px;
+            border:1px solid #2A2A31;
+            border-top:3px solid {status_cor};
+            background:linear-gradient(145deg,#15151C,#101015);
+            font-family:Inter,Arial,sans-serif;
+            color:#F4F4F5;
+        ">
+            <div style="display:flex;justify-content:space-between;gap:8px;align-items:center;">
+                <div style="font-size:13px;font-weight:950;">
+                    {html.escape(maquina)}
+                </div>
+                <div style="font-size:8px;font-weight:900;color:{status_cor};">
+                    {html.escape(status_base)}
+                </div>
+            </div>
+
+            <div style="
+                display:flex;
+                gap:7px;
+                margin-top:7px;
+                color:#A1A1AA;
+                font-size:8px;
+                white-space:nowrap;
+                overflow:hidden;
+            ">
+                <span style="overflow:hidden;text-overflow:ellipsis;">
+                    ITEM: <b style="color:#E4E4E7;">{html.escape(item or "—")}</b>
+                </span>
+                <span>·</span>
+                <span style="overflow:hidden;text-overflow:ellipsis;">
+                    FERR: <b style="color:#E4E4E7;">{html.escape(ferramenta or "—")}</b>
+                </span>
+            </div>
+
+            <div id="time_{uid}" style="
+                margin-top:8px;
+                font-size:20px;
+                line-height:1;
+                font-weight:950;
+                color:#FAFAFA;
+            ">0h:00</div>
+
+            <div id="ratio_{uid}" style="
+                margin-top:4px;
+                font-size:8px;
+                color:#8B8B98;
+                min-height:11px;
+            ">carregando...</div>
+
+            <div style="
+                position:relative;
+                height:9px;
+                border-radius:999px;
+                background:#27272D;
+                overflow:hidden;
+                margin-top:8px;
+                border:1px solid #303037;
+            ">
+                <div id="bar_{uid}" style="
+                    height:100%;
+                    width:0%;
+                    border-radius:999px;
+                    background:#22C55E;
+                    transition:width .4s linear,background .25s ease;
+                "></div>
+                <div style="
+                    position:absolute;
+                    left:80%;
+                    top:0;
+                    bottom:0;
+                    width:1px;
+                    background:rgba(255,255,255,.75);
+                "></div>
+            </div>
+
+            <div id="foot_{uid}" style="
+                display:flex;
+                justify-content:space-between;
+                gap:8px;
+                margin-top:6px;
+                font-size:8px;
+                color:#71717A;
+            ">
+                <span>Base: {qtd_media} ciclo(s)</span>
+                <span id="limit_{uid}">80%: —</span>
+            </div>
+        </div>
+
+        <script>
+        (() => {{
+            const running = {rodando};
+            const changing = {trocando};
+            const start = {inicio_contagem};
+            const changeStart = {inicio_troca};
+            const accumulated = {acumulado};
+            const avg = {media_s};
+            const limit = {limite_s};
+
+            const timeEl = document.getElementById("time_{uid}");
+            const ratioEl = document.getElementById("ratio_{uid}");
+            const barEl = document.getElementById("bar_{uid}");
+            const limitEl = document.getElementById("limit_{uid}");
+
+            function fmt(sec) {{
+                sec = Math.max(0, Math.floor(sec || 0));
+                const h = Math.floor(sec / 3600);
+                const m = Math.floor((sec % 3600) / 60);
+                return h + "h:" + String(m).padStart(2,"0");
+            }}
+
+            function fmtChange(sec) {{
+                sec = Math.max(0, Math.floor(sec || 0));
+                const h = Math.floor(sec / 3600);
+                const m = Math.floor((sec % 3600) / 60);
+                const s = sec % 60;
+                if (h > 0) {{
+                    return String(h).padStart(2,"0") + ":" +
+                           String(m).padStart(2,"0") + ":" +
+                           String(s).padStart(2,"0");
+                }}
+                return String(m).padStart(2,"0") + ":" +
+                       String(s).padStart(2,"0");
+            }}
+
+            function life() {{
+                let v = accumulated;
+                if (running && start) {{
+                    v += Math.max(
+                        0,
+                        (Date.now() - new Date(start).getTime()) / 1000
+                    );
+                }}
+                return v;
+            }}
+
+            function draw() {{
+                const e = life();
+
+                if (changing && changeStart) {{
+                    const t = Math.max(
+                        0,
+                        (Date.now() - new Date(changeStart).getTime()) / 1000
+                    );
+                    timeEl.textContent = "TROCA " + fmtChange(t);
+                    timeEl.style.color = "#FBBF24";
+                    ratioEl.textContent = "Vida encerrada: " + fmt(e);
+
+                    if (avg > 0) {{
+                        const pct = Math.max(0, Math.min(100, (e / avg) * 100));
+                        barEl.style.width = pct + "%";
+                        barEl.style.background = "#F59E0B";
+                        limitEl.textContent = "80%: " + fmt(limit);
+                    }} else {{
+                        barEl.style.width = "100%";
+                        barEl.style.background = "#F59E0B";
+                    }}
+                    return;
+                }}
+
+                timeEl.textContent = fmt(e);
+
+                if (avg > 0) {{
+                    const pct = Math.max(
+                        0,
+                        Math.min(100, (e / avg) * 100)
+                    );
+                    barEl.style.width = pct + "%";
+
+                    if (pct >= 80) {{
+                        barEl.style.background = "#EF4444";
+                        timeEl.style.color = "#FCA5A5";
+                    }} else if (pct >= 65) {{
+                        barEl.style.background = "#F59E0B";
+                        timeEl.style.color = "#FDE68A";
+                    }} else {{
+                        barEl.style.background = "#22C55E";
+                        timeEl.style.color = "#FAFAFA";
+                    }}
+
+                    ratioEl.textContent =
+                        fmt(e) + " / " + fmt(avg);
+                    limitEl.textContent =
+                        "80%: " + fmt(limit);
+                }} else {{
+                    barEl.style.width = "100%";
+                    barEl.style.background =
+                        "repeating-linear-gradient(" +
+                        "45deg,#15803D 0,#15803D 8px," +
+                        "#22C55E 8px,#22C55E 16px)";
+                    ratioEl.textContent =
+                        fmt(e) + " / média em aprendizado";
+                    limitEl.textContent = "80%: —";
+                }}
+            }}
+
+            draw();
+            if (running || changing) {{
+                setInterval(draw, 500);
+            }}
+        }})();
+        </script>
+        """,
+        height=172,
+        scrolling=False,
+    )
+
+
+
 def _usi_tool_estado(maquina):
     _usi_tool_garantir_tabelas()
 
@@ -8826,6 +9244,7 @@ def _usi_tool_historico_recente(
     tab = _quote_identifier(ARQUIVO_USINAGEM_FERRAMENTA_CICLOS)
     result = turso_request(
         f"""SELECT
+                rowid AS "_id",
                 "Data_Hora",
                 "Vida_Util",
                 "Motivo_Troca",
@@ -9183,6 +9602,40 @@ def _usi_tool_render_secao(
                 except Exception as exc:
                     st.error(str(exc))
 
+
+    # ---------------------------------------------------------
+    # Excluir ciclo / informação atual.
+    # ---------------------------------------------------------
+    with st.expander("🗑️ Excluir ciclo atual", expanded=False):
+        st.warning(
+            "Isso apaga somente o monitoramento atual desta máquina. "
+            "Os ciclos já finalizados no histórico permanecem."
+        )
+
+        confirmar_atual = st.checkbox(
+            "Confirmo que desejo excluir o ciclo atual.",
+            key=f"usi_tool_confirma_excluir_atual_{maquina}",
+        )
+
+        if st.button(
+            "🗑️ EXCLUIR CICLO ATUAL",
+            key=f"usi_tool_excluir_atual_{maquina}",
+            disabled=not confirmar_atual,
+            use_container_width=True,
+        ):
+            try:
+                _usi_tool_excluir_ciclo_atual(maquina)
+                st.session_state.pop(
+                    f"usi_tool_confirma_excluir_atual_{maquina}",
+                    None,
+                )
+                st.success(
+                    "✅ Ciclo atual excluído. O timer voltou para 'não iniciado'."
+                )
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Não foi possível excluir: {exc}")
+
     # ---------------------------------------------------------
     # Histórico recente do mesmo conjunto.
     # ---------------------------------------------------------
@@ -9202,11 +9655,62 @@ def _usi_tool_render_secao(
                 "Ainda não existem ciclos finalizados para esta ferramenta."
             )
         else:
+            hist_vis = hist.copy()
+
+            if "_id" in hist_vis.columns:
+                hist_vis = hist_vis.drop(
+                    columns=["_id"],
+                    errors="ignore",
+                )
+
             st.dataframe(
-                hist,
+                hist_vis,
                 use_container_width=True,
                 hide_index=True,
             )
+
+            if "_id" in hist.columns:
+                opcoes_exclusao = {}
+                for _, row in hist.iterrows():
+                    rid = int(row["_id"])
+                    label = (
+                        f'{row.get("Data_Hora", "—")} · '
+                        f'{row.get("Vida_Util", "—")} · '
+                        f'{row.get("Motivo_Troca", "—")}'
+                    )
+                    opcoes_exclusao[label] = rid
+
+                st.markdown("##### Excluir ciclo finalizado")
+
+                ciclo_label = st.selectbox(
+                    "Selecione o ciclo:",
+                    list(opcoes_exclusao.keys()),
+                    key=f"usi_tool_hist_excluir_sel_{maquina}",
+                )
+
+                confirmar_hist = st.checkbox(
+                    "Confirmo a exclusão deste ciclo do histórico.",
+                    key=f"usi_tool_hist_excluir_conf_{maquina}",
+                )
+
+                if st.button(
+                    "🗑️ EXCLUIR CICLO SELECIONADO",
+                    key=f"usi_tool_hist_excluir_btn_{maquina}",
+                    disabled=not confirmar_hist,
+                    use_container_width=True,
+                ):
+                    try:
+                        _usi_tool_excluir_ciclo_historico(
+                            opcoes_exclusao[ciclo_label]
+                        )
+                        st.success(
+                            "✅ Ciclo excluído. A média será recalculada automaticamente."
+                        )
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(
+                            f"Não foi possível excluir o ciclo: {exc}"
+                        )
 
 
 
@@ -9573,6 +10077,17 @@ def tela_usinagem_maquinas():
     status_map = _usinagem_status_atual()
     grupos = _usinagem_grupos_permitidos()
 
+    # Uma consulta para todos os ciclos ativos + uma para todas as médias.
+    try:
+        tool_estados = _usi_tool_estados_todos()
+    except Exception:
+        tool_estados = {}
+
+    try:
+        tool_metricas = _usi_tool_metricas_lote()
+    except Exception:
+        tool_metricas = {}
+
     maq_ativa = st.session_state.get("usinagem_maquina_ativa")
     if maq_ativa:
         _usinagem_painel_maquina(
@@ -9582,6 +10097,9 @@ def tela_usinagem_maquinas():
         return
 
     st.markdown("## ▦ Máquinas · Usinagem")
+    st.caption(
+        "Máquinas com ferramenta iniciada mostram a vida útil e o timer ao vivo diretamente nesta tela."
+    )
 
     c_busca, c_grupo = st.columns([1.5, 1])
     busca = c_busca.text_input(
@@ -9596,6 +10114,110 @@ def tela_usinagem_maquinas():
         key="usinagem_filtro_grupo",
     )
 
+    def _render_card_grade(col, grupo, maq, prefixo):
+        info = status_map.get(maq, {})
+        st_base = _usinagem_status_base(
+            info.get("Status", "PRODUZINDO")
+        )
+        estado_tool = tool_estados.get(maq)
+
+        with col:
+            if estado_tool:
+                item_tool = str(
+                    estado_tool.get("Item", "") or ""
+                ).strip().upper()
+                ferr_tool = str(
+                    estado_tool.get("Ferramenta", "") or ""
+                ).strip().upper()
+
+                met = tool_metricas.get(
+                    (maq, item_tool, ferr_tool),
+                    {
+                        "qtd_media": 0,
+                        "media_vida_s": 0.0,
+                        "limite_80_s": 0.0,
+                        "media_troca_s": 0.0,
+                    },
+                )
+
+                _usi_tool_card_grade(
+                    maq,
+                    st_base,
+                    estado_tool,
+                    met,
+                )
+
+                if st.button(
+                    f"ABRIR · {maq}",
+                    key=f"{prefixo}_abrir_{grupo}_{maq}",
+                    use_container_width=True,
+                ):
+                    st.session_state["usinagem_maquina_ativa"] = maq
+                    st.rerun()
+
+            else:
+                cor = _usinagem_cor_status(st_base)
+                st.markdown(
+                    f"""
+                    <div style="
+                        min-height:158px;
+                        box-sizing:border-box;
+                        padding:12px 13px;
+                        border-radius:13px;
+                        border:1px solid #2A2A31;
+                        border-top:3px solid {cor};
+                        background:linear-gradient(145deg,#15151C,#101015);
+                    ">
+                        <div style="
+                            display:flex;
+                            justify-content:space-between;
+                            gap:8px;
+                            align-items:center;
+                        ">
+                            <div style="
+                                font-size:13px;
+                                font-weight:950;
+                                color:#F4F4F5;
+                            ">{html.escape(maq)}</div>
+                            <div style="
+                                font-size:8px;
+                                font-weight:900;
+                                color:{cor};
+                            ">{html.escape(st_base)}</div>
+                        </div>
+
+                        <div style="
+                            margin-top:28px;
+                            text-align:center;
+                            color:#71717A;
+                        ">
+                            <div style="font-size:21px;">⏱</div>
+                            <div style="
+                                font-size:10px;
+                                font-weight:900;
+                                margin-top:6px;
+                            ">TIMER NÃO INICIADO</div>
+                            <div style="
+                                font-size:8px;
+                                margin-top:4px;
+                            ">Abra a máquina para cadastrar item e ferramenta</div>
+                        </div>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+
+                if st.button(
+                    f"INICIAR / ABRIR · {maq}",
+                    key=f"{prefixo}_iniciar_{grupo}_{maq}",
+                    use_container_width=True,
+                ):
+                    st.session_state["usinagem_maquina_ativa"] = maq
+                    st.rerun()
+
+    # ---------------------------------------------------------
+    # Busca
+    # ---------------------------------------------------------
     if busca:
         encontrados = []
         for grupo in grupos:
@@ -9608,20 +10230,20 @@ def tela_usinagem_maquinas():
             return
 
         st.markdown(f"### Resultado · {len(encontrados)}")
-        cols = st.columns(5)
-        for i, (grupo, maq) in enumerate(encontrados[:50]):
-            info = status_map.get(maq, {})
-            st_base = _usinagem_status_base(info.get("Status"))
-            cor = _usinagem_cor_status(st_base)
-            if cols[i % 5].button(
-                f"{_usinagem_icone_status(st_base)} {maq}\n{st_base}",
-                key=f"usi_busca_{grupo}_{maq}",
-                use_container_width=True,
-            ):
-                st.session_state["usinagem_maquina_ativa"] = maq
-                st.rerun()
+        cols = st.columns(4, gap="small")
+
+        for i, (grupo, maq) in enumerate(encontrados[:40]):
+            _render_card_grade(
+                cols[i % 4],
+                grupo,
+                maq,
+                "usi_busca",
+            )
         return
 
+    # ---------------------------------------------------------
+    # Grupos
+    # ---------------------------------------------------------
     grupos_exibir = (
         grupos
         if grupo_sel == "Todos"
@@ -9630,21 +10252,19 @@ def tela_usinagem_maquinas():
 
     for grupo in grupos_exibir:
         maquinas = USINAGEM_GRUPOS[grupo]
-        st.markdown(f"### {grupo} · {len(maquinas)} máquinas")
+        st.markdown(
+            f"### {grupo} · {len(maquinas)} máquinas"
+        )
 
-        cols = st.columns(6)
+        cols = st.columns(4, gap="small")
+
         for i, maq in enumerate(maquinas):
-            info = status_map.get(maq, {})
-            st_base = _usinagem_status_base(info.get("Status"))
-            icone = _usinagem_icone_status(st_base)
-
-            if cols[i % 6].button(
-                f"{icone} {maq}\n{st_base}",
-                key=f"usi_maq_{grupo}_{maq}",
-                use_container_width=True,
-            ):
-                st.session_state["usinagem_maquina_ativa"] = maq
-                st.rerun()
+            _render_card_grade(
+                cols[i % 4],
+                grupo,
+                maq,
+                "usi_grade",
+            )
 
         st.divider()
 
