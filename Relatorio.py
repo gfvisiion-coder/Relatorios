@@ -8354,7 +8354,15 @@ def _usi_tool_card_grade(
                 sec = Math.max(0, Math.floor(sec || 0));
                 const h = Math.floor(sec / 3600);
                 const m = Math.floor((sec % 3600) / 60);
-                return h + "h:" + String(m).padStart(2,"0");
+                const s = sec % 60;
+
+                if (h > 0) {{
+                    return h + "h:" + String(m).padStart(2,"0");
+                }}
+                if (m > 0) {{
+                    return m + "min:" + String(s).padStart(2,"0") + "s";
+                }}
+                return s + "s";
             }}
 
             function fmtChange(sec) {{
@@ -9099,7 +9107,15 @@ def _usi_tool_render_barra(
                 sec = Math.max(0, Math.floor(sec || 0));
                 const h = Math.floor(sec / 3600);
                 const m = Math.floor((sec % 3600) / 60);
-                return h + "h:" + String(m).padStart(2,"0");
+                const s = sec % 60;
+
+                if (h > 0) {{
+                    return h + "h:" + String(m).padStart(2,"0");
+                }}
+                if (m > 0) {{
+                    return m + "min:" + String(s).padStart(2,"0") + "s";
+                }}
+                return s + "s";
             }}
 
             function elapsed() {{
@@ -10157,53 +10173,28 @@ def tela_usinagem_maquinas():
 
             else:
                 cor = _usinagem_cor_status(st_base)
+                html_sem_timer = (
+                    f'<div style="min-height:158px;box-sizing:border-box;'
+                    f'padding:12px 13px;border-radius:13px;'
+                    f'border:1px solid #2A2A31;border-top:3px solid {cor};'
+                    f'background:linear-gradient(145deg,#15151C,#101015);">'
+                    f'<div style="display:flex;justify-content:space-between;'
+                    f'gap:8px;align-items:center;">'
+                    f'<div style="font-size:13px;font-weight:950;color:#F4F4F5;">'
+                    f'{html.escape(maq)}</div>'
+                    f'<div style="font-size:8px;font-weight:900;color:{cor};">'
+                    f'{html.escape(st_base)}</div>'
+                    f'</div>'
+                    f'<div style="margin-top:28px;text-align:center;color:#71717A;">'
+                    f'<div style="font-size:21px;">⏱</div>'
+                    f'<div style="font-size:10px;font-weight:900;margin-top:6px;">'
+                    f'TIMER NÃO INICIADO</div>'
+                    f'<div style="font-size:8px;margin-top:4px;">'
+                    f'Abra a máquina para cadastrar item e ferramenta</div>'
+                    f'</div></div>'
+                )
                 st.markdown(
-                    f"""
-                    <div style="
-                        min-height:158px;
-                        box-sizing:border-box;
-                        padding:12px 13px;
-                        border-radius:13px;
-                        border:1px solid #2A2A31;
-                        border-top:3px solid {cor};
-                        background:linear-gradient(145deg,#15151C,#101015);
-                    ">
-                        <div style="
-                            display:flex;
-                            justify-content:space-between;
-                            gap:8px;
-                            align-items:center;
-                        ">
-                            <div style="
-                                font-size:13px;
-                                font-weight:950;
-                                color:#F4F4F5;
-                            ">{html.escape(maq)}</div>
-                            <div style="
-                                font-size:8px;
-                                font-weight:900;
-                                color:{cor};
-                            ">{html.escape(st_base)}</div>
-                        </div>
-
-                        <div style="
-                            margin-top:28px;
-                            text-align:center;
-                            color:#71717A;
-                        ">
-                            <div style="font-size:21px;">⏱</div>
-                            <div style="
-                                font-size:10px;
-                                font-weight:900;
-                                margin-top:6px;
-                            ">TIMER NÃO INICIADO</div>
-                            <div style="
-                                font-size:8px;
-                                margin-top:4px;
-                            ">Abra a máquina para cadastrar item e ferramenta</div>
-                        </div>
-                    </div>
-                    """,
+                    html_sem_timer,
                     unsafe_allow_html=True,
                 )
 
