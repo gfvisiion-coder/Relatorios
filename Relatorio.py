@@ -760,6 +760,28 @@ USINAGEM_STATUS_VALIDOS = [
 ]
 
 
+USINAGEM_MOTIVOS_TROCA_FERRAMENTA = [
+    "Fim de vida / desgaste normal",
+    "Desgaste prematuro",
+    "Quebra",
+    "Lascamento",
+    "Acabamento ruim",
+    "Medida fora",
+    "Troca preventiva · 80%",
+    "Setup / item novo",
+    "Teste / Engenharia",
+    "Outro",
+]
+
+# Estes motivos ficam registrados, mas não reduzem artificialmente a média
+# de vida útil usada como base do próximo ciclo.
+USINAGEM_MOTIVOS_FORA_MEDIA = {
+    "Troca preventiva · 80%",
+    "Setup / item novo",
+    "Teste / Engenharia",
+}
+
+
 # --- CONFIGURAÇÃO BASE DO APP ---
 FUSO_BR = timezone(timedelta(hours=-3))
 
@@ -2261,6 +2283,10 @@ ARQUIVO_CENTERLESS_ESTADO = "centerless_estado.csv"
 # Usinagem Digital usa persistência totalmente separada da Afiação.
 ARQUIVO_USINAGEM_DADOS = "banco_usinagem_operacao.csv"
 
+# Vida útil / troca de ferramentas da Usinagem.
+ARQUIVO_USINAGEM_FERRAMENTA_ESTADO = "usinagem_ferramenta_estado.csv"
+ARQUIVO_USINAGEM_FERRAMENTA_CICLOS = "usinagem_ferramenta_ciclos.csv"
+
 ARQUIVO_REBOLOS = "rebolos.xlsx"
 
 
@@ -2273,7 +2299,9 @@ TABELAS_TURSO = {
     ARQUIVO_CNC, ARQUIVO_FECHAMENTO, "historico_devolucoes.csv",
     ARQUIVO_ARMARIOS_BACKUP, ARQUIVO_ARMARIOS_HISTORICO,
     ARQUIVO_CENTERLESS, ARQUIVO_CENTERLESS_ESTADO,
-    ARQUIVO_USINAGEM_DADOS
+    ARQUIVO_USINAGEM_DADOS,
+    ARQUIVO_USINAGEM_FERRAMENTA_ESTADO,
+    ARQUIVO_USINAGEM_FERRAMENTA_CICLOS
 }
 
 # Referências estáveis às implementações reais restauradas no início do arquivo.
@@ -7888,6 +7916,12 @@ def _usinagem_salvar_status(
         ARQUIVO_USINAGEM_DADOS,
     )
 
+    # A vida útil só corre enquanto a máquina estiver produzindo.
+    _usi_tool_sincronizar_status(
+        maquina,
+        status,
+    )
+
 
 def _usinagem_totais(status_map, maquinas):
     totais = {k: 0 for k in USINAGEM_STATUS_VALIDOS}
@@ -7917,6 +7951,1263 @@ def _usinagem_icone_status(status):
         "PARADA": "■",
         "MANUTENÇÃO": "⌁",
     }.get(_usinagem_status_base(status), "•")
+
+
+# =============================================================
+# USINAGEM · VIDA ÚTIL DAS FERRAMENTAS
+# =============================================================
+
+def _usi_tool_dt(valor):
+    try:
+        dt = datetime.fromisoformat(str(valor)) if valor else None
+        if dt and dt.tzinfo is None:
+            dt = dt.replace(tzinfo=FUSO_BR)
+        return dt
+    except Exception:
+        return None
+
+
+def _usi_tool_tempo_txt(segundos):
+    try:
+        total = max(0, int(round(float(segundos or 0))))
+    except Exception:
+        total = 0
+
+    horas, resto = divmod(total, 3600)
+    minutos, segundos = divmod(resto, 60)
+
+    if horas:
+        return f"{horas}h:{minutos:02d}"
+    if minutos:
+        return f"{minutos}min:{segundos:02d}s"
+    return f"{segundos}s"
+
+
+def _usi_tool_garantir_tabelas():
+    if st.session_state.get("_usi_tool_tables_ready"):
+        return
+
+    estado = _quote_identifier(ARQUIVO_USINAGEM_FERRAMENTA_ESTADO)
+    ciclos = _quote_identifier(ARQUIVO_USINAGEM_FERRAMENTA_CICLOS)
+
+    turso_request(
+        f"""CREATE TABLE IF NOT EXISTS {estado} (
+            "Maquina" TEXT PRIMARY KEY,
+            "Grupo" TEXT,
+            "Item" TEXT,
+            "Ferramenta" TEXT,
+            "Estado" TEXT,
+            "Inicio_Ciclo_ISO" TEXT,
+            "Acumulado_Segundos" REAL,
+            "Inicio_Contagem_ISO" TEXT,
+            "Inicio_Troca_ISO" TEXT,
+            "Motivo_Troca" TEXT,
+            "Detalhe_Troca" TEXT,
+            "Operador" TEXT,
+            "Turno" TEXT,
+            "Atualizado_Em" TEXT
+        )""",
+        want_rows=False,
+    )
+
+    turso_request(
+        f"""CREATE TABLE IF NOT EXISTS {ciclos} (
+            "Data_Hora" TEXT,
+            "Maquina" TEXT,
+            "Grupo" TEXT,
+            "Item" TEXT,
+            "Ferramenta" TEXT,
+            "Inicio_Ciclo_ISO" TEXT,
+            "Fim_Ciclo_ISO" TEXT,
+            "Vida_Util_Segundos" REAL,
+            "Vida_Util" TEXT,
+            "Motivo_Troca" TEXT,
+            "Detalhe_Troca" TEXT,
+            "Conta_Media" TEXT,
+            "Tempo_Troca_Segundos" REAL,
+            "Tempo_Troca" TEXT,
+            "Operador" TEXT,
+            "Turno" TEXT
+        )""",
+        want_rows=False,
+    )
+
+    _marcar_tabela_existe(ARQUIVO_USINAGEM_FERRAMENTA_ESTADO, True)
+    _marcar_tabela_existe(ARQUIVO_USINAGEM_FERRAMENTA_CICLOS, True)
+    st.session_state["_usi_tool_tables_ready"] = True
+
+
+def _usi_tool_estado(maquina):
+    _usi_tool_garantir_tabelas()
+
+    tab = _quote_identifier(ARQUIVO_USINAGEM_FERRAMENTA_ESTADO)
+    result = turso_request(
+        f"""SELECT *
+            FROM {tab}
+            WHERE "Maquina"=?
+            LIMIT 1""",
+        [str(maquina)],
+        want_rows=True,
+    )
+    df = _resultado_turso_df(result)
+
+    if df.empty:
+        return None
+
+    row = df.iloc[0].to_dict()
+
+    try:
+        row["Acumulado_Segundos"] = float(
+            row.get("Acumulado_Segundos", 0) or 0
+        )
+    except Exception:
+        row["Acumulado_Segundos"] = 0.0
+
+    return row
+
+
+def _usi_tool_upsert(estado):
+    _usi_tool_garantir_tabelas()
+
+    tab = _quote_identifier(ARQUIVO_USINAGEM_FERRAMENTA_ESTADO)
+
+    campos = [
+        "Maquina",
+        "Grupo",
+        "Item",
+        "Ferramenta",
+        "Estado",
+        "Inicio_Ciclo_ISO",
+        "Acumulado_Segundos",
+        "Inicio_Contagem_ISO",
+        "Inicio_Troca_ISO",
+        "Motivo_Troca",
+        "Detalhe_Troca",
+        "Operador",
+        "Turno",
+        "Atualizado_Em",
+    ]
+
+    valores = [estado.get(c, "") for c in campos]
+
+    turso_request(
+        f"""INSERT INTO {tab}
+        ({", ".join(_quote_identifier(c) for c in campos)})
+        VALUES ({", ".join(["?"] * len(campos))})
+        ON CONFLICT("Maquina") DO UPDATE SET
+            "Grupo"=excluded."Grupo",
+            "Item"=excluded."Item",
+            "Ferramenta"=excluded."Ferramenta",
+            "Estado"=excluded."Estado",
+            "Inicio_Ciclo_ISO"=excluded."Inicio_Ciclo_ISO",
+            "Acumulado_Segundos"=excluded."Acumulado_Segundos",
+            "Inicio_Contagem_ISO"=excluded."Inicio_Contagem_ISO",
+            "Inicio_Troca_ISO"=excluded."Inicio_Troca_ISO",
+            "Motivo_Troca"=excluded."Motivo_Troca",
+            "Detalhe_Troca"=excluded."Detalhe_Troca",
+            "Operador"=excluded."Operador",
+            "Turno"=excluded."Turno",
+            "Atualizado_Em"=excluded."Atualizado_Em" """,
+        valores,
+        want_rows=False,
+    )
+
+    _invalidar_cache_turso(ARQUIVO_USINAGEM_FERRAMENTA_ESTADO)
+
+
+def _usi_tool_vida_atual_segundos(estado, agora=None):
+    if not estado:
+        return 0.0
+
+    agora = agora or datetime.now(FUSO_BR)
+
+    try:
+        acumulado = float(
+            estado.get("Acumulado_Segundos", 0) or 0
+        )
+    except Exception:
+        acumulado = 0.0
+
+    if str(estado.get("Estado", "")).upper() == "RODANDO":
+        inicio = _usi_tool_dt(
+            estado.get("Inicio_Contagem_ISO", "")
+        )
+        if inicio:
+            acumulado += max(
+                0.0,
+                (agora - inicio).total_seconds(),
+            )
+
+    return max(0.0, acumulado)
+
+
+def _usi_tool_metricas(maquina, item, ferramenta):
+    _usi_tool_garantir_tabelas()
+
+    retorno = {
+        "qtd_media": 0,
+        "media_vida_s": 0.0,
+        "limite_80_s": 0.0,
+        "media_troca_s": 0.0,
+        "ultimo_ciclo_s": 0.0,
+    }
+
+    tab = _quote_identifier(ARQUIVO_USINAGEM_FERRAMENTA_CICLOS)
+
+    result = turso_request(
+        f"""SELECT
+                "Vida_Util_Segundos",
+                "Tempo_Troca_Segundos",
+                "Conta_Media"
+            FROM {tab}
+            WHERE "Maquina"=?
+              AND "Item"=?
+              AND "Ferramenta"=?
+            ORDER BY rowid DESC""",
+        [
+            str(maquina),
+            str(item).strip().upper(),
+            str(ferramenta).strip().upper(),
+        ],
+        want_rows=True,
+    )
+
+    df = _resultado_turso_df(result)
+    if df.empty:
+        return retorno
+
+    vidas = pd.to_numeric(
+        df.get("Vida_Util_Segundos"),
+        errors="coerce",
+    )
+    trocas = pd.to_numeric(
+        df.get("Tempo_Troca_Segundos"),
+        errors="coerce",
+    )
+
+    if not vidas.dropna().empty:
+        retorno["ultimo_ciclo_s"] = float(
+            vidas.dropna().iloc[0]
+        )
+
+    mascara_media = (
+        df.get(
+            "Conta_Media",
+            pd.Series("", index=df.index),
+        )
+        .fillna("")
+        .astype(str)
+        .str.upper()
+        .eq("SIM")
+    )
+
+    vidas_validas = vidas[mascara_media].dropna()
+    vidas_validas = vidas_validas[vidas_validas > 0]
+
+    if not vidas_validas.empty:
+        media = float(vidas_validas.mean())
+        retorno["qtd_media"] = int(len(vidas_validas))
+        retorno["media_vida_s"] = media
+        retorno["limite_80_s"] = media * 0.80
+
+    trocas_validas = trocas.dropna()
+    trocas_validas = trocas_validas[trocas_validas > 0]
+
+    if not trocas_validas.empty:
+        retorno["media_troca_s"] = float(
+            trocas_validas.mean()
+        )
+
+    return retorno
+
+
+def _usi_tool_iniciar_ciclo(
+    maquina,
+    item,
+    ferramenta,
+    status_operacional,
+):
+    item = str(item or "").strip().upper()
+    ferramenta = str(ferramenta or "").strip().upper()
+
+    if not item:
+        raise RuntimeError("Informe o Item / Material.")
+    if not ferramenta:
+        raise RuntimeError("Informe a Ferramenta.")
+
+    if _usi_tool_estado(maquina):
+        raise RuntimeError(
+            "Esta máquina já possui um ciclo de ferramenta ativo."
+        )
+
+    agora = datetime.now(FUSO_BR)
+    produzindo = (
+        _usinagem_status_base(status_operacional)
+        == "PRODUZINDO"
+    )
+
+    estado = {
+        "Maquina": maquina,
+        "Grupo": _usinagem_grupo_maquina(maquina),
+        "Item": item,
+        "Ferramenta": ferramenta,
+        "Estado": "RODANDO" if produzindo else "PAUSADO",
+        "Inicio_Ciclo_ISO": agora.isoformat(),
+        "Acumulado_Segundos": 0.0,
+        "Inicio_Contagem_ISO": (
+            agora.isoformat() if produzindo else ""
+        ),
+        "Inicio_Troca_ISO": "",
+        "Motivo_Troca": "",
+        "Detalhe_Troca": "",
+        "Operador": str(
+            st.session_state.get("operador", "") or ""
+        ),
+        "Turno": str(
+            st.session_state.get("turno", "") or ""
+        ),
+        "Atualizado_Em": agora.isoformat(),
+    }
+
+    _usi_tool_upsert(estado)
+
+
+def _usi_tool_sincronizar_status(maquina, novo_status):
+    """Vida útil conta somente enquanto a máquina está PRODUZINDO."""
+    try:
+        estado = _usi_tool_estado(maquina)
+        if not estado:
+            return
+
+        estado_ciclo = str(
+            estado.get("Estado", "")
+        ).upper()
+
+        # Durante a troca, o contador de vida já está congelado.
+        if estado_ciclo == "TROCANDO":
+            return
+
+        agora = datetime.now(FUSO_BR)
+        produzindo = (
+            _usinagem_status_base(novo_status)
+            == "PRODUZINDO"
+        )
+
+        if estado_ciclo == "RODANDO" and not produzindo:
+            estado["Acumulado_Segundos"] = (
+                _usi_tool_vida_atual_segundos(
+                    estado,
+                    agora,
+                )
+            )
+            estado["Estado"] = "PAUSADO"
+            estado["Inicio_Contagem_ISO"] = ""
+            estado["Atualizado_Em"] = agora.isoformat()
+            _usi_tool_upsert(estado)
+
+        elif estado_ciclo == "PAUSADO" and produzindo:
+            estado["Estado"] = "RODANDO"
+            estado["Inicio_Contagem_ISO"] = agora.isoformat()
+            estado["Atualizado_Em"] = agora.isoformat()
+            _usi_tool_upsert(estado)
+
+    except Exception:
+        # Não deixa uma falha do módulo de ferramenta impedir
+        # o apontamento operacional da máquina.
+        pass
+
+
+def _usi_tool_iniciar_troca(
+    maquina,
+    motivo,
+    detalhe="",
+):
+    estado = _usi_tool_estado(maquina)
+
+    if not estado:
+        raise RuntimeError(
+            "Cadastre a ferramenta antes de iniciar uma troca."
+        )
+
+    if str(estado.get("Estado", "")).upper() == "TROCANDO":
+        raise RuntimeError("A troca já está em andamento.")
+
+    motivo = str(motivo or "").strip()
+    detalhe = str(detalhe or "").strip()
+
+    if not motivo:
+        raise RuntimeError("Selecione o motivo da troca.")
+    if motivo == "Outro" and not detalhe:
+        raise RuntimeError(
+            "Informe o detalhe quando selecionar 'Outro'."
+        )
+
+    agora = datetime.now(FUSO_BR)
+
+    estado["Acumulado_Segundos"] = (
+        _usi_tool_vida_atual_segundos(
+            estado,
+            agora,
+        )
+    )
+    estado["Estado"] = "TROCANDO"
+    estado["Inicio_Contagem_ISO"] = ""
+    estado["Inicio_Troca_ISO"] = agora.isoformat()
+    estado["Motivo_Troca"] = motivo
+    estado["Detalhe_Troca"] = detalhe
+    estado["Operador"] = str(
+        st.session_state.get("operador", "") or ""
+    )
+    estado["Turno"] = str(
+        st.session_state.get("turno", "") or ""
+    )
+    estado["Atualizado_Em"] = agora.isoformat()
+
+    _usi_tool_upsert(estado)
+
+
+def _usi_tool_finalizar_troca(
+    maquina,
+    novo_item,
+    nova_ferramenta,
+    status_operacional,
+):
+    estado = _usi_tool_estado(maquina)
+
+    if not estado:
+        raise RuntimeError("Ciclo de ferramenta não encontrado.")
+
+    if str(estado.get("Estado", "")).upper() != "TROCANDO":
+        raise RuntimeError("Nenhuma troca está em andamento.")
+
+    agora = datetime.now(FUSO_BR)
+    inicio_troca = _usi_tool_dt(
+        estado.get("Inicio_Troca_ISO", "")
+    )
+
+    if not inicio_troca:
+        raise RuntimeError(
+            "Horário de início da troca não encontrado."
+        )
+
+    tempo_troca_s = max(
+        0.0,
+        (agora - inicio_troca).total_seconds(),
+    )
+    vida_util_s = float(
+        estado.get("Acumulado_Segundos", 0) or 0
+    )
+
+    motivo = str(
+        estado.get("Motivo_Troca", "") or ""
+    ).strip()
+    detalhe = str(
+        estado.get("Detalhe_Troca", "") or ""
+    ).strip()
+
+    item_antigo = str(
+        estado.get("Item", "") or ""
+    ).strip().upper()
+    ferramenta_antiga = str(
+        estado.get("Ferramenta", "") or ""
+    ).strip().upper()
+
+    if motivo == "Setup / item novo":
+        item_proximo = str(
+            novo_item or ""
+        ).strip().upper()
+        ferramenta_proxima = str(
+            nova_ferramenta or ""
+        ).strip().upper()
+
+        if not item_proximo:
+            raise RuntimeError(
+                "Informe o novo Item / Material."
+            )
+        if not ferramenta_proxima:
+            raise RuntimeError(
+                "Informe a nova Ferramenta."
+            )
+    else:
+        item_proximo = item_antigo
+        ferramenta_proxima = ferramenta_antiga
+
+    conta_media = (
+        "NÃO"
+        if motivo in USINAGEM_MOTIVOS_FORA_MEDIA
+        else "SIM"
+    )
+
+    salvar_csv(
+        {
+            "Data_Hora": agora.strftime(
+                "%d/%m/%Y %H:%M:%S"
+            ),
+            "Maquina": maquina,
+            "Grupo": _usinagem_grupo_maquina(maquina),
+            "Item": item_antigo,
+            "Ferramenta": ferramenta_antiga,
+            "Inicio_Ciclo_ISO": str(
+                estado.get("Inicio_Ciclo_ISO", "") or ""
+            ),
+            "Fim_Ciclo_ISO": agora.isoformat(),
+            "Vida_Util_Segundos": round(
+                vida_util_s,
+                3,
+            ),
+            "Vida_Util": _usi_tool_tempo_txt(
+                vida_util_s
+            ),
+            "Motivo_Troca": motivo,
+            "Detalhe_Troca": detalhe,
+            "Conta_Media": conta_media,
+            "Tempo_Troca_Segundos": round(
+                tempo_troca_s,
+                3,
+            ),
+            "Tempo_Troca": _usi_tool_tempo_txt(
+                tempo_troca_s
+            ),
+            "Operador": str(
+                st.session_state.get("operador", "") or ""
+            ),
+            "Turno": str(
+                st.session_state.get("turno", "") or ""
+            ),
+        },
+        ARQUIVO_USINAGEM_FERRAMENTA_CICLOS,
+    )
+
+    produzindo = (
+        _usinagem_status_base(status_operacional)
+        == "PRODUZINDO"
+    )
+
+    # Ao finalizar a troca, começa automaticamente o próximo ciclo.
+    novo_estado = {
+        "Maquina": maquina,
+        "Grupo": _usinagem_grupo_maquina(maquina),
+        "Item": item_proximo,
+        "Ferramenta": ferramenta_proxima,
+        "Estado": (
+            "RODANDO" if produzindo else "PAUSADO"
+        ),
+        "Inicio_Ciclo_ISO": agora.isoformat(),
+        "Acumulado_Segundos": 0.0,
+        "Inicio_Contagem_ISO": (
+            agora.isoformat() if produzindo else ""
+        ),
+        "Inicio_Troca_ISO": "",
+        "Motivo_Troca": "",
+        "Detalhe_Troca": "",
+        "Operador": str(
+            st.session_state.get("operador", "") or ""
+        ),
+        "Turno": str(
+            st.session_state.get("turno", "") or ""
+        ),
+        "Atualizado_Em": agora.isoformat(),
+    }
+
+    _usi_tool_upsert(novo_estado)
+
+    return {
+        "tempo_troca_s": tempo_troca_s,
+        "vida_util_s": vida_util_s,
+        "conta_media": conta_media,
+        "item_proximo": item_proximo,
+        "ferramenta_proxima": ferramenta_proxima,
+    }
+
+
+def _usi_tool_corrigir_cadastro(
+    maquina,
+    item,
+    ferramenta,
+):
+    estado = _usi_tool_estado(maquina)
+    if not estado:
+        raise RuntimeError("Nenhum ciclo ativo nesta máquina.")
+
+    item = str(item or "").strip().upper()
+    ferramenta = str(ferramenta or "").strip().upper()
+
+    if not item or not ferramenta:
+        raise RuntimeError(
+            "Item e Ferramenta são obrigatórios."
+        )
+
+    estado["Item"] = item
+    estado["Ferramenta"] = ferramenta
+    estado["Atualizado_Em"] = datetime.now(
+        FUSO_BR
+    ).isoformat()
+    _usi_tool_upsert(estado)
+
+
+def _usi_tool_render_barra(
+    estado,
+    metricas,
+):
+    estado_ciclo = str(
+        estado.get("Estado", "PAUSADO")
+    ).upper()
+    acumulado = float(
+        estado.get("Acumulado_Segundos", 0) or 0
+    )
+    inicio = json.dumps(
+        str(estado.get("Inicio_Contagem_ISO", "") or "")
+    )
+
+    rodando = (
+        "true"
+        if estado_ciclo == "RODANDO"
+        else "false"
+    )
+
+    media_s = float(
+        metricas.get("media_vida_s", 0) or 0
+    )
+    limite_s = float(
+        metricas.get("limite_80_s", 0) or 0
+    )
+    qtd_media = int(
+        metricas.get("qtd_media", 0) or 0
+    )
+
+    components.html(
+        f"""
+        <div style="
+            font-family:Inter,Arial,sans-serif;
+            background:#101214;
+            border:1px solid #27272A;
+            border-radius:16px;
+            padding:15px 16px;
+            color:#F4F4F5;
+        ">
+            <div style="display:flex;justify-content:space-between;gap:12px;align-items:flex-end;">
+                <div>
+                    <div style="font-size:10px;font-weight:900;color:#8B8B98;letter-spacing:.8px;">
+                        VIDA ÚTIL ATUAL
+                    </div>
+                    <div id="usiToolTime" style="font-size:31px;font-weight:950;margin-top:4px;">
+                        0h:00
+                    </div>
+                </div>
+                <div style="text-align:right;">
+                    <div style="font-size:9px;color:#71717A;">ESTADO</div>
+                    <div style="font-size:11px;font-weight:900;color:#D4D4D8;">{estado_ciclo}</div>
+                </div>
+            </div>
+
+            <div style="
+                position:relative;
+                height:18px;
+                border-radius:999px;
+                background:#242428;
+                overflow:hidden;
+                margin-top:15px;
+                border:1px solid #303036;
+            ">
+                <div id="usiToolBar" style="
+                    height:100%;
+                    width:0%;
+                    border-radius:999px;
+                    transition:width .4s linear,background .3s ease;
+                    background:#22C55E;
+                    background-size:34px 34px;
+                "></div>
+                <div style="
+                    position:absolute;
+                    left:80%;
+                    top:0;
+                    bottom:0;
+                    width:2px;
+                    background:rgba(255,255,255,.72);
+                    z-index:3;
+                "></div>
+            </div>
+
+            <div style="
+                display:flex;
+                justify-content:space-between;
+                gap:10px;
+                font-size:10px;
+                color:#A1A1AA;
+                margin-top:7px;
+            ">
+                <span id="usiToolRatio">Aprendendo média</span>
+                <span id="usiToolLimit">Limite 80%: —</span>
+            </div>
+
+            <div id="usiToolAlert" style="
+                display:none;
+                margin-top:10px;
+                padding:8px 10px;
+                border-radius:9px;
+                background:rgba(239,68,68,.12);
+                border:1px solid rgba(239,68,68,.35);
+                color:#FCA5A5;
+                font-size:10px;
+                font-weight:900;
+            ">
+                ⚠ LIMITE PREVENTIVO ATINGIDO · PROGRAMAR TROCA
+            </div>
+
+            <div style="
+                margin-top:10px;
+                font-size:9px;
+                color:#71717A;
+            ">
+                Base aprendida com {qtd_media} ciclo(s) válido(s).
+            </div>
+        </div>
+
+        <script>
+        (() => {{
+            const running = {rodando};
+            const start = {inicio};
+            const accumulated = {acumulado};
+            const avg = {media_s};
+            const limit = {limite_s};
+
+            const timeEl = document.getElementById("usiToolTime");
+            const barEl = document.getElementById("usiToolBar");
+            const ratioEl = document.getElementById("usiToolRatio");
+            const limitEl = document.getElementById("usiToolLimit");
+            const alertEl = document.getElementById("usiToolAlert");
+
+            function fmt(sec) {{
+                sec = Math.max(0, Math.floor(sec || 0));
+                const h = Math.floor(sec / 3600);
+                const m = Math.floor((sec % 3600) / 60);
+                return h + "h:" + String(m).padStart(2,"0");
+            }}
+
+            function elapsed() {{
+                let v = accumulated;
+                if (running && start) {{
+                    v += Math.max(
+                        0,
+                        (Date.now() - new Date(start).getTime()) / 1000
+                    );
+                }}
+                return v;
+            }}
+
+            function draw() {{
+                const e = elapsed();
+                timeEl.textContent = fmt(e);
+
+                if (avg > 0) {{
+                    const pct = Math.max(
+                        0,
+                        Math.min(100, (e / avg) * 100)
+                    );
+
+                    barEl.style.width = pct + "%";
+
+                    if (pct >= 80) {{
+                        barEl.style.background = "#EF4444";
+                        alertEl.style.display = "block";
+                    }} else if (pct >= 65) {{
+                        barEl.style.background = "#F59E0B";
+                        alertEl.style.display = "none";
+                    }} else {{
+                        barEl.style.background = "#22C55E";
+                        alertEl.style.display = "none";
+                    }}
+
+                    ratioEl.textContent =
+                        fmt(e) + " / média " + fmt(avg);
+                    limitEl.textContent =
+                        "Limite 80%: " + fmt(limit);
+                }} else {{
+                    barEl.style.width = "100%";
+                    barEl.style.background =
+                        "repeating-linear-gradient(" +
+                        "45deg,#16A34A 0,#16A34A 12px," +
+                        "#22C55E 12px,#22C55E 24px)";
+                    barEl.style.backgroundSize = "34px 34px";
+                    ratioEl.textContent =
+                        fmt(e) + " / média em aprendizado";
+                    limitEl.textContent =
+                        "Feche o 1º ciclo para criar a base";
+                    alertEl.style.display = "none";
+                }}
+            }}
+
+            draw();
+            if (running) setInterval(draw, 500);
+        }})();
+        </script>
+        """,
+        height=238,
+        scrolling=False,
+    )
+
+
+def _usi_tool_render_timer_troca(estado):
+    inicio = json.dumps(
+        str(estado.get("Inicio_Troca_ISO", "") or "")
+    )
+
+    components.html(
+        f"""
+        <div style="
+            text-align:center;
+            padding:13px;
+            border-radius:14px;
+            background:#2A1606;
+            border:1px solid #F59E0B;
+            font-family:Inter,Arial,sans-serif;
+        ">
+            <div style="font-size:10px;font-weight:900;color:#FBBF24;">
+                TROCA EM ANDAMENTO
+            </div>
+            <div id="usiChangeTime" style="
+                font-size:34px;
+                font-weight:950;
+                color:#FEF3C7;
+                margin-top:5px;
+            ">00:00</div>
+            <div style="font-size:10px;color:#D6D3D1;margin-top:4px;">
+                {_usi_tool_tempo_txt(estado.get("Acumulado_Segundos", 0))} de vida útil encerrada
+            </div>
+        </div>
+
+        <script>
+        (() => {{
+            const start = {inicio};
+            const el = document.getElementById("usiChangeTime");
+
+            function fmt(ms) {{
+                let s = Math.max(0, Math.floor(ms/1000));
+                const h = Math.floor(s/3600);
+                s %= 3600;
+                const m = Math.floor(s/60);
+                const sec = s%60;
+
+                if (h > 0) {{
+                    return String(h).padStart(2,"0") + ":" +
+                           String(m).padStart(2,"0") + ":" +
+                           String(sec).padStart(2,"0");
+                }}
+
+                return String(m).padStart(2,"0") + ":" +
+                       String(sec).padStart(2,"0");
+            }}
+
+            function draw() {{
+                if (!start) return;
+                el.textContent = fmt(
+                    Date.now() - new Date(start).getTime()
+                );
+            }}
+
+            draw();
+            setInterval(draw, 250);
+        }})();
+        </script>
+        """,
+        height=126,
+        scrolling=False,
+    )
+
+
+def _usi_tool_historico_recente(
+    maquina,
+    item,
+    ferramenta,
+    limite=8,
+):
+    _usi_tool_garantir_tabelas()
+
+    tab = _quote_identifier(ARQUIVO_USINAGEM_FERRAMENTA_CICLOS)
+    result = turso_request(
+        f"""SELECT
+                "Data_Hora",
+                "Vida_Util",
+                "Motivo_Troca",
+                "Conta_Media",
+                "Tempo_Troca",
+                "Operador"
+            FROM {tab}
+            WHERE "Maquina"=?
+              AND "Item"=?
+              AND "Ferramenta"=?
+            ORDER BY rowid DESC
+            LIMIT {int(limite)}""",
+        [
+            str(maquina),
+            str(item).strip().upper(),
+            str(ferramenta).strip().upper(),
+        ],
+        want_rows=True,
+    )
+    return _resultado_turso_df(result)
+
+
+def _usi_tool_render_secao(
+    maquina,
+    status_info,
+):
+    st.divider()
+    st.markdown("### 🛠 Vida útil da ferramenta")
+    st.caption(
+        "O cronômetro só começa depois do cadastro inicial. "
+        "Depois, basta alimentar cada troca."
+    )
+
+    try:
+        estado = _usi_tool_estado(maquina)
+    except Exception as exc:
+        st.error(
+            f"Não foi possível carregar a ferramenta: {exc}"
+        )
+        return
+
+    status_operacional = _usinagem_status_base(
+        status_info.get("Status", "PRODUZINDO")
+    )
+
+    # ---------------------------------------------------------
+    # PRIMEIRO CADASTRO: nenhum timer existe ainda.
+    # ---------------------------------------------------------
+    if not estado:
+        st.info(
+            "Nenhuma ferramenta sendo monitorada nesta máquina. "
+            "O timer ainda está desligado."
+        )
+
+        with st.form(
+            f"usi_tool_primeiro_cadastro_{maquina}",
+            clear_on_submit=False,
+        ):
+            c1, c2 = st.columns(2)
+
+            item = c1.text_input(
+                "Item / Material:",
+                value=str(
+                    status_info.get("Item", "") or ""
+                ),
+                placeholder="Ex: 103.417-1",
+            )
+            ferramenta = c2.text_input(
+                "Ferramenta / Código:",
+                placeholder="Ex: Broca Ø2.5 / T0101 / código interno",
+            )
+
+            st.caption(
+                "A contagem começa somente ao clicar no botão abaixo."
+            )
+
+            if st.form_submit_button(
+                "▶ INICIAR VIDA DA FERRAMENTA",
+                type="primary",
+                use_container_width=True,
+            ):
+                try:
+                    _usi_tool_iniciar_ciclo(
+                        maquina,
+                        item,
+                        ferramenta,
+                        status_operacional,
+                    )
+                    st.success(
+                        "✅ Monitoramento iniciado."
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
+
+        return
+
+    # ---------------------------------------------------------
+    # CICLO ATIVO
+    # ---------------------------------------------------------
+    item = str(
+        estado.get("Item", "") or ""
+    ).strip().upper()
+    ferramenta = str(
+        estado.get("Ferramenta", "") or ""
+    ).strip().upper()
+    estado_ciclo = str(
+        estado.get("Estado", "") or ""
+    ).upper()
+
+    try:
+        metricas = _usi_tool_metricas(
+            maquina,
+            item,
+            ferramenta,
+        )
+    except Exception:
+        metricas = {
+            "qtd_media": 0,
+            "media_vida_s": 0,
+            "limite_80_s": 0,
+            "media_troca_s": 0,
+            "ultimo_ciclo_s": 0,
+        }
+
+    st.markdown(
+        f"""
+        <div style="
+            display:flex;
+            gap:10px;
+            flex-wrap:wrap;
+            margin-bottom:10px;
+        ">
+            <div style="
+                flex:1;
+                min-width:180px;
+                padding:10px 12px;
+                border-radius:11px;
+                background:#131318;
+                border:1px solid #27272A;
+            ">
+                <div style="font-size:9px;color:#71717A;font-weight:900;">ITEM / MATERIAL</div>
+                <div style="font-size:13px;color:#F4F4F5;font-weight:900;margin-top:3px;">
+                    {html.escape(item)}
+                </div>
+            </div>
+            <div style="
+                flex:1;
+                min-width:180px;
+                padding:10px 12px;
+                border-radius:11px;
+                background:#131318;
+                border:1px solid #27272A;
+            ">
+                <div style="font-size:9px;color:#71717A;font-weight:900;">FERRAMENTA</div>
+                <div style="font-size:13px;color:#F4F4F5;font-weight:900;margin-top:3px;">
+                    {html.escape(ferramenta)}
+                </div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    _usi_tool_render_barra(
+        estado,
+        metricas,
+    )
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric(
+        "Média de vida",
+        (
+            _usi_tool_tempo_txt(
+                metricas["media_vida_s"]
+            )
+            if metricas["media_vida_s"] > 0
+            else "Aprendendo"
+        ),
+    )
+    c2.metric(
+        "Troca preventiva · 80%",
+        (
+            _usi_tool_tempo_txt(
+                metricas["limite_80_s"]
+            )
+            if metricas["limite_80_s"] > 0
+            else "—"
+        ),
+    )
+    c3.metric(
+        "Média tempo de troca",
+        (
+            _usi_tool_tempo_txt(
+                metricas["media_troca_s"]
+            )
+            if metricas["media_troca_s"] > 0
+            else "—"
+        ),
+    )
+
+    # ---------------------------------------------------------
+    # Troca em andamento
+    # ---------------------------------------------------------
+    if estado_ciclo == "TROCANDO":
+        _usi_tool_render_timer_troca(estado)
+
+        motivo_atual = str(
+            estado.get("Motivo_Troca", "") or ""
+        )
+        detalhe_atual = str(
+            estado.get("Detalhe_Troca", "") or ""
+        )
+
+        st.warning(
+            f"Motivo: **{motivo_atual}**"
+            + (
+                f" · {detalhe_atual}"
+                if detalhe_atual
+                else ""
+            )
+        )
+
+        novo_item = item
+        nova_ferramenta = ferramenta
+
+        if motivo_atual == "Setup / item novo":
+            st.markdown("##### Próximo ciclo")
+            n1, n2 = st.columns(2)
+            novo_item = n1.text_input(
+                "Novo Item / Material:",
+                key=f"usi_tool_novo_item_{maquina}",
+                placeholder="Obrigatório",
+            )
+            nova_ferramenta = n2.text_input(
+                "Nova Ferramenta / Código:",
+                key=f"usi_tool_nova_ferramenta_{maquina}",
+                placeholder="Obrigatório",
+            )
+
+        b1, b2 = st.columns(2)
+
+        b1.button(
+            "⏱ INICIAR TROCA",
+            key=f"usi_tool_start_disabled_{maquina}",
+            disabled=True,
+            use_container_width=True,
+        )
+
+        if b2.button(
+            "✅ FINALIZAR TROCA",
+            key=f"usi_tool_finish_{maquina}",
+            type="primary",
+            use_container_width=True,
+        ):
+            try:
+                resultado = _usi_tool_finalizar_troca(
+                    maquina,
+                    novo_item,
+                    nova_ferramenta,
+                    status_operacional,
+                )
+
+                st.success(
+                    "✅ Troca finalizada em "
+                    f"{_usi_tool_tempo_txt(resultado['tempo_troca_s'])}. "
+                    "Novo ciclo iniciado automaticamente."
+                )
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
+
+    # ---------------------------------------------------------
+    # Ciclo rodando/pausado: operador só alimenta a troca.
+    # ---------------------------------------------------------
+    else:
+        st.markdown("##### Registrar próxima troca")
+
+        motivo = st.selectbox(
+            "Motivo da troca:",
+            USINAGEM_MOTIVOS_TROCA_FERRAMENTA,
+            key=f"usi_tool_motivo_{maquina}",
+        )
+        detalhe = st.text_input(
+            "Detalhe / observação da troca:",
+            key=f"usi_tool_detalhe_{maquina}",
+            placeholder=(
+                "Obrigatório apenas para 'Outro'. "
+                "Ex: quebrou na peça, acabamento, medida..."
+            ),
+        )
+
+        if motivo in USINAGEM_MOTIVOS_FORA_MEDIA:
+            st.caption(
+                "ℹ️ Este motivo será registrado, mas **não entra na média-base** "
+                "da vida útil."
+            )
+        else:
+            st.caption(
+                "✓ Este ciclo será considerado na média histórica da ferramenta."
+            )
+
+        b1, b2 = st.columns(2)
+
+        if b1.button(
+            "⏱ INICIAR TROCA",
+            key=f"usi_tool_start_{maquina}",
+            type="primary",
+            use_container_width=True,
+        ):
+            try:
+                _usi_tool_iniciar_troca(
+                    maquina,
+                    motivo,
+                    detalhe,
+                )
+                st.rerun()
+            except Exception as exc:
+                st.error(str(exc))
+
+        b2.button(
+            "✅ FINALIZAR TROCA",
+            key=f"usi_tool_finish_disabled_{maquina}",
+            disabled=True,
+            use_container_width=True,
+        )
+
+    # ---------------------------------------------------------
+    # Correção de cadastro sem zerar a vida atual.
+    # ---------------------------------------------------------
+    with st.expander("✏️ Corrigir Item / Ferramenta", expanded=False):
+        with st.form(f"usi_tool_editar_{maquina}"):
+            e1, e2 = st.columns(2)
+            item_edit = e1.text_input(
+                "Item / Material:",
+                value=item,
+            )
+            ferramenta_edit = e2.text_input(
+                "Ferramenta / Código:",
+                value=ferramenta,
+            )
+
+            if st.form_submit_button(
+                "💾 SALVAR CORREÇÃO",
+                use_container_width=True,
+            ):
+                try:
+                    _usi_tool_corrigir_cadastro(
+                        maquina,
+                        item_edit,
+                        ferramenta_edit,
+                    )
+                    st.success("✅ Cadastro corrigido.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
+
+    # ---------------------------------------------------------
+    # Histórico recente do mesmo conjunto.
+    # ---------------------------------------------------------
+    with st.expander("📊 Últimos ciclos desta ferramenta", expanded=False):
+        try:
+            hist = _usi_tool_historico_recente(
+                maquina,
+                item,
+                ferramenta,
+                limite=10,
+            )
+        except Exception:
+            hist = pd.DataFrame()
+
+        if hist.empty:
+            st.info(
+                "Ainda não existem ciclos finalizados para esta ferramenta."
+            )
+        else:
+            st.dataframe(
+                hist,
+                use_container_width=True,
+                hide_index=True,
+            )
+
 
 
 # =============================================================
@@ -8270,6 +9561,12 @@ def _usinagem_painel_maquina(maquina, status_info):
                 st.rerun()
             except Exception as exc:
                 st.error(f"Não foi possível salvar: {exc}")
+
+    # Vida útil da ferramenta fica dentro da própria máquina.
+    _usi_tool_render_secao(
+        maquina,
+        status_info,
+    )
 
 
 def tela_usinagem_maquinas():
