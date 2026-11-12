@@ -9283,6 +9283,113 @@ def _usi_tool_historico_recente(
     return _resultado_turso_df(result)
 
 
+def _usi_tool_render_controles_grade(
+    maquina,
+    status_operacional,
+    estado,
+    prefixo="grade",
+):
+    """Controles rápidos de troca direto no card da tela de máquinas."""
+    estado_ciclo = str(
+        estado.get("Estado", "") or ""
+    ).upper()
+
+    key_base = re.sub(
+        r"[^0-9A-Za-z]+",
+        "_",
+        f"{prefixo}_{maquina}",
+    )
+
+    with st.expander("🛠 Troca rápida", expanded=False):
+        if estado_ciclo == "TROCANDO":
+            motivo_atual = str(
+                estado.get("Motivo_Troca", "") or ""
+            ).strip()
+            detalhe_atual = str(
+                estado.get("Detalhe_Troca", "") or ""
+            ).strip()
+
+            st.caption(
+                f"Troca em andamento · Motivo: {motivo_atual}"
+                + (f" · {detalhe_atual}" if detalhe_atual else "")
+            )
+
+            novo_item = ""
+            nova_ferramenta = ""
+
+            if motivo_atual == "Setup / item novo":
+                c1, c2 = st.columns(2)
+                novo_item = c1.text_input(
+                    "Novo Item:",
+                    key=f"{key_base}_novo_item",
+                    placeholder="Obrigatório",
+                )
+                nova_ferramenta = c2.text_input(
+                    "Nova Ferramenta:",
+                    key=f"{key_base}_nova_ferramenta",
+                    placeholder="Obrigatório",
+                )
+
+            if st.button(
+                "✅ FINALIZAR TROCA",
+                key=f"{key_base}_finish",
+                type="primary",
+                use_container_width=True,
+            ):
+                try:
+                    _usi_tool_finalizar_troca(
+                        maquina,
+                        novo_item,
+                        nova_ferramenta,
+                        status_operacional,
+                    )
+                    st.success("✅ Troca finalizada.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
+
+        else:
+            motivo = st.selectbox(
+                "Motivo:",
+                USINAGEM_MOTIVOS_TROCA_FERRAMENTA,
+                key=f"{key_base}_motivo",
+            )
+            detalhe = st.text_input(
+                "Observação:",
+                key=f"{key_base}_detalhe",
+                placeholder=(
+                    "Ex: quebra, medida fora, lascamento, acabamento..."
+                ),
+            )
+
+            if motivo in USINAGEM_MOTIVOS_FORA_MEDIA:
+                st.caption(
+                    "ℹ️ Este motivo será salvo, mas não entra na média-base."
+                )
+            else:
+                st.caption(
+                    "✓ Este ciclo entra no cálculo da média histórica."
+                )
+
+            if st.button(
+                "⏱ INICIAR TROCA",
+                key=f"{key_base}_start",
+                type="primary",
+                use_container_width=True,
+            ):
+                try:
+                    _usi_tool_iniciar_troca(
+                        maquina,
+                        motivo,
+                        detalhe,
+                    )
+                    st.success("✅ Troca iniciada.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
+
+
+
 def _usi_tool_render_secao(
     maquina,
     status_info,
@@ -10161,6 +10268,13 @@ def tela_usinagem_maquinas():
                     st_base,
                     estado_tool,
                     met,
+                )
+
+                _usi_tool_render_controles_grade(
+                    maq,
+                    st_base,
+                    estado_tool,
+                    prefixo=f"{prefixo}_{grupo}_{maq}",
                 )
 
                 if st.button(
