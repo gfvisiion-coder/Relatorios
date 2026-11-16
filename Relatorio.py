@@ -12047,6 +12047,69 @@ def tela_usinagem_maquinas():
         st.divider()
 
 
+def _usi_aviso_escuro(
+    mensagem,
+    tipo="info",
+    icone=None,
+):
+    """Aviso escuro exclusivo da Usinagem para não usar caixas claras do Streamlit."""
+    estilos = {
+        "info": {
+            "bg": "#101820",
+            "border": "#334155",
+            "text": "#CBD5E1",
+            "accent": "#60A5FA",
+            "icon": "ℹ",
+        },
+        "ok": {
+            "bg": "#0B1F1B",
+            "border": "#164E3D",
+            "text": "#A7F3D0",
+            "accent": "#2DD4BF",
+            "icon": "✓",
+        },
+        "warning": {
+            "bg": "#241A08",
+            "border": "#7C4A03",
+            "text": "#FDE68A",
+            "accent": "#F59E0B",
+            "icon": "!",
+        },
+        "error": {
+            "bg": "#2A1015",
+            "border": "#7F1D1D",
+            "text": "#FECACA",
+            "accent": "#EF4444",
+            "icon": "×",
+        },
+    }
+
+    cfg = estilos.get(tipo, estilos["info"])
+    icone_final = icone or cfg["icon"]
+
+    st.markdown(
+        (
+            f'<div style="display:flex;align-items:center;gap:10px;'
+            f'padding:13px 14px;border-radius:11px;'
+            f'background:{cfg["bg"]};'
+            f'border:1px solid {cfg["border"]};'
+            f'border-left:3px solid {cfg["accent"]};'
+            f'color:{cfg["text"]};'
+            f'font-size:10px;font-weight:800;">'
+            f'<div style="width:23px;height:23px;border-radius:7px;'
+            f'display:flex;align-items:center;justify-content:center;'
+            f'background:{cfg["accent"]}18;color:{cfg["accent"]};'
+            f'font-size:12px;font-weight:950;">'
+            f'{html.escape(str(icone_final))}'
+            f'</div>'
+            f'<div>{html.escape(str(mensagem))}</div>'
+            f'</div>'
+        ),
+        unsafe_allow_html=True,
+    )
+
+
+
 # =============================================================
 # USINAGEM · PROGRAMAÇÃO
 # =============================================================
@@ -12187,8 +12250,10 @@ def tela_usinagem_programacao():
     )
 
     if df.empty:
-        st.success(
-            "✅ Nenhuma preparação programada."
+        _usi_aviso_escuro(
+            "Nenhuma preparação programada.",
+            tipo="ok",
+            icone="✓",
         )
         return
 
@@ -12432,8 +12497,10 @@ def tela_usinagem_programacao():
             df_hist = pd.DataFrame()
 
         if df_hist.empty:
-            st.info(
-                "Nenhum histórico de preparação."
+            _usi_aviso_escuro(
+                "Nenhum histórico de preparação.",
+                tipo="info",
+                icone="↗",
             )
         else:
             colunas = [
@@ -12473,7 +12540,11 @@ def tela_usinagem_historico():
     st.markdown("## ↗ Histórico · Usinagem")
 
     if not tabela_existe(ARQUIVO_USINAGEM_DADOS):
-        st.info("Ainda não existem apontamentos na Usinagem Digital.")
+        _usi_aviso_escuro(
+            "Ainda não existem apontamentos na Usinagem Digital.",
+            tipo="info",
+            icone="↗",
+        )
         return
 
     try:
@@ -12491,7 +12562,11 @@ def tela_usinagem_historico():
         return
 
     if df.empty:
-        st.info("Ainda não existem apontamentos.")
+        _usi_aviso_escuro(
+            "Ainda não existem apontamentos.",
+            tipo="info",
+            icone="↗",
+        )
         return
 
     grupos = _usinagem_grupos_permitidos()
