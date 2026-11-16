@@ -8569,11 +8569,7 @@ def _usi_prep_render_lista_home(
 
     if df is None or df.empty:
         st.markdown(
-            '<div class="prep-empty" style="min-height:58px;display:flex;'
-            'align-items:center;justify-content:center;border-radius:12px;'
-            'background:rgba(45,212,191,.035);'
-            'border:1px solid rgba(45,212,191,.12);'
-            'color:#7DD3C7;font-size:10px;font-weight:800;">'
+            '<div class="usi-empty-state">'
             '✓ Nenhuma preparação programada neste momento.'
             '</div>',
             unsafe_allow_html=True,
@@ -10677,129 +10673,8 @@ def renderizar_topbar_usinagem(tela_atual):
         )
 
 
-def _usi_render_grupo_bar(nome, totais_grupo, total):
-    total = max(1, int(total or 0))
-    prod = int(totais_grupo.get("PRODUZINDO", 0) or 0)
-    prep = int(totais_grupo.get("PREPARAÇÃO", 0) or 0)
-    ajuste = int(totais_grupo.get("AJUSTE", 0) or 0)
-    parada = int(totais_grupo.get("PARADA", 0) or 0)
-    manut = int(totais_grupo.get("MANUTENÇÃO", 0) or 0)
-    pct = round((prod / total) * 100)
-
-    return (
-        '<div class="sector-row">'
-        f'<div class="sector-name" style="min-width:132px">{html.escape(nome)}</div>'
-        '<div class="sector-track">'
-        f'<div class="sector-fill" style="width:{pct}%"></div>'
-        '</div>'
-        f'<div class="sector-pct">{pct}%</div>'
-        '</div>'
-        '<div class="sector-mini" style="margin-left:0;margin-bottom:9px;">'
-        f'<span>Produção <b>{prod}</b></span>'
-        f'<span>Prep. <b>{prep}</b></span>'
-        f'<span style="color:#F472B6">Ajuste <b>{ajuste}</b></span>'
-        f'<span>Parada <b>{parada}</b></span>'
-        f'<span>Manut. <b>{manut}</b></span>'
-        '</div>'
-    )
-
-
-def _usi_prep_item_home_html(row):
-    d = row if isinstance(row, dict) else row.to_dict()
-
-    sit = str(d.get("Situacao", "") or "")
-    maq = str(d.get("Maquina", "") or "")
-    grupo = str(d.get("Grupo", "") or "")
-    tipo = str(d.get("Tipo", "") or "")
-    hora = str(d.get("Hora_Alvo", "") or "")
-    data = str(d.get("Data_Alvo", "") or "")
-    prep = str(d.get("Preparador_Sugerido", "") or "").strip()
-    ordem = str(d.get("Ordem", "") or "").strip()
-    item = str(d.get("Item", "") or "").strip()
-
-    if sit == "PREPARANDO":
-        classe = "active"
-        icone = "▶"
-        situacao_txt = "PREPARANDO"
-        tempo_txt = "agora"
-    elif sit == "AGUARDANDO PREPARADOR":
-        classe = "waiting"
-        icone = "◷"
-        situacao_txt = "AGUARDANDO"
-        tempo_txt = hora or "—"
-    else:
-        classe = "waiting"
-        icone = "◷"
-        situacao_txt = "PROGRAMADA"
-        tempo_txt = hora or "—"
-
-    meta = []
-    if prep:
-        meta.append(prep)
-    if grupo:
-        meta.append(grupo)
-    if tipo:
-        meta.append(tipo)
-
-    detalhes = []
-    if ordem:
-        detalhes.append(f"OP {ordem}")
-    if item:
-        detalhes.append(f"Item {item}")
-
-    meta_txt = " · ".join(meta)
-    detalhes_txt = " · ".join(detalhes)
-
-    return (
-        f'<div class="prep-item {classe}">'
-        f'<div class="prep-play">{icone}</div>'
-        '<div class="prep-main">'
-        f'<div class="prep-machine">Máquina {html.escape(maq)}</div>'
-        f'<div class="prep-status">{html.escape(situacao_txt)}</div>'
-        f'<div class="prep-meta">{html.escape(meta_txt)}</div>'
-        f'<div class="prep-tags">{html.escape(detalhes_txt)}</div>'
-        '</div>'
-        '<div class="prep-time">'
-        f'<span>{html.escape(data)}</span>'
-        f'{html.escape(tempo_txt)}'
-        '</div>'
-        '</div>'
-    )
-
-
-def _usi_prep_lista_home_html(df, situacao, limite=5):
-    if df is None or df.empty:
-        return '<div class="prep-empty">Nenhuma preparação nesta condição.</div>'
-
-    itens = df[
-        df["Situacao"].astype(str).eq(situacao)
-    ].copy()
-
-    if itens.empty:
-        return '<div class="prep-empty">Nenhuma preparação nesta condição.</div>'
-
-    itens = itens.sort_values(
-        "Alvo_ISO",
-        ascending=True,
-    )
-
-    corpo = "".join(
-        _usi_prep_item_home_html(row)
-        for _, row in itens.head(int(limite)).iterrows()
-    )
-
-    if len(itens) > limite:
-        corpo += (
-            f'<div class="prep-more">+ {len(itens)-limite} '
-            'outra(s) preparação(ões)</div>'
-        )
-
-    return corpo
-
-
-def _usi_tool_resumo_home():
-    """Resumo leve da vida útil para a Home."""
-    saida = {
+def _usi_home_tool_summary():
+    resumo = {
         "monitoradas": 0,
         "atencao": 0,
         "criticas": 0,
@@ -10810,24 +10685,36 @@ def _usi_tool_resumo_home():
         estados = _usi_tool_estados_todos()
         metricas = _usi_tool_metricas_lote()
     except Exception:
-        return saida
+        return resumo
 
-    agora = datetime.now(FUSO_BR)
     permitidas = set(_usinagem_maquinas_permitidas())
+    agora = datetime.now(FUSO_BR)
 
     for maq, estado in estados.items():
         if maq not in permitidas:
             continue
 
-        saida["monitoradas"] += 1
+        resumo["monitoradas"] += 1
 
-        if str(estado.get("Estado", "") or "").upper() == "TROCANDO":
-            saida["em_troca"] += 1
+        if str(
+            estado.get("Estado", "") or ""
+        ).upper() == "TROCANDO":
+            resumo["em_troca"] += 1
 
-        item = str(estado.get("Item", "") or "").strip().upper()
-        ferr = str(estado.get("Ferramenta", "") or "").strip().upper()
-        met = metricas.get((maq, item, ferr), {})
-        media = float(met.get("media_vida_s", 0) or 0)
+        item = str(
+            estado.get("Item", "") or ""
+        ).strip().upper()
+        ferramenta = str(
+            estado.get("Ferramenta", "") or ""
+        ).strip().upper()
+
+        met = metricas.get(
+            (maq, item, ferramenta),
+            {},
+        )
+        media = float(
+            met.get("media_vida_s", 0) or 0
+        )
 
         if media <= 0:
             continue
@@ -10836,14 +10723,129 @@ def _usi_tool_resumo_home():
             estado,
             agora,
         )
-        pct = (vida / media) * 100 if media else 0
+        pct = (
+            (vida / media) * 100
+            if media > 0
+            else 0
+        )
 
         if pct >= 80:
-            saida["criticas"] += 1
+            resumo["criticas"] += 1
         elif pct >= 65:
-            saida["atencao"] += 1
+            resumo["atencao"] += 1
 
-    return saida
+    return resumo
+
+
+def _usi_home_prep_card(row):
+    d = row if isinstance(row, dict) else row.to_dict()
+
+    situacao = str(
+        d.get("Situacao", "") or ""
+    )
+    maquina = str(
+        d.get("Maquina", "") or ""
+    )
+    grupo = str(
+        d.get("Grupo", "") or ""
+    )
+    tipo = str(
+        d.get("Tipo", "") or ""
+    )
+    hora = str(
+        d.get("Hora_Alvo", "") or ""
+    )
+    data = str(
+        d.get("Data_Alvo", "") or ""
+    )
+    preparador = str(
+        d.get("Preparador_Sugerido", "") or ""
+    ).strip()
+    ordem = str(
+        d.get("Ordem", "") or ""
+    ).strip()
+    item = str(
+        d.get("Item", "") or ""
+    ).strip()
+
+    if situacao == "PREPARANDO":
+        cls = "active"
+        icone = "▶"
+    elif situacao == "AGUARDANDO PREPARADOR":
+        cls = "waiting"
+        icone = "◷"
+    else:
+        cls = "future"
+        icone = "◷"
+
+    meta = [grupo, tipo]
+    if preparador:
+        meta.insert(0, preparador)
+
+    detalhes = []
+    if ordem:
+        detalhes.append(f"OP {ordem}")
+    if item:
+        detalhes.append(f"Item {item}")
+
+    return (
+        f'<div class="usi-prep-card {cls}">'
+        f'<div class="usi-prep-icon">{icone}</div>'
+        '<div class="usi-prep-body">'
+        f'<div class="usi-prep-machine">Máquina {html.escape(maquina)}</div>'
+        f'<div class="usi-prep-status">{html.escape(situacao)}</div>'
+        f'<div class="usi-prep-meta">{html.escape(" · ".join([x for x in meta if x]))}</div>'
+        f'<div class="usi-prep-tags">{html.escape(" · ".join(detalhes))}</div>'
+        '</div>'
+        '<div class="usi-prep-time">'
+        f'<span>{html.escape(data)}</span>'
+        f'{html.escape(hora or "—")}'
+        '</div>'
+        '</div>'
+    )
+
+
+def _usi_home_prep_list(df, situacao, limite=4):
+    if df is None or df.empty:
+        return (
+            '<div class="usi-empty-state">'
+            'Nenhuma preparação nesta condição.'
+            '</div>'
+        )
+
+    itens = df[
+        df["Situacao"]
+        .astype(str)
+        .eq(situacao)
+    ].copy()
+
+    if itens.empty:
+        return (
+            '<div class="usi-empty-state">'
+            'Nenhuma preparação nesta condição.'
+            '</div>'
+        )
+
+    itens = itens.sort_values(
+        "Alvo_ISO",
+        ascending=True,
+    )
+
+    html_itens = "".join(
+        _usi_home_prep_card(row)
+        for _, row in itens.head(
+            int(limite)
+        ).iterrows()
+    )
+
+    if len(itens) > limite:
+        html_itens += (
+            f'<div class="usi-more">'
+            f'+ {len(itens)-limite} outra(s)'
+            f'</div>'
+        )
+
+    return html_itens
 
 
 
@@ -10868,7 +10870,7 @@ def tela_usinagem_menu():
         df_preps = pd.DataFrame()
 
     resumo_preps = _usi_prep_resumo(df_preps)
-    resumo_tools = _usi_tool_resumo_home()
+    resumo_tools = _usi_home_tool_summary()
 
     agora = datetime.now(FUSO_BR)
     hora = agora.hour
@@ -10890,272 +10892,586 @@ def tela_usinagem_menu():
         else "Usuário"
     )
 
-    # Cabeçalho no mesmo padrão visual da Afiação.
-    html_boas_vindas = (
-        '<div class="dash-welcome">'
-        '<div>'
-        '<div class="dash-eyebrow">'
-        'Painel operacional · Usinagem'
-        '</div>'
-        f'<div class="dash-title">{saudacao}, {primeiro_nome}.</div>'
-        '<div class="dash-subtitle">'
-        'Visão atual da Usinagem, preparações e vida útil das ferramentas.'
-        '</div>'
-        '</div>'
-        f'<div class="dash-date">{agora.strftime("%d/%m/%Y")} · '
-        f'{agora.strftime("%H:%M")}</div>'
-        '</div>'
-    )
+    # CSS EXCLUSIVO DA USINAGEM.
+    # Tudo está dentro de .st-key-usinagem_home_shell e usa prefixo usi-.
     st.markdown(
-        html_boas_vindas,
+        """
+        <style>
+        .st-key-usinagem_home_shell {
+            --usi-bg:#101116;
+            --usi-card:#15161D;
+            --usi-border:#292A33;
+            --usi-muted:#858796;
+            --usi-text:#F4F4F5;
+            --usi-teal:#2DD4BF;
+            --usi-amber:#F59E0B;
+            --usi-red:#EF4444;
+            --usi-purple:#8B5CF6;
+            --usi-pink:#EC4899;
+        }
+
+        .st-key-usinagem_home_shell .usi-welcome {
+            display:flex;
+            align-items:flex-end;
+            justify-content:space-between;
+            gap:18px;
+            margin:14px 0 16px;
+        }
+        .st-key-usinagem_home_shell .usi-eyebrow {
+            font-size:9px;
+            font-weight:900;
+            letter-spacing:1.15px;
+            text-transform:uppercase;
+            color:#8B8D9B;
+        }
+        .st-key-usinagem_home_shell .usi-title {
+            font-size:30px;
+            line-height:1.05;
+            font-weight:950;
+            color:var(--usi-text);
+            margin-top:6px;
+        }
+        .st-key-usinagem_home_shell .usi-subtitle {
+            color:#858796;
+            font-size:10px;
+            margin-top:7px;
+        }
+        .st-key-usinagem_home_shell .usi-date {
+            color:#A1A1AA;
+            font-size:9px;
+            font-weight:850;
+            white-space:nowrap;
+        }
+
+        .st-key-usinagem_home_shell .usi-kpi-grid {
+            display:grid;
+            grid-template-columns:repeat(4,minmax(0,1fr));
+            gap:10px;
+            margin-bottom:14px;
+        }
+        .st-key-usinagem_home_shell .usi-kpi {
+            position:relative;
+            overflow:hidden;
+            min-height:132px;
+            padding:16px;
+            border-radius:16px;
+            border:1px solid var(--usi-border);
+            background:
+                radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 34%),
+                linear-gradient(145deg,#171820,#121319);
+        }
+        .st-key-usinagem_home_shell .usi-kpi::after {
+            content:"";
+            position:absolute;
+            top:0;left:0;right:0;
+            height:2px;
+            background:var(--accent);
+        }
+        .st-key-usinagem_home_shell .usi-kpi-label {
+            font-size:9px;
+            font-weight:950;
+            letter-spacing:.8px;
+            color:#9193A1;
+            text-transform:uppercase;
+        }
+        .st-key-usinagem_home_shell .usi-kpi-value {
+            font-size:31px;
+            line-height:1;
+            font-weight:950;
+            color:#FAFAFA;
+            margin-top:18px;
+        }
+        .st-key-usinagem_home_shell .usi-kpi-foot {
+            font-size:9px;
+            color:#8A8C98;
+            margin-top:10px;
+        }
+        .st-key-usinagem_home_shell .usi-kpi-split {
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            gap:7px;
+            margin-top:11px;
+        }
+        .st-key-usinagem_home_shell .usi-kpi-mini {
+            padding:7px 8px;
+            border-radius:8px;
+            border:1px solid rgba(255,255,255,.06);
+            background:rgba(255,255,255,.025);
+            font-size:8px;
+            color:#A1A1AA;
+        }
+        .st-key-usinagem_home_shell .usi-kpi-mini b {
+            display:block;
+            margin-top:3px;
+            font-size:12px;
+            color:#F4F4F5;
+        }
+
+        .st-key-usinagem_home_shell .usi-main-grid {
+            display:grid;
+            grid-template-columns:.92fr 1.48fr;
+            gap:14px;
+            align-items:start;
+        }
+        .st-key-usinagem_home_shell .usi-panel {
+            border:1px solid var(--usi-border);
+            background:linear-gradient(145deg,#15161D,#111217);
+            border-radius:16px;
+            padding:14px;
+        }
+        .st-key-usinagem_home_shell .usi-panel-title {
+            font-size:12px;
+            font-weight:950;
+            color:#F4F4F5;
+        }
+        .st-key-usinagem_home_shell .usi-panel-sub {
+            font-size:9px;
+            color:#777A87;
+            margin-top:4px;
+            margin-bottom:12px;
+        }
+
+        .st-key-usinagem_home_shell .usi-group-row {
+            display:grid;
+            grid-template-columns:128px minmax(0,1fr) 40px;
+            gap:9px;
+            align-items:center;
+            margin-top:9px;
+        }
+        .st-key-usinagem_home_shell .usi-group-name {
+            font-size:9px;
+            font-weight:900;
+            color:#E4E4E7;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+        }
+        .st-key-usinagem_home_shell .usi-track {
+            height:8px;
+            border-radius:999px;
+            background:#262730;
+            overflow:hidden;
+        }
+        .st-key-usinagem_home_shell .usi-fill {
+            height:100%;
+            border-radius:999px;
+            background:linear-gradient(90deg,#8B5CF6,#2DD4BF);
+        }
+        .st-key-usinagem_home_shell .usi-pct {
+            font-size:9px;
+            font-weight:900;
+            color:#2DD4BF;
+            text-align:right;
+        }
+        .st-key-usinagem_home_shell .usi-group-meta {
+            margin-left:137px;
+            margin-top:4px;
+            display:flex;
+            flex-wrap:wrap;
+            gap:7px;
+            font-size:7.5px;
+            color:#777A87;
+        }
+        .st-key-usinagem_home_shell .usi-group-meta b {
+            color:#D4D4D8;
+        }
+
+        .st-key-usinagem_home_shell .usi-prep-summary {
+            display:flex;
+            flex-wrap:wrap;
+            gap:7px;
+            margin-bottom:10px;
+        }
+        .st-key-usinagem_home_shell .usi-chip {
+            padding:6px 9px;
+            border-radius:999px;
+            font-size:8px;
+            font-weight:900;
+            border:1px solid rgba(255,255,255,.07);
+            background:#181920;
+            color:#B9BBC5;
+        }
+        .st-key-usinagem_home_shell .usi-chip.active {
+            color:#5EEAD4;
+            border-color:rgba(45,212,191,.20);
+            background:rgba(45,212,191,.06);
+        }
+        .st-key-usinagem_home_shell .usi-chip.wait {
+            color:#FBBF24;
+            border-color:rgba(245,158,11,.20);
+            background:rgba(245,158,11,.05);
+        }
+
+        .st-key-usinagem_home_shell .usi-section-title {
+            display:flex;
+            justify-content:space-between;
+            gap:8px;
+            margin:11px 0 6px;
+            font-size:8px;
+            color:#A1A1AA;
+            font-weight:950;
+            text-transform:uppercase;
+            letter-spacing:.55px;
+        }
+        .st-key-usinagem_home_shell .usi-count {
+            min-width:22px;
+            text-align:center;
+            padding:2px 6px;
+            border-radius:999px;
+            color:#D4D4D8;
+            background:#23242B;
+        }
+
+        .st-key-usinagem_home_shell .usi-prep-card {
+            display:grid;
+            grid-template-columns:28px minmax(0,1fr) auto;
+            gap:9px;
+            align-items:center;
+            padding:8px 9px;
+            margin-bottom:6px;
+            border-radius:10px;
+            border:1px solid #292A33;
+            background:#171820;
+        }
+        .st-key-usinagem_home_shell .usi-prep-card.active {
+            border-left:3px solid #2DD4BF;
+        }
+        .st-key-usinagem_home_shell .usi-prep-card.waiting {
+            border-left:3px solid #F59E0B;
+        }
+        .st-key-usinagem_home_shell .usi-prep-card.future {
+            border-left:3px solid #60A5FA;
+        }
+        .st-key-usinagem_home_shell .usi-prep-icon {
+            width:27px;height:27px;
+            border-radius:8px;
+            display:grid;
+            place-items:center;
+            background:#20212A;
+            color:#D4D4D8;
+            font-size:9px;
+        }
+        .st-key-usinagem_home_shell .usi-prep-machine {
+            font-size:9px;
+            font-weight:950;
+            color:#F4F4F5;
+        }
+        .st-key-usinagem_home_shell .usi-prep-status {
+            font-size:7px;
+            font-weight:900;
+            color:#8B8D9B;
+            margin-top:2px;
+        }
+        .st-key-usinagem_home_shell .usi-prep-meta,
+        .st-key-usinagem_home_shell .usi-prep-tags {
+            font-size:7px;
+            color:#777A87;
+            margin-top:2px;
+            white-space:nowrap;
+            overflow:hidden;
+            text-overflow:ellipsis;
+        }
+        .st-key-usinagem_home_shell .usi-prep-time {
+            min-width:58px;
+            text-align:right;
+            font-size:9px;
+            font-weight:900;
+            color:#E4E4E7;
+        }
+        .st-key-usinagem_home_shell .usi-prep-time span {
+            display:block;
+            font-size:7px;
+            color:#71717A;
+            font-weight:700;
+            margin-bottom:2px;
+        }
+
+        .st-key-usinagem_home_shell .usi-empty-state {
+            min-height:50px;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            padding:8px;
+            border-radius:10px;
+            background:#14151B;
+            border:1px dashed #30313A;
+            color:#777A87;
+            font-size:8px;
+            font-weight:800;
+            text-align:center;
+        }
+        .st-key-usinagem_home_shell .usi-more {
+            padding:5px 7px;
+            color:#71717A;
+            font-size:7px;
+            text-align:center;
+        }
+
+        .st-key-usinagem_home_shell .usi-tool-title {
+            margin:14px 0 7px;
+            font-size:11px;
+            font-weight:950;
+            color:#F4F4F5;
+        }
+        .st-key-usinagem_home_shell .usi-tool-grid {
+            display:grid;
+            grid-template-columns:1fr 1fr;
+            gap:8px;
+        }
+        .st-key-usinagem_home_shell .usi-tool-card {
+            min-height:83px;
+            padding:10px;
+            border-radius:11px;
+            border:1px solid #292A33;
+            background:#15161D;
+        }
+        .st-key-usinagem_home_shell .usi-tool-label {
+            font-size:7.5px;
+            font-weight:900;
+            color:#858796;
+            text-transform:uppercase;
+        }
+        .st-key-usinagem_home_shell .usi-tool-value {
+            font-size:23px;
+            font-weight:950;
+            color:var(--tool-color);
+            margin-top:8px;
+        }
+        .st-key-usinagem_home_shell .usi-tool-foot {
+            font-size:7px;
+            color:#71717A;
+            margin-top:3px;
+        }
+
+        @media(max-width:900px){
+            .st-key-usinagem_home_shell .usi-kpi-grid{
+                grid-template-columns:1fr 1fr;
+            }
+            .st-key-usinagem_home_shell .usi-main-grid{
+                grid-template-columns:1fr;
+            }
+        }
+        </style>
+        """,
         unsafe_allow_html=True,
     )
 
-    # KPIs iguais à linguagem da Afiação.
-    html_kpis = (
-        '<div class="kpi-grid">'
-        + _render_kpi(
-            "Produzindo",
-            totais["PRODUZINDO"],
-            "▶",
-            "#2DD4BF",
-            f'de {len(maquinas)} máquinas',
-        )
-        + _render_prep_kpi(
-            resumo_preps["ativa"],
-            resumo_preps["aguardando"]
-            + resumo_preps["agendada"],
-        )
-        + _render_kpi(
-            "Paradas",
-            totais["PARADA"],
-            "■",
-            "#EF4444",
-            "requerem acompanhamento",
-        )
-        + _render_kpi(
-            "Manutenção",
-            totais["MANUTENÇÃO"],
-            "⌁",
-            "#8B5CF6",
-            "máquinas em manutenção",
-        )
-        + '</div>'
-    )
-    st.markdown(
-        html_kpis,
-        unsafe_allow_html=True,
-    )
-
-    # Linha compacta para Ajustes, sem criar um quinto card grande.
-    if totais["AJUSTE"] > 0:
+    with st.container(
+        key="usinagem_home_shell"
+    ):
         st.markdown(
-            f'<div style="margin:8px 0 2px;padding:8px 11px;'
-            f'border-radius:10px;background:rgba(236,72,153,.07);'
-            f'border:1px solid rgba(236,72,153,.18);'
-            f'color:#F472B6;font-size:10px;font-weight:850;">'
-            f'🎯 {totais["AJUSTE"]} máquina(s) em ajuste neste momento.'
-            f'</div>',
+            (
+                '<div class="usi-welcome">'
+                '<div>'
+                '<div class="usi-eyebrow">Painel operacional · Usinagem</div>'
+                f'<div class="usi-title">{saudacao}, {primeiro_nome}.</div>'
+                '<div class="usi-subtitle">'
+                'Visão atual da Usinagem, preparações e vida útil das ferramentas.'
+                '</div>'
+                '</div>'
+                f'<div class="usi-date">{agora.strftime("%d/%m/%Y")} · '
+                f'{agora.strftime("%H:%M")}</div>'
+                '</div>'
+            ),
             unsafe_allow_html=True,
         )
 
-    grupos = _usinagem_grupos_permitidos()
-
-    # Painel esquerdo: Produção por grupo.
-    html_grupos = (
-        '<div class="dash-panel sector-panel">'
-        '<div class="dash-panel-title">Produção por grupo</div>'
-        '<div class="dash-panel-sub">'
-        'Máquinas com preparação futura/aguardando continuam contabilizadas como produção'
-        '</div>'
-    )
-
-    for grupo in grupos:
-        lista = USINAGEM_GRUPOS.get(grupo, [])
-        totais_grupo = _usinagem_totais(
-            status_map,
-            lista,
-        )
-        html_grupos += _usi_render_grupo_bar(
-            grupo,
-            totais_grupo,
-            len(lista),
-        )
-
-    html_grupos += '</div>'
-
-    # Painel direito: Preparações agora e futuras.
-    ativas = resumo_preps["ativa"]
-    aguardando = resumo_preps["aguardando"]
-    futuras = resumo_preps["agendada"]
-
-    if df_preps is None or df_preps.empty:
-        prep_ativa_html = (
-            '<div class="prep-empty">'
-            'Nenhuma preparação ativa.'
+        html_kpis = (
+            '<div class="usi-kpi-grid">'
+            f'<div class="usi-kpi" style="--accent:#2DD4BF;">'
+            '<div class="usi-kpi-label">Produzindo</div>'
+            f'<div class="usi-kpi-value">{totais["PRODUZINDO"]}</div>'
+            f'<div class="usi-kpi-foot">▶ de {len(maquinas)} máquinas</div>'
+            '</div>'
+            f'<div class="usi-kpi" style="--accent:#F59E0B;">'
+            '<div class="usi-kpi-label">Preparações</div>'
+            f'<div class="usi-kpi-value">{resumo_preps["total"]}</div>'
+            '<div class="usi-kpi-split">'
+            f'<div class="usi-kpi-mini">Ativas<b>{resumo_preps["ativa"]}</b></div>'
+            f'<div class="usi-kpi-mini">Aguard./Fut.<b>{resumo_preps["aguardando"] + resumo_preps["agendada"]}</b></div>'
+            '</div>'
+            '</div>'
+            f'<div class="usi-kpi" style="--accent:#EF4444;">'
+            '<div class="usi-kpi-label">Paradas</div>'
+            f'<div class="usi-kpi-value">{totais["PARADA"]}</div>'
+            '<div class="usi-kpi-foot">■ requerem acompanhamento</div>'
+            '</div>'
+            f'<div class="usi-kpi" style="--accent:#8B5CF6;">'
+            '<div class="usi-kpi-label">Manutenção</div>'
+            f'<div class="usi-kpi-value">{totais["MANUTENÇÃO"]}</div>'
+            '<div class="usi-kpi-foot">⌁ máquinas em manutenção</div>'
+            '</div>'
             '</div>'
         )
-        prep_aguard_html = (
-            '<div class="prep-empty">'
-            'Nenhuma máquina aguardando preparador.'
+        st.markdown(
+            html_kpis,
+            unsafe_allow_html=True,
+        )
+
+        if totais["AJUSTE"] > 0:
+            st.markdown(
+                f'<div style="margin:-2px 0 12px;padding:8px 10px;'
+                f'border-radius:10px;background:rgba(236,72,153,.06);'
+                f'border:1px solid rgba(236,72,153,.18);'
+                f'color:#F472B6;font-size:8px;font-weight:900;">'
+                f'🎯 {totais["AJUSTE"]} máquina(s) em ajuste.'
+                f'</div>',
+                unsafe_allow_html=True,
+            )
+
+        grupos = _usinagem_grupos_permitidos()
+
+        html_grupos = (
+            '<div class="usi-panel">'
+            '<div class="usi-panel-title">Produção por grupo</div>'
+            '<div class="usi-panel-sub">'
+            'Preparações futuras e aguardando não retiram a máquina da produção'
             '</div>'
         )
-        prep_futura_html = (
-            '<div class="prep-empty">'
-            'Nenhuma preparação futura programada.'
-            '</div>'
-        )
-    else:
-        prep_ativa_html = _usi_prep_lista_home_html(
+
+        for grupo in grupos:
+            lista = USINAGEM_GRUPOS.get(
+                grupo,
+                [],
+            )
+            tg = _usinagem_totais(
+                status_map,
+                lista,
+            )
+            total_g = len(lista)
+            prod = int(
+                tg.get("PRODUZINDO", 0) or 0
+            )
+            pct = (
+                round(
+                    (prod / total_g) * 100
+                )
+                if total_g
+                else 0
+            )
+
+            html_grupos += (
+                '<div class="usi-group-row">'
+                f'<div class="usi-group-name">{html.escape(grupo)}</div>'
+                '<div class="usi-track">'
+                f'<div class="usi-fill" style="width:{pct}%"></div>'
+                '</div>'
+                f'<div class="usi-pct">{pct}%</div>'
+                '</div>'
+                '<div class="usi-group-meta">'
+                f'<span>Produção <b>{prod}</b></span>'
+                f'<span>Prep. <b>{tg["PREPARAÇÃO"]}</b></span>'
+                f'<span>Ajuste <b>{tg["AJUSTE"]}</b></span>'
+                f'<span>Parada <b>{tg["PARADA"]}</b></span>'
+                f'<span>Manut. <b>{tg["MANUTENÇÃO"]}</b></span>'
+                '</div>'
+            )
+
+        html_grupos += '</div>'
+
+        ativa_html = _usi_home_prep_list(
             df_preps,
             "PREPARANDO",
-            limite=4,
+            4,
         )
-        prep_aguard_html = _usi_prep_lista_home_html(
+        aguard_html = _usi_home_prep_list(
             df_preps,
             "AGUARDANDO PREPARADOR",
-            limite=4,
+            4,
         )
-        prep_futura_html = _usi_prep_lista_home_html(
+        futura_html = _usi_home_prep_list(
             df_preps,
             "AGENDADA",
-            limite=4,
+            4,
         )
 
-    html_preps = (
-        '<div class="dash-panel">'
-        '<div class="dash-panel-title">Preparações agora</div>'
-        '<div class="dash-panel-sub">'
-        'Preparações da Usinagem separadas por situação'
-        '</div>'
-        '<div class="prep-summary">'
-        f'<div class="prep-chip active">● Ativas <b>{ativas}</b></div>'
-        f'<div class="prep-chip waiting">◷ Aguardando <b>{aguardando}</b></div>'
-        f'<div class="prep-chip waiting">◷ Futuras <b>{futuras}</b></div>'
-        '</div>'
-        f'<div class="prep-section-title">'
-        f'<span>▶ Preparação ativa</span>'
-        f'<span class="prep-section-count">{ativas}</span>'
-        f'</div>'
-        f'<div class="prep-list">{prep_ativa_html}</div>'
-        f'<div class="prep-section-title">'
-        f'<span>◷ Aguardando preparador</span>'
-        f'<span class="prep-section-count">{aguardando}</span>'
-        f'</div>'
-        f'<div class="prep-list">{prep_aguard_html}</div>'
-        f'<div class="prep-section-title">'
-        f'<span>◷ Preparações futuras</span>'
-        f'<span class="prep-section-count">{futuras}</span>'
-        f'</div>'
-        f'<div class="prep-list">{prep_futura_html}</div>'
-        '</div>'
-    )
-
-    col_esq, col_dir = st.columns(
-        [0.92, 1.48],
-        gap="medium",
-    )
-
-    with col_esq:
-        st.markdown(
-            html_grupos,
-            unsafe_allow_html=True,
-        )
-
-        st.markdown(
-            "<div style='margin:14px 0 6px 0;font-size:12px;"
-            "font-weight:900;color:#F4F4F5;'>🛠️ Vida útil das ferramentas</div>",
-            unsafe_allow_html=True,
-        )
-
-        def _tool_stat_card(label, valor, icone, cor):
-            return (
-                f'<div class="setup-metric-card" style="--metric-color:{cor};">'
-                f'<div class="setup-metric-icon">{html.escape(str(icone))}</div>'
-                f'<div class="setup-metric-label">{html.escape(str(label))}</div>'
-                f'<div style="font-size:24px;font-weight:950;color:#F4F4F5;'
-                f'margin-top:7px;">{int(valor)}</div>'
-                f'<div style="font-size:9px;color:#71717A;margin-top:3px;">máquina(s)</div>'
-                f'</div>'
-            )
-
-        html_tools = (
-            '<div class="setup-month-panel setup-month-panel-compact">'
-            '<div class="setup-month-top">'
-            '<div>'
-            '<div class="setup-month-title">Monitoramento de ferramentas</div>'
-            '<div class="setup-month-sub">'
-            'Situação dos ciclos ativos da Usinagem'
+        html_preps = (
+            '<div class="usi-panel">'
+            '<div class="usi-panel-title">Preparações agora</div>'
+            '<div class="usi-panel-sub">'
+            'Programação da Usinagem por situação'
             '</div>'
+            '<div class="usi-prep-summary">'
+            f'<div class="usi-chip active">● Ativas <b>{resumo_preps["ativa"]}</b></div>'
+            f'<div class="usi-chip wait">◷ Aguardando <b>{resumo_preps["aguardando"]}</b></div>'
+            f'<div class="usi-chip">◷ Futuras <b>{resumo_preps["agendada"]}</b></div>'
             '</div>'
-            f'<div class="setup-month-badge">{resumo_tools["monitoradas"]} monitoradas</div>'
+            '<div class="usi-section-title">'
+            f'<span>▶ Preparação ativa</span><span class="usi-count">{resumo_preps["ativa"]}</span>'
             '</div>'
-            '<div class="setup-month-grid setup-month-grid-2x2">'
-            + _tool_stat_card(
-                "Monitoradas",
-                resumo_tools["monitoradas"],
-                "M",
-                "#2DD4BF",
-            )
-            + _tool_stat_card(
-                "Atenção · 65–79%",
-                resumo_tools["atencao"],
-                "!",
-                "#F59E0B",
-            )
-            + _tool_stat_card(
-                "Críticas · ≥80%",
-                resumo_tools["criticas"],
-                "80",
-                "#EF4444",
-            )
-            + _tool_stat_card(
-                "Em troca",
-                resumo_tools["em_troca"],
-                "T",
-                "#A78BFA",
-            )
-            + '</div></div>'
+            f'{ativa_html}'
+            '<div class="usi-section-title">'
+            f'<span>◷ Aguardando preparador</span><span class="usi-count">{resumo_preps["aguardando"]}</span>'
+            '</div>'
+            f'{aguard_html}'
+            '<div class="usi-section-title">'
+            f'<span>◷ Preparações futuras</span><span class="usi-count">{resumo_preps["agendada"]}</span>'
+            '</div>'
+            f'{futura_html}'
+            '</div>'
         )
 
         st.markdown(
-            html_tools,
+            (
+                '<div class="usi-main-grid">'
+                f'<div>{html_grupos}'
+                '<div class="usi-tool-title">🛠 Vida útil das ferramentas</div>'
+                '<div class="usi-tool-grid">'
+                f'<div class="usi-tool-card" style="--tool-color:#2DD4BF;">'
+                '<div class="usi-tool-label">Monitoradas</div>'
+                f'<div class="usi-tool-value">{resumo_tools["monitoradas"]}</div>'
+                '<div class="usi-tool-foot">ciclos ativos</div>'
+                '</div>'
+                f'<div class="usi-tool-card" style="--tool-color:#F59E0B;">'
+                '<div class="usi-tool-label">Atenção · 65–79%</div>'
+                f'<div class="usi-tool-value">{resumo_tools["atencao"]}</div>'
+                '<div class="usi-tool-foot">aproximando do limite</div>'
+                '</div>'
+                f'<div class="usi-tool-card" style="--tool-color:#EF4444;">'
+                '<div class="usi-tool-label">Críticas · ≥80%</div>'
+                f'<div class="usi-tool-value">{resumo_tools["criticas"]}</div>'
+                '<div class="usi-tool-foot">programar troca</div>'
+                '</div>'
+                f'<div class="usi-tool-card" style="--tool-color:#A78BFA;">'
+                '<div class="usi-tool-label">Em troca</div>'
+                f'<div class="usi-tool-value">{resumo_tools["em_troca"]}</div>'
+                '<div class="usi-tool-foot">troca em andamento</div>'
+                '</div>'
+                '</div>'
+                '</div>'
+                f'<div>{html_preps}</div>'
+                '</div>'
+            ),
             unsafe_allow_html=True,
         )
 
-    with col_dir:
         st.markdown(
-            html_preps,
+            "<div style='height:10px'></div>",
             unsafe_allow_html=True,
         )
 
-    st.markdown(
-        "<div style='margin-top:12px'></div>",
-        unsafe_allow_html=True,
-    )
+        c_maq_home, c_prog_home = st.columns(2)
 
-    c_maq_home, c_prog_home = st.columns(2)
+        if c_maq_home.button(
+            "▦ ABRIR MÁQUINAS",
+            key="usinagem_home_abrir_maquinas",
+            type="primary",
+            use_container_width=True,
+        ):
+            mudar_tela(
+                "usinagem_maquinas",
+                forcar_rerun=True,
+            )
 
-    if c_maq_home.button(
-        "▦ ABRIR MÁQUINAS",
-        key="usinagem_home_abrir_maquinas",
-        type="primary",
-        use_container_width=True,
-    ):
-        mudar_tela(
-            "usinagem_maquinas",
-            forcar_rerun=True,
-        )
-
-    if c_prog_home.button(
-        "◷ ABRIR PROGRAMAÇÃO",
-        key="usinagem_home_abrir_programacao",
-        use_container_width=True,
-    ):
-        mudar_tela(
-            "usinagem_programacao",
-            forcar_rerun=True,
-        )
+        if c_prog_home.button(
+            "◷ ABRIR PROGRAMAÇÃO",
+            key="usinagem_home_abrir_programacao",
+            use_container_width=True,
+        ):
+            mudar_tela(
+                "usinagem_programacao",
+                forcar_rerun=True,
+            )
 
 
 # =============================================================
