@@ -4513,15 +4513,118 @@ def painel_controle_maquina(maq_id, setor):
             status_atual.strip().upper().startswith("PRODUZINDO")
             and "[SETUP FUTURO: SIM]" in status_atual.upper()
         ):
-            st.success(f"🟢 PRODUZINDO · Próximo setup preservado: {status_exibicao}")
-        elif "AGUARDANDO PREPARADOR" in status_atual: st.warning(f"🟠 Status Atual: {status_exibicao}")
-        elif "AGENDADO" in status_atual or "AGENDADA" in status_atual: st.info(f"🔵 Status: {status_exibicao}")
-        elif status_atual.strip().upper().startswith("PREPARANDO"): st.info(f"🟡 Status Atual: {status_exibicao} desde {hora_atual}{timer_str}")
-        elif status_atual.strip().upper().startswith("SEQUÊNCIA") or status_atual.strip().upper().startswith("SEQUENCIA"): st.info(f"🟣 Status Atual: {status_exibicao} desde {hora_atual}{timer_str}")
-        elif status_atual.strip().upper().startswith("PRODUZINDO"): st.success(f"🟢 Status Atual: {status_exibicao}")
-        elif "PARADA" in status_atual: st.error(f"🔴 Status Atual: Paralisada desde {hora_atual}")
-        elif "MANUTENÇÃO" in status_atual: st.warning(f"🛠️ Status Atual: Em Manutenção desde {hora_atual}{timer_str}")
-        else: st.warning(f"🟡 Status Atual: {status_exibicao} desde {hora_atual}{timer_str}")
+            st.markdown(
+                f"<div style='padding:13px 15px;border-radius:10px;"
+                f"background:#062C2A;border:1px solid #2DD4BF;"
+                f"color:#CCFBF1;font-weight:850;line-height:1.45;'>"
+                f"🟢 <b>PRODUZINDO</b> · Próximo setup preservado: "
+                f"{html.escape(str(status_exibicao))}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        elif "AGUARDANDO PREPARADOR" in status_atual:
+            st.markdown(
+                f"<div style='padding:13px 15px;border-radius:10px;"
+                f"background:#2B1D05;border:1px solid #F59E0B;"
+                f"color:#FDE68A;font-weight:850;line-height:1.45;'>"
+                f"🟠 <b>AGUARDANDO PREPARADOR</b> · "
+                f"{html.escape(str(status_exibicao))}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        elif "AGENDADO" in status_atual or "AGENDADA" in status_atual:
+            st.markdown(
+                f"<div style='padding:13px 15px;border-radius:10px;"
+                f"background:#0B2340;border:1px solid #60A5FA;"
+                f"color:#DBEAFE;font-weight:850;line-height:1.45;'>"
+                f"🔵 <b>PREPARAÇÃO AGENDADA</b> · "
+                f"{html.escape(str(status_exibicao))}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        elif status_atual.strip().upper().startswith("PREPARANDO"):
+            st.markdown(
+                f"<div style='padding:13px 15px;border-radius:10px;"
+                f"background:#2B2105;border:1px solid #EAB308;"
+                f"color:#FEF9C3;font-weight:850;line-height:1.45;'>"
+                f"🟡 <b>PREPARANDO</b> · "
+                f"{html.escape(str(status_exibicao))} "
+                f"<span style='color:#FDE68A;'>desde "
+                f"{html.escape(str(hora_atual))}"
+                f"{html.escape(str(timer_str))}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        elif (
+            status_atual.strip().upper().startswith("SEQUÊNCIA")
+            or status_atual.strip().upper().startswith("SEQUENCIA")
+        ):
+            st.markdown(
+                f"<div style='padding:13px 15px;border-radius:10px;"
+                f"background:#241044;border:1px solid #8B5CF6;"
+                f"color:#EDE9FE;font-weight:850;line-height:1.45;'>"
+                f"🟣 <b>SEQUÊNCIA</b> · "
+                f"{html.escape(str(status_exibicao))} "
+                f"<span style='color:#DDD6FE;'>desde "
+                f"{html.escape(str(hora_atual))}"
+                f"{html.escape(str(timer_str))}</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        elif status_atual.strip().upper().startswith("PRODUZINDO"):
+            st.markdown(
+                f"<div style='padding:13px 15px;border-radius:10px;"
+                f"background:#062C2A;border:1px solid #2DD4BF;"
+                f"color:#CCFBF1;font-weight:850;line-height:1.45;'>"
+                f"🟢 <b>PRODUZINDO</b> · "
+                f"{html.escape(str(status_exibicao))}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        elif status_atual.strip().upper().startswith("PARADA"):
+            st.markdown(
+                f"<div style='padding:13px 15px;border-radius:10px;"
+                f"background:#3A0B12;border:1px solid #EF4444;"
+                f"color:#FECACA;font-weight:850;line-height:1.45;'>"
+                f"🔴 <b>PARADA</b> · Paralisada desde "
+                f"{html.escape(str(hora_atual))}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        elif (
+            status_atual.strip().upper().startswith("MANUTENÇÃO")
+            or status_atual.strip().upper().startswith("MANUTENCAO")
+        ):
+            st.markdown(
+                f"<div style='padding:13px 15px;border-radius:10px;"
+                f"background:#231146;border:1px solid #8B5CF6;"
+                f"color:#EDE9FE;font-weight:850;line-height:1.45;'>"
+                f"🛠️ <b>MANUTENÇÃO</b> · Em manutenção desde "
+                f"{html.escape(str(hora_atual))}"
+                f"{html.escape(str(timer_str))}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+
+        else:
+            st.markdown(
+                f"<div style='padding:13px 15px;border-radius:10px;"
+                f"background:#27210A;border:1px solid #F59E0B;"
+                f"color:#FEF3C7;font-weight:850;line-height:1.45;'>"
+                f"🟡 <b>STATUS ATUAL</b> · "
+                f"{html.escape(str(status_exibicao))} desde "
+                f"{html.escape(str(hora_atual))}"
+                f"{html.escape(str(timer_str))}"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
             
         flow_key = f"flow_{maq_id}"
         _status_inicio = status_atual.strip().upper()
