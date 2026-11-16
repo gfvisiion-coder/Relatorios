@@ -760,6 +760,17 @@ USINAGEM_STATUS_VALIDOS = [
 ]
 
 
+USINAGEM_TIPOS_PREPARACAO = [
+    "Preparação / Setup",
+    "Troca de item",
+    "Troca de ferramenta",
+    "Troca de castanha / dispositivo",
+    "Programa / liberação",
+    "Primeira peça / ajuste",
+    "Outro",
+]
+
+
 USINAGEM_MOTIVOS_TROCA_FERRAMENTA = [
     "Fim de vida / desgaste normal",
     "Desgaste prematuro",
@@ -2287,6 +2298,9 @@ ARQUIVO_USINAGEM_DADOS = "banco_usinagem_operacao.csv"
 ARQUIVO_USINAGEM_FERRAMENTA_ESTADO = "usinagem_ferramenta_estado.csv"
 ARQUIVO_USINAGEM_FERRAMENTA_CICLOS = "usinagem_ferramenta_ciclos.csv"
 
+# Programação de preparações da Usinagem.
+ARQUIVO_USINAGEM_PREPARACOES = "usinagem_preparacoes.csv"
+
 ARQUIVO_REBOLOS = "rebolos.xlsx"
 
 
@@ -2301,7 +2315,8 @@ TABELAS_TURSO = {
     ARQUIVO_CENTERLESS, ARQUIVO_CENTERLESS_ESTADO,
     ARQUIVO_USINAGEM_DADOS,
     ARQUIVO_USINAGEM_FERRAMENTA_ESTADO,
-    ARQUIVO_USINAGEM_FERRAMENTA_CICLOS
+    ARQUIVO_USINAGEM_FERRAMENTA_CICLOS,
+    ARQUIVO_USINAGEM_PREPARACOES
 }
 
 # Referências estáveis às implementações reais restauradas no início do arquivo.
@@ -7954,6 +7969,670 @@ def _usinagem_icone_status(status):
 
 
 # =============================================================
+# USINAGEM · PROGRAMAÇÃO / PREPARAÇÕES
+# =============================================================
+
+def _usi_prep_garantir_tabela():
+    if st.session_state.get("_usi_prep_table_ready"):
+        return
+
+    tab = _quote_identifier(ARQUIVO_USINAGEM_PREPARACOES)
+
+    turso_request(
+        f"""CREATE TABLE IF NOT EXISTS {tab} (
+            "Maquina" TEXT,
+            "Grupo" TEXT,
+            "Planta" TEXT,
+            "Tipo" TEXT,
+            "Ordem" TEXT,
+            "Item" TEXT,
+            "Preparador_Sugerido" TEXT,
+            "Data_Alvo" TEXT,
+            "Hora_Alvo" TEXT,
+            "Alvo_ISO" TEXT,
+            "Estado" TEXT,
+            "Inicio_ISO" TEXT,
+            "Fim_ISO" TEXT,
+            "Observacao" TEXT,
+            "Operador_Cadastro" TEXT,
+            "Turno_Cadastro" TEXT,
+            "Criado_Em" TEXT,
+            "Atualizado_Em" TEXT
+        )""",
+        want_rows=False,
+    )
+
+    _marcar_tabela_existe(
+        ARQUIVO_USINAGEM_PREPARACOES,
+        True,
+    )
+    st.session_state["_usi_prep_table_ready"] = True
+
+
+def _usi_prep_dt(valor):
+    try:
+        dt = datetime.fromisoformat(str(valor)) if valor else None
+        if dt and dt.tzinfo is None:
+            dt = dt.replace(tzinfo=FUSO_BR)
+        return dt
+    except Exception:
+        return None
+
+
+def _usi_prep_situacao(row, agora=None):
+    agora = agora or datetime.now(FUSO_BR)
+    estado = str(
+        row.get("Estado", "AGENDADA") or "AGENDADA"
+    ).strip().upper()
+
+    if estado == "PREPARANDO":
+        return "PREPARANDO"
+    if estado in {"CONCLUÍDA", "CONCLUIDA"}:
+        return "CONCLUÍDA"
+    if estado == "CANCELADA":
+        return "CANCELADA"
+
+    alvo = _usi_prep_dt(
+        row.get("Alvo_ISO", "")
+    )
+
+    if alvo and agora >= alvo:
+        return "AGUARDANDO PREPARADOR"
+
+    return "AGENDADA"
+
+
+def _usi_prep_listar(
+    incluir_finalizadas=False,
+    limite=500,
+):
+    _usi_prep_garantir_tabela()
+
+    try:
+        tab = _quote_identifier(
+            ARQUIVO_USINAGEM_PREPARACOES
+        )
+
+        where = ""
+        if not incluir_finalizadas:
+            where = (
+                'WHERE UPPER(COALESCE("Estado", "")) '
+                'NOT IN ("CONCLUÍDA","CONCLUIDA","CANCELADA")'
+            )
+
+        result = turso_request(
+            f"""SELECT rowid AS "_id", *
+                FROM {tab}
+                {where}
+                ORDER BY
+                    CASE
+                        WHEN UPPER(COALESCE("Estado",""))='PREPARANDO' THEN 0
+                        ELSE 1
+                    END,
+                    "Alvo_ISO" ASC,
+                    rowid ASC
+                LIMIT {int(limite)}""",
+            want_rows=True,
+        )
+        df = _resultado_turso_df(result)
+    except Exception:
+        return pd.DataFrame()
+
+    if df.empty:
+        return df
+
+    grupos_permitidos = set(
+        _usinagem_grupos_permitidos()
+    )
+    if grupos_permitidos:
+        df = df[
+            df["Grupo"].astype(str).isin(
+                grupos_permitidos
+            )
+        ].copy()
+
+    agora = datetime.now(FUSO_BR)
+    df["Situacao"] = [
+        _usi_prep_situacao(
+            row.to_dict(),
+            agora,
+        )
+        for _, row in df.iterrows()
+    ]
+
+    return df
+
+
+def _usi_prep_criar(
+    maquina,
+    tipo,
+    ordem,
+    item,
+    data_alvo,
+    hora_alvo,
+    preparador_sugerido="",
+    observacao="",
+):
+    _usi_prep_garantir_tabela()
+
+    maquina = str(maquina or "").strip()
+    if maquina not in USINAGEM_TODAS_MAQUINAS:
+        raise RuntimeError("Máquina inválida.")
+
+    grupo = _usinagem_grupo_maquina(maquina)
+    if grupo not in _usinagem_grupos_permitidos():
+        raise RuntimeError(
+            "Seu acesso não permite programar esta máquina."
+        )
+
+    tipo = str(tipo or "").strip()
+    ordem = str(ordem or "").strip().upper()
+    item = str(item or "").strip().upper()
+    preparador_sugerido = str(
+        preparador_sugerido or ""
+    ).strip().upper()
+    observacao = str(observacao or "").strip()
+
+    if not tipo:
+        raise RuntimeError(
+            "Selecione o tipo de preparação."
+        )
+
+    if isinstance(data_alvo, datetime):
+        data_base = data_alvo.date()
+    elif hasattr(data_alvo, "year"):
+        data_base = data_alvo
+    else:
+        raise RuntimeError("Data inválida.")
+
+    if isinstance(hora_alvo, datetime):
+        hora_base = hora_alvo.time()
+    else:
+        hora_base = hora_alvo
+
+    alvo = datetime.combine(
+        data_base,
+        hora_base,
+        tzinfo=FUSO_BR,
+    )
+
+    # Aceita programação imediata/atrasada para permitir
+    # lançar algo que já está aguardando preparador.
+    agora = datetime.now(FUSO_BR)
+
+    tab = _quote_identifier(
+        ARQUIVO_USINAGEM_PREPARACOES
+    )
+
+    turso_request(
+        f"""INSERT INTO {tab} (
+            "Maquina",
+            "Grupo",
+            "Planta",
+            "Tipo",
+            "Ordem",
+            "Item",
+            "Preparador_Sugerido",
+            "Data_Alvo",
+            "Hora_Alvo",
+            "Alvo_ISO",
+            "Estado",
+            "Inicio_ISO",
+            "Fim_ISO",
+            "Observacao",
+            "Operador_Cadastro",
+            "Turno_Cadastro",
+            "Criado_Em",
+            "Atualizado_Em"
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        [
+            maquina,
+            grupo,
+            USINAGEM_GRUPO_PLANTA.get(grupo, ""),
+            tipo,
+            ordem,
+            item,
+            preparador_sugerido,
+            alvo.strftime("%d/%m/%Y"),
+            alvo.strftime("%H:%M"),
+            alvo.isoformat(),
+            "AGENDADA",
+            "",
+            "",
+            observacao,
+            str(
+                st.session_state.get(
+                    "operador",
+                    "",
+                ) or ""
+            ),
+            str(
+                st.session_state.get(
+                    "turno",
+                    "",
+                ) or ""
+            ),
+            agora.isoformat(),
+            agora.isoformat(),
+        ],
+        want_rows=False,
+    )
+
+    _invalidar_cache_turso(
+        ARQUIVO_USINAGEM_PREPARACOES
+    )
+
+
+def _usi_prep_obter(rowid):
+    _usi_prep_garantir_tabela()
+
+    tab = _quote_identifier(
+        ARQUIVO_USINAGEM_PREPARACOES
+    )
+    result = turso_request(
+        f"""SELECT rowid AS "_id", *
+            FROM {tab}
+            WHERE rowid=?
+            LIMIT 1""",
+        [int(rowid)],
+        want_rows=True,
+    )
+    df = _resultado_turso_df(result)
+
+    if df.empty:
+        return None
+
+    return df.iloc[0].to_dict()
+
+
+def _usi_prep_atualizar_estado(
+    rowid,
+    estado,
+    inicio_iso=None,
+    fim_iso=None,
+):
+    _usi_prep_garantir_tabela()
+
+    tab = _quote_identifier(
+        ARQUIVO_USINAGEM_PREPARACOES
+    )
+    agora = datetime.now(FUSO_BR).isoformat()
+
+    campos = ['"Estado"=?', '"Atualizado_Em"=?']
+    args = [str(estado), agora]
+
+    if inicio_iso is not None:
+        campos.append('"Inicio_ISO"=?')
+        args.append(str(inicio_iso))
+    if fim_iso is not None:
+        campos.append('"Fim_ISO"=?')
+        args.append(str(fim_iso))
+
+    args.append(int(rowid))
+
+    turso_request(
+        f"""UPDATE {tab}
+            SET {", ".join(campos)}
+            WHERE rowid=?""",
+        args,
+        want_rows=False,
+    )
+
+    _invalidar_cache_turso(
+        ARQUIVO_USINAGEM_PREPARACOES
+    )
+
+
+def _usi_prep_iniciar(rowid):
+    row = _usi_prep_obter(rowid)
+    if not row:
+        raise RuntimeError(
+            "Preparação não encontrada."
+        )
+
+    situacao = _usi_prep_situacao(row)
+    if situacao in {"CONCLUÍDA", "CANCELADA"}:
+        raise RuntimeError(
+            "Esta preparação já foi encerrada."
+        )
+    if situacao == "PREPARANDO":
+        return
+
+    maquina = str(row.get("Maquina", "") or "")
+    ordem = str(row.get("Ordem", "") or "")
+    item = str(row.get("Item", "") or "")
+    tipo = str(row.get("Tipo", "") or "")
+
+    agora = datetime.now(FUSO_BR)
+
+    _usi_prep_atualizar_estado(
+        rowid,
+        "PREPARANDO",
+        inicio_iso=agora.isoformat(),
+    )
+
+    # Só aqui a máquina sai da produção.
+    _usinagem_salvar_status(
+        maquina,
+        "PREPARAÇÃO",
+        motivo=tipo,
+        ordem=ordem,
+        item=item,
+        observacao="",
+    )
+
+
+def _usi_prep_concluir(rowid):
+    row = _usi_prep_obter(rowid)
+    if not row:
+        raise RuntimeError(
+            "Preparação não encontrada."
+        )
+
+    maquina = str(row.get("Maquina", "") or "")
+    ordem = str(row.get("Ordem", "") or "")
+    item = str(row.get("Item", "") or "")
+
+    agora = datetime.now(FUSO_BR)
+
+    _usi_prep_atualizar_estado(
+        rowid,
+        "CONCLUÍDA",
+        fim_iso=agora.isoformat(),
+    )
+
+    # Finalizada a preparação, a máquina volta a produzir
+    # com a OP/Item planejados.
+    _usinagem_salvar_status(
+        maquina,
+        "PRODUZINDO",
+        motivo="",
+        ordem=ordem,
+        item=item,
+        observacao="",
+    )
+
+
+def _usi_prep_cancelar(rowid):
+    row = _usi_prep_obter(rowid)
+    if not row:
+        raise RuntimeError(
+            "Preparação não encontrada."
+        )
+
+    situacao = _usi_prep_situacao(row)
+    maquina = str(row.get("Maquina", "") or "")
+
+    _usi_prep_atualizar_estado(
+        rowid,
+        "CANCELADA",
+        fim_iso=datetime.now(FUSO_BR).isoformat(),
+    )
+
+    # Se estava em preparação ativa, devolve para produção.
+    if situacao == "PREPARANDO":
+        _usinagem_salvar_status(
+            maquina,
+            "PRODUZINDO",
+            motivo="",
+            ordem=str(row.get("Ordem", "") or ""),
+            item=str(row.get("Item", "") or ""),
+            observacao="",
+        )
+
+
+def _usi_prep_adiar(
+    rowid,
+    nova_data,
+    nova_hora,
+):
+    row = _usi_prep_obter(rowid)
+    if not row:
+        raise RuntimeError(
+            "Preparação não encontrada."
+        )
+
+    if isinstance(nova_data, datetime):
+        data_base = nova_data.date()
+    else:
+        data_base = nova_data
+
+    if isinstance(nova_hora, datetime):
+        hora_base = nova_hora.time()
+    else:
+        hora_base = nova_hora
+
+    novo_alvo = datetime.combine(
+        data_base,
+        hora_base,
+        tzinfo=FUSO_BR,
+    )
+
+    tab = _quote_identifier(
+        ARQUIVO_USINAGEM_PREPARACOES
+    )
+
+    turso_request(
+        f"""UPDATE {tab}
+            SET
+                "Data_Alvo"=?,
+                "Hora_Alvo"=?,
+                "Alvo_ISO"=?,
+                "Estado"='AGENDADA',
+                "Atualizado_Em"=?
+            WHERE rowid=?""",
+        [
+            novo_alvo.strftime("%d/%m/%Y"),
+            novo_alvo.strftime("%H:%M"),
+            novo_alvo.isoformat(),
+            datetime.now(FUSO_BR).isoformat(),
+            int(rowid),
+        ],
+        want_rows=False,
+    )
+
+    _invalidar_cache_turso(
+        ARQUIVO_USINAGEM_PREPARACOES
+    )
+
+
+def _usi_prep_resumo(df):
+    resumo = {
+        "ativa": 0,
+        "aguardando": 0,
+        "agendada": 0,
+        "total": 0,
+    }
+
+    if df is None or df.empty:
+        return resumo
+
+    situacoes = df["Situacao"].astype(str)
+
+    resumo["ativa"] = int(
+        situacoes.eq("PREPARANDO").sum()
+    )
+    resumo["aguardando"] = int(
+        situacoes.eq(
+            "AGUARDANDO PREPARADOR"
+        ).sum()
+    )
+    resumo["agendada"] = int(
+        situacoes.eq("AGENDADA").sum()
+    )
+    resumo["total"] = (
+        resumo["ativa"]
+        + resumo["aguardando"]
+        + resumo["agendada"]
+    )
+
+    return resumo
+
+
+def _usi_prep_proxima_maquina(df):
+    saida = {}
+    if df is None or df.empty:
+        return saida
+
+    prioridade = {
+        "PREPARANDO": 0,
+        "AGUARDANDO PREPARADOR": 1,
+        "AGENDADA": 2,
+    }
+
+    for _, row in df.iterrows():
+        d = row.to_dict()
+        maq = str(d.get("Maquina", "") or "")
+        if not maq:
+            continue
+
+        sit = str(
+            d.get("Situacao", "") or ""
+        )
+        d["_prio"] = prioridade.get(sit, 99)
+        d["_alvo_sort"] = (
+            _usi_prep_dt(d.get("Alvo_ISO", ""))
+            or datetime.max.replace(tzinfo=FUSO_BR)
+        )
+
+        atual = saida.get(maq)
+        if atual is None:
+            saida[maq] = d
+            continue
+
+        chave_nova = (
+            d["_prio"],
+            d["_alvo_sort"],
+        )
+        chave_atual = (
+            atual["_prio"],
+            atual["_alvo_sort"],
+        )
+
+        if chave_nova < chave_atual:
+            saida[maq] = d
+
+    return saida
+
+
+def _usi_prep_linha(row):
+    situacao = str(
+        row.get("Situacao", "") or ""
+    )
+    maq = str(row.get("Maquina", "") or "")
+    grupo = str(row.get("Grupo", "") or "")
+    tipo = str(row.get("Tipo", "") or "")
+    ordem = str(row.get("Ordem", "") or "").strip()
+    item = str(row.get("Item", "") or "").strip()
+    prep = str(
+        row.get("Preparador_Sugerido", "") or ""
+    ).strip()
+    data = str(row.get("Data_Alvo", "") or "")
+    hora = str(row.get("Hora_Alvo", "") or "")
+
+    if situacao == "PREPARANDO":
+        icon = "🟢"
+    elif situacao == "AGUARDANDO PREPARADOR":
+        icon = "🟠"
+    else:
+        icon = "🔵"
+
+    partes_topo = [f"{icon} {maq}"]
+
+    # Se não houver preparador sugerido, não exibe quem cadastrou.
+    if prep:
+        partes_topo.append(prep)
+
+    partes_topo.append(hora or "—")
+    partes_topo.append(situacao)
+
+    detalhes = [grupo, tipo]
+    if ordem:
+        detalhes.append(f"OP: {ordem}")
+    if item:
+        detalhes.append(f"Item: {item}")
+
+    return (
+        " · ".join(partes_topo)
+        + " — "
+        + " · ".join(detalhes)
+        + (f" · {data}" if data else "")
+    )
+
+
+def _usi_prep_render_lista_home(
+    df,
+    titulo="Preparações agora",
+    limite=12,
+):
+    st.markdown(f"### ⚙ {titulo}")
+
+    if df is None or df.empty:
+        st.success(
+            "✅ Nenhuma preparação programada neste momento."
+        )
+        return
+
+    resumo = _usi_prep_resumo(df)
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric(
+        "Ativas",
+        resumo["ativa"],
+    )
+    c2.metric(
+        "Aguardando",
+        resumo["aguardando"],
+    )
+    c3.metric(
+        "Futuras",
+        resumo["agendada"],
+    )
+
+    df_ord = df.copy()
+    ordem_sit = {
+        "PREPARANDO": 0,
+        "AGUARDANDO PREPARADOR": 1,
+        "AGENDADA": 2,
+    }
+    df_ord["_ordem"] = (
+        df_ord["Situacao"]
+        .map(ordem_sit)
+        .fillna(9)
+    )
+    df_ord = df_ord.sort_values(
+        ["_ordem", "Alvo_ISO"],
+        ascending=[True, True],
+    )
+
+    for _, row in df_ord.head(
+        int(limite)
+    ).iterrows():
+        st.markdown(
+            f"""
+            <div style="
+                padding:9px 11px;
+                border-radius:10px;
+                border:1px solid #27272A;
+                background:#111216;
+                margin-bottom:6px;
+                font-size:10px;
+                color:#D4D4D8;
+            ">
+                {html.escape(_usi_prep_linha(row.to_dict()))}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    if len(df_ord) > limite:
+        st.caption(
+            f"+ {len(df_ord) - limite} preparação(ões) na Programação."
+        )
+
+
+
+# =============================================================
 # USINAGEM · VIDA ÚTIL DAS FERRAMENTAS
 # =============================================================
 
@@ -9975,6 +10654,7 @@ def renderizar_topbar_usinagem(tela_atual):
     links = [
         ("usinagem_menu", "⌂ Início"),
         ("usinagem_maquinas", "▦ Máquinas"),
+        ("usinagem_programacao", "◷ Programação"),
         ("usinagem_historico", "↗ Histórico"),
     ]
 
@@ -9999,6 +10679,16 @@ def tela_usinagem_menu():
     status_map = _usinagem_status_atual()
     totais = _usinagem_totais(status_map, maquinas)
 
+    try:
+        df_preps = _usi_prep_listar(
+            incluir_finalizadas=False,
+            limite=1000,
+        )
+    except Exception:
+        df_preps = pd.DataFrame()
+
+    resumo_preps = _usi_prep_resumo(df_preps)
+
     nome = str(st.session_state.get("operador", "") or "")
     st.markdown(
         f"""
@@ -10019,12 +10709,30 @@ def tela_usinagem_menu():
 
     k1, k2, k3, k4, k5 = st.columns(5)
 
+    # Produção continua contando máquinas com preparação apenas futura/aguardando.
     cards = [
         (k1, "Produzindo", totais["PRODUZINDO"], "#2DD4BF", "▶"),
-        (k2, "Preparação", totais["PREPARAÇÃO"], "#F59E0B", "⚙"),
-        (k3, "Ajuste", totais["AJUSTE"], "#EC4899", "🎯"),
-        (k4, "Parada", totais["PARADA"], "#EF4444", "■"),
-        (k5, "Manutenção", totais["MANUTENÇÃO"], "#8B5CF6", "⌁"),
+        (
+            k3,
+            "Ajuste",
+            totais["AJUSTE"],
+            "#EC4899",
+            "🎯",
+        ),
+        (
+            k4,
+            "Parada",
+            totais["PARADA"],
+            "#EF4444",
+            "■",
+        ),
+        (
+            k5,
+            "Manutenção",
+            totais["MANUTENÇÃO"],
+            "#8B5CF6",
+            "⌁",
+        ),
     ]
 
     for col, label, valor, cor, icon in cards:
@@ -10045,6 +10753,36 @@ def tela_usinagem_menu():
             """,
             unsafe_allow_html=True,
         )
+
+    k2.markdown(
+        f"""
+        <div style="
+            min-height:112px;
+            padding:14px;
+            border-radius:14px;
+            border:1px solid #3A3220;
+            border-top:3px solid #F59E0B;
+            background:#14130F;
+        ">
+            <div style="font-size:9px;font-weight:900;color:#8B8B98;">PREPARAÇÕES</div>
+            <div style="font-size:29px;font-weight:950;color:#F4F4F5;margin-top:8px;">
+                {resumo_preps["total"]}
+            </div>
+            <div style="
+                display:flex;
+                gap:8px;
+                margin-top:6px;
+                font-size:8px;
+                color:#FCD34D;
+            ">
+                <span>Ativas <b>{resumo_preps["ativa"]}</b></span>
+                <span>Aguard. <b>{resumo_preps["aguardando"]}</b></span>
+                <span>Futuras <b>{resumo_preps["agendada"]}</b></span>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     st.markdown("### Produção por grupo")
 
@@ -10079,13 +10817,36 @@ def tela_usinagem_menu():
             unsafe_allow_html=True,
         )
 
-    if st.button(
+    st.divider()
+
+    _usi_prep_render_lista_home(
+        df_preps,
+        titulo="Preparações agora e próximas",
+        limite=12,
+    )
+
+    c_maq_home, c_prog_home = st.columns(2)
+
+    if c_maq_home.button(
         "▦ ABRIR MÁQUINAS",
         key="usinagem_home_abrir_maquinas",
         type="primary",
         use_container_width=True,
     ):
-        mudar_tela("usinagem_maquinas", forcar_rerun=True)
+        mudar_tela(
+            "usinagem_maquinas",
+            forcar_rerun=True,
+        )
+
+    if c_prog_home.button(
+        "◷ ABRIR PROGRAMAÇÃO",
+        key="usinagem_home_abrir_programacao",
+        use_container_width=True,
+    ):
+        mudar_tela(
+            "usinagem_programacao",
+            forcar_rerun=True,
+        )
 
 
 # =============================================================
@@ -10133,6 +10894,129 @@ def _usinagem_painel_maquina(maquina, status_info):
         f"Último apontamento: {status_info.get('Data_Hora', '') or '—'} · "
         f"{status_info.get('Operador', '') or '—'}"
     )
+
+    # Preparações da máquina, no mesmo conceito da Afiação.
+    try:
+        df_prep_maquina = _usi_prep_listar(
+            incluir_finalizadas=False,
+            limite=1000,
+        )
+        if not df_prep_maquina.empty:
+            df_prep_maquina = df_prep_maquina[
+                df_prep_maquina["Maquina"]
+                .astype(str)
+                .eq(maquina)
+            ].copy()
+    except Exception:
+        df_prep_maquina = pd.DataFrame()
+
+    if not df_prep_maquina.empty:
+        prox = df_prep_maquina.iloc[0].to_dict()
+        sit = str(prox.get("Situacao", "") or "")
+        cor_prep = (
+            "#2DD4BF"
+            if sit == "PREPARANDO"
+            else "#F59E0B"
+            if sit == "AGUARDANDO PREPARADOR"
+            else "#60A5FA"
+        )
+        st.markdown(
+            f"""
+            <div style="
+                padding:10px 12px;
+                border-radius:11px;
+                border:1px solid {cor_prep}55;
+                background:#111216;
+                margin:10px 0;
+            ">
+                <div style="font-size:9px;color:{cor_prep};font-weight:900;">
+                    PRÓXIMA PREPARAÇÃO · {html.escape(sit)}
+                </div>
+                <div style="font-size:11px;color:#F4F4F5;font-weight:900;margin-top:4px;">
+                    {html.escape(_usi_prep_linha(prox))}
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    with st.expander(
+        "◷ Programar preparação",
+        expanded=False,
+    ):
+        with st.form(
+            f"usi_prep_form_maquina_{maquina}"
+        ):
+            prep_tipo = st.selectbox(
+                "Tipo de preparação:",
+                USINAGEM_TIPOS_PREPARACAO,
+            )
+
+            p1, p2 = st.columns(2)
+            prep_ordem = p1.text_input(
+                "Ordem / OP:",
+                value=op_atual,
+            )
+            prep_item = p2.text_input(
+                "Item / Material:",
+                value=item_atual,
+            )
+
+            p3, p4 = st.columns(2)
+            prep_data = p3.date_input(
+                "Data:",
+                value=datetime.now(FUSO_BR).date(),
+            )
+            prep_hora = p4.time_input(
+                "Horário:",
+                value=(
+                    datetime.now(FUSO_BR)
+                    + timedelta(hours=1)
+                ).time().replace(
+                    second=0,
+                    microsecond=0,
+                ),
+            )
+
+            prep_sugerido = st.text_input(
+                "Preparador sugerido:",
+                placeholder=(
+                    "Opcional — se ficar vazio, "
+                    "não mostra o nome de quem cadastrou."
+                ),
+            )
+
+            prep_obs = st.text_area(
+                "Observação:",
+                placeholder=(
+                    "Fica salva no histórico; "
+                    "não aparece na linha da Programação."
+                ),
+                height=70,
+            )
+
+            if st.form_submit_button(
+                "📅 PROGRAMAR PREPARAÇÃO",
+                type="primary",
+                use_container_width=True,
+            ):
+                try:
+                    _usi_prep_criar(
+                        maquina,
+                        prep_tipo,
+                        prep_ordem,
+                        prep_item,
+                        prep_data,
+                        prep_hora,
+                        prep_sugerido,
+                        prep_obs,
+                    )
+                    st.success(
+                        "✅ Preparação programada."
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
 
     with st.form(f"usi_form_status_{maquina}"):
         novo_status = st.radio(
@@ -10211,6 +11095,18 @@ def tela_usinagem_maquinas():
     except Exception:
         tool_metricas = {}
 
+    try:
+        df_preps_grade = _usi_prep_listar(
+            incluir_finalizadas=False,
+            limite=1000,
+        )
+        prep_por_maquina = _usi_prep_proxima_maquina(
+            df_preps_grade
+        )
+    except Exception:
+        df_preps_grade = pd.DataFrame()
+        prep_por_maquina = {}
+
     maq_ativa = st.session_state.get("usinagem_maquina_ativa")
     if maq_ativa:
         _usinagem_painel_maquina(
@@ -10243,6 +11139,7 @@ def tela_usinagem_maquinas():
             info.get("Status", "PRODUZINDO")
         )
         estado_tool = tool_estados.get(maq)
+        prep_maquina = prep_por_maquina.get(maq)
 
         with col:
             if estado_tool:
@@ -10269,6 +11166,30 @@ def tela_usinagem_maquinas():
                     estado_tool,
                     met,
                 )
+
+                if prep_maquina:
+                    sit_p = str(
+                        prep_maquina.get(
+                            "Situacao",
+                            "",
+                        ) or ""
+                    )
+                    cor_p = (
+                        "#2DD4BF"
+                        if sit_p == "PREPARANDO"
+                        else "#F59E0B"
+                        if sit_p == "AGUARDANDO PREPARADOR"
+                        else "#60A5FA"
+                    )
+                    st.markdown(
+                        f'<div style="margin-top:4px;padding:7px 9px;'
+                        f'border-radius:8px;background:#111216;'
+                        f'border:1px solid {cor_p}55;'
+                        f'font-size:8px;color:{cor_p};font-weight:900;">'
+                        f'{html.escape(_usi_prep_linha(prep_maquina))}'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
                 _usi_tool_render_controles_grade(
                     maq,
@@ -10311,6 +11232,30 @@ def tela_usinagem_maquinas():
                     html_sem_timer,
                     unsafe_allow_html=True,
                 )
+
+                if prep_maquina:
+                    sit_p = str(
+                        prep_maquina.get(
+                            "Situacao",
+                            "",
+                        ) or ""
+                    )
+                    cor_p = (
+                        "#2DD4BF"
+                        if sit_p == "PREPARANDO"
+                        else "#F59E0B"
+                        if sit_p == "AGUARDANDO PREPARADOR"
+                        else "#60A5FA"
+                    )
+                    st.markdown(
+                        f'<div style="margin-top:4px;padding:7px 9px;'
+                        f'border-radius:8px;background:#111216;'
+                        f'border:1px solid {cor_p}55;'
+                        f'font-size:8px;color:{cor_p};font-weight:900;">'
+                        f'{html.escape(_usi_prep_linha(prep_maquina))}'
+                        f'</div>',
+                        unsafe_allow_html=True,
+                    )
 
                 if st.button(
                     f"INICIAR / ABRIR · {maq}",
@@ -10372,6 +11317,424 @@ def tela_usinagem_maquinas():
             )
 
         st.divider()
+
+
+# =============================================================
+# USINAGEM · PROGRAMAÇÃO
+# =============================================================
+
+def tela_usinagem_programacao():
+    st.markdown("## ◷ Programação · Usinagem")
+    st.caption(
+        "Mesma dinâmica da Afiação: futura → aguardando preparador → preparando → concluída."
+    )
+
+    grupos = _usinagem_grupos_permitidos()
+
+    with st.expander(
+        "➕ Programar nova preparação",
+        expanded=False,
+    ):
+        with st.form(
+            "usi_prog_nova_preparacao"
+        ):
+            c1, c2 = st.columns(2)
+
+            grupo = c1.selectbox(
+                "Grupo:",
+                grupos,
+                key="usi_prog_grupo",
+            )
+
+            maquina = c2.selectbox(
+                "Máquina:",
+                USINAGEM_GRUPOS.get(
+                    grupo,
+                    [],
+                ),
+                key="usi_prog_maquina",
+            )
+
+            c3, c4 = st.columns(2)
+
+            tipo = c3.selectbox(
+                "Tipo:",
+                USINAGEM_TIPOS_PREPARACAO,
+                key="usi_prog_tipo",
+            )
+
+            preparador = c4.text_input(
+                "Preparador sugerido:",
+                key="usi_prog_preparador",
+                placeholder="Opcional",
+            )
+
+            c5, c6 = st.columns(2)
+            ordem = c5.text_input(
+                "Ordem / OP:",
+                key="usi_prog_ordem",
+            )
+            item = c6.text_input(
+                "Item / Material:",
+                key="usi_prog_item",
+            )
+
+            agora_prog = datetime.now(FUSO_BR)
+            c7, c8 = st.columns(2)
+            data_alvo = c7.date_input(
+                "Data:",
+                value=agora_prog.date(),
+                key="usi_prog_data",
+            )
+            hora_alvo = c8.time_input(
+                "Horário:",
+                value=(
+                    agora_prog
+                    + timedelta(hours=1)
+                ).time().replace(
+                    second=0,
+                    microsecond=0,
+                ),
+                key="usi_prog_hora",
+            )
+
+            observacao = st.text_area(
+                "Observação:",
+                key="usi_prog_obs",
+                placeholder=(
+                    "Fica no histórico, sem aparecer "
+                    "na linha operacional da Programação."
+                ),
+                height=70,
+            )
+
+            if st.form_submit_button(
+                "📅 PROGRAMAR",
+                type="primary",
+                use_container_width=True,
+            ):
+                try:
+                    _usi_prep_criar(
+                        maquina,
+                        tipo,
+                        ordem,
+                        item,
+                        data_alvo,
+                        hora_alvo,
+                        preparador,
+                        observacao,
+                    )
+                    st.success(
+                        "✅ Preparação programada."
+                    )
+                    st.rerun()
+                except Exception as exc:
+                    st.error(str(exc))
+
+    try:
+        df = _usi_prep_listar(
+            incluir_finalizadas=False,
+            limite=1000,
+        )
+    except Exception as exc:
+        st.error(
+            f"Não foi possível carregar a programação: {exc}"
+        )
+        return
+
+    resumo = _usi_prep_resumo(df)
+
+    k1, k2, k3 = st.columns(3)
+    k1.metric(
+        "Preparações ativas",
+        resumo["ativa"],
+    )
+    k2.metric(
+        "Aguardando preparador",
+        resumo["aguardando"],
+    )
+    k3.metric(
+        "Futuras",
+        resumo["agendada"],
+    )
+
+    if df.empty:
+        st.success(
+            "✅ Nenhuma preparação programada."
+        )
+        return
+
+    # Filtros
+    f1, f2 = st.columns(2)
+    grupo_filtro = f1.selectbox(
+        "Filtrar grupo:",
+        ["Todos"] + grupos,
+        key="usi_prog_filtro_grupo",
+    )
+    situacao_filtro = f2.selectbox(
+        "Filtrar situação:",
+        [
+            "Todas",
+            "PREPARANDO",
+            "AGUARDANDO PREPARADOR",
+            "AGENDADA",
+        ],
+        key="usi_prog_filtro_situacao",
+    )
+
+    df_view = df.copy()
+
+    if grupo_filtro != "Todos":
+        df_view = df_view[
+            df_view["Grupo"]
+            .astype(str)
+            .eq(grupo_filtro)
+        ]
+
+    if situacao_filtro != "Todas":
+        df_view = df_view[
+            df_view["Situacao"]
+            .astype(str)
+            .eq(situacao_filtro)
+        ]
+
+    ordem_sit = {
+        "PREPARANDO": 0,
+        "AGUARDANDO PREPARADOR": 1,
+        "AGENDADA": 2,
+    }
+    df_view["_ord"] = (
+        df_view["Situacao"]
+        .map(ordem_sit)
+        .fillna(9)
+    )
+    df_view = df_view.sort_values(
+        ["_ord", "Alvo_ISO"],
+        ascending=[True, True],
+    )
+
+    for _, row in df_view.iterrows():
+        d = row.to_dict()
+        rid = int(d["_id"])
+        sit = str(d.get("Situacao", "") or "")
+
+        if sit == "PREPARANDO":
+            cor = "#2DD4BF"
+        elif sit == "AGUARDANDO PREPARADOR":
+            cor = "#F59E0B"
+        else:
+            cor = "#60A5FA"
+
+        st.markdown(
+            f'<div style="padding:11px 13px;border-radius:11px;'
+            f'border:1px solid {cor}55;background:#111216;'
+            f'margin-top:9px;">'
+            f'<div style="font-size:10px;color:{cor};font-weight:900;">'
+            f'{html.escape(_usi_prep_linha(d))}'
+            f'</div></div>',
+            unsafe_allow_html=True,
+        )
+
+        # A observação NÃO aparece na linha operacional.
+        # Só mostramos em expander de detalhe/histórico.
+        with st.expander(
+            f"Gerenciar · {d.get('Maquina', '')} · {d.get('Hora_Alvo', '')}",
+            expanded=False,
+        ):
+            prep_sugerido = str(
+                d.get("Preparador_Sugerido", "") or ""
+            ).strip()
+
+            if prep_sugerido:
+                st.caption(
+                    f"Preparador sugerido: {prep_sugerido}"
+                )
+
+            obs = str(
+                d.get("Observacao", "") or ""
+            ).strip()
+            if obs:
+                st.caption(
+                    f"Observação: {obs}"
+                )
+
+            if sit == "PREPARANDO":
+                c_fin, c_can = st.columns(2)
+
+                if c_fin.button(
+                    "✅ CONCLUIR PREPARAÇÃO",
+                    key=f"usi_prep_finish_{rid}",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    try:
+                        _usi_prep_concluir(rid)
+                        st.success(
+                            "✅ Preparação concluída."
+                        )
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
+
+                if c_can.button(
+                    "✕ CANCELAR",
+                    key=f"usi_prep_cancel_active_{rid}",
+                    use_container_width=True,
+                ):
+                    try:
+                        _usi_prep_cancelar(rid)
+                        st.success(
+                            "Preparação cancelada."
+                        )
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
+
+            else:
+                c_start, c_delay, c_cancel = st.columns(
+                    [1.1, 1.2, 0.8]
+                )
+
+                if c_start.button(
+                    "▶ INICIAR PREPARAÇÃO",
+                    key=f"usi_prep_start_{rid}",
+                    type="primary",
+                    use_container_width=True,
+                ):
+                    try:
+                        _usi_prep_iniciar(rid)
+                        st.success(
+                            "✅ Preparação iniciada."
+                        )
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
+
+                if c_delay.button(
+                    "🕒 ADIAR",
+                    key=f"usi_prep_delay_open_{rid}",
+                    use_container_width=True,
+                ):
+                    st.session_state[
+                        f"usi_prep_delay_{rid}"
+                    ] = True
+
+                if c_cancel.button(
+                    "✕ CANCELAR",
+                    key=f"usi_prep_cancel_{rid}",
+                    use_container_width=True,
+                ):
+                    try:
+                        _usi_prep_cancelar(rid)
+                        st.success(
+                            "Preparação cancelada."
+                        )
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(str(exc))
+
+                if st.session_state.get(
+                    f"usi_prep_delay_{rid}"
+                ):
+                    alvo_atual = (
+                        _usi_prep_dt(
+                            d.get("Alvo_ISO", "")
+                        )
+                        or datetime.now(FUSO_BR)
+                    )
+
+                    d1, d2 = st.columns(2)
+                    nova_data = d1.date_input(
+                        "Nova data:",
+                        value=alvo_atual.date(),
+                        key=f"usi_prep_delay_date_{rid}",
+                    )
+                    nova_hora = d2.time_input(
+                        "Novo horário:",
+                        value=alvo_atual.time().replace(
+                            second=0,
+                            microsecond=0,
+                        ),
+                        key=f"usi_prep_delay_time_{rid}",
+                    )
+
+                    if st.button(
+                        "💾 SALVAR NOVO HORÁRIO",
+                        key=f"usi_prep_delay_save_{rid}",
+                        use_container_width=True,
+                    ):
+                        try:
+                            _usi_prep_adiar(
+                                rid,
+                                nova_data,
+                                nova_hora,
+                            )
+                            st.session_state.pop(
+                                f"usi_prep_delay_{rid}",
+                                None,
+                            )
+                            st.success(
+                                "✅ Preparação adiada."
+                            )
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(str(exc))
+
+    st.divider()
+
+    with st.expander(
+        "📜 Preparações concluídas / canceladas",
+        expanded=False,
+    ):
+        try:
+            df_hist = _usi_prep_listar(
+                incluir_finalizadas=True,
+                limite=300,
+            )
+            if not df_hist.empty:
+                df_hist = df_hist[
+                    df_hist["Situacao"].isin(
+                        [
+                            "CONCLUÍDA",
+                            "CANCELADA",
+                        ]
+                    )
+                ].copy()
+        except Exception:
+            df_hist = pd.DataFrame()
+
+        if df_hist.empty:
+            st.info(
+                "Nenhum histórico de preparação."
+            )
+        else:
+            colunas = [
+                c
+                for c in [
+                    "Data_Alvo",
+                    "Hora_Alvo",
+                    "Grupo",
+                    "Maquina",
+                    "Tipo",
+                    "Ordem",
+                    "Item",
+                    "Preparador_Sugerido",
+                    "Estado",
+                    "Inicio_ISO",
+                    "Fim_ISO",
+                    "Observacao",
+                    "Operador_Cadastro",
+                ]
+                if c in df_hist.columns
+            ]
+
+            st.dataframe(
+                df_hist[colunas],
+                use_container_width=True,
+                hide_index=True,
+                height=420,
+            )
+
 
 
 # =============================================================
@@ -14815,6 +16178,7 @@ ROTAS_AFIACAO_TOPBAR = {
 ROTAS_USINAGEM_TOPBAR = {
     'usinagem_menu',
     'usinagem_maquinas',
+    'usinagem_programacao',
     'usinagem_historico',
 }
 
@@ -14836,6 +16200,7 @@ elif tela == 'login': tela_login()
 elif tela == 'usinagem_login': tela_usinagem_login()
 elif tela == 'usinagem_menu': tela_usinagem_menu()
 elif tela == 'usinagem_maquinas': tela_usinagem_maquinas()
+elif tela == 'usinagem_programacao': tela_usinagem_programacao()
 elif tela == 'usinagem_historico': tela_usinagem_historico()
 elif tela == 'menu': tela_menu()
 elif tela == 'visao_geral': tela_visao_geral()
