@@ -8568,8 +8568,15 @@ def _usi_prep_render_lista_home(
     st.markdown(f"### ⚙ {titulo}")
 
     if df is None or df.empty:
-        st.success(
-            "✅ Nenhuma preparação programada neste momento."
+        st.markdown(
+            '<div class="prep-empty" style="min-height:58px;display:flex;'
+            'align-items:center;justify-content:center;border-radius:12px;'
+            'background:rgba(45,212,191,.035);'
+            'border:1px solid rgba(45,212,191,.12);'
+            'color:#7DD3C7;font-size:10px;font-weight:800;">'
+            '✓ Nenhuma preparação programada neste momento.'
+            '</div>',
+            unsafe_allow_html=True,
         )
         return
 
@@ -10670,6 +10677,176 @@ def renderizar_topbar_usinagem(tela_atual):
         )
 
 
+def _usi_render_grupo_bar(nome, totais_grupo, total):
+    total = max(1, int(total or 0))
+    prod = int(totais_grupo.get("PRODUZINDO", 0) or 0)
+    prep = int(totais_grupo.get("PREPARAÇÃO", 0) or 0)
+    ajuste = int(totais_grupo.get("AJUSTE", 0) or 0)
+    parada = int(totais_grupo.get("PARADA", 0) or 0)
+    manut = int(totais_grupo.get("MANUTENÇÃO", 0) or 0)
+    pct = round((prod / total) * 100)
+
+    return (
+        '<div class="sector-row">'
+        f'<div class="sector-name" style="min-width:132px">{html.escape(nome)}</div>'
+        '<div class="sector-track">'
+        f'<div class="sector-fill" style="width:{pct}%"></div>'
+        '</div>'
+        f'<div class="sector-pct">{pct}%</div>'
+        '</div>'
+        '<div class="sector-mini" style="margin-left:0;margin-bottom:9px;">'
+        f'<span>Produção <b>{prod}</b></span>'
+        f'<span>Prep. <b>{prep}</b></span>'
+        f'<span style="color:#F472B6">Ajuste <b>{ajuste}</b></span>'
+        f'<span>Parada <b>{parada}</b></span>'
+        f'<span>Manut. <b>{manut}</b></span>'
+        '</div>'
+    )
+
+
+def _usi_prep_item_home_html(row):
+    d = row if isinstance(row, dict) else row.to_dict()
+
+    sit = str(d.get("Situacao", "") or "")
+    maq = str(d.get("Maquina", "") or "")
+    grupo = str(d.get("Grupo", "") or "")
+    tipo = str(d.get("Tipo", "") or "")
+    hora = str(d.get("Hora_Alvo", "") or "")
+    data = str(d.get("Data_Alvo", "") or "")
+    prep = str(d.get("Preparador_Sugerido", "") or "").strip()
+    ordem = str(d.get("Ordem", "") or "").strip()
+    item = str(d.get("Item", "") or "").strip()
+
+    if sit == "PREPARANDO":
+        classe = "active"
+        icone = "▶"
+        situacao_txt = "PREPARANDO"
+        tempo_txt = "agora"
+    elif sit == "AGUARDANDO PREPARADOR":
+        classe = "waiting"
+        icone = "◷"
+        situacao_txt = "AGUARDANDO"
+        tempo_txt = hora or "—"
+    else:
+        classe = "waiting"
+        icone = "◷"
+        situacao_txt = "PROGRAMADA"
+        tempo_txt = hora or "—"
+
+    meta = []
+    if prep:
+        meta.append(prep)
+    if grupo:
+        meta.append(grupo)
+    if tipo:
+        meta.append(tipo)
+
+    detalhes = []
+    if ordem:
+        detalhes.append(f"OP {ordem}")
+    if item:
+        detalhes.append(f"Item {item}")
+
+    meta_txt = " · ".join(meta)
+    detalhes_txt = " · ".join(detalhes)
+
+    return (
+        f'<div class="prep-item {classe}">'
+        f'<div class="prep-play">{icone}</div>'
+        '<div class="prep-main">'
+        f'<div class="prep-machine">Máquina {html.escape(maq)}</div>'
+        f'<div class="prep-status">{html.escape(situacao_txt)}</div>'
+        f'<div class="prep-meta">{html.escape(meta_txt)}</div>'
+        f'<div class="prep-tags">{html.escape(detalhes_txt)}</div>'
+        '</div>'
+        '<div class="prep-time">'
+        f'<span>{html.escape(data)}</span>'
+        f'{html.escape(tempo_txt)}'
+        '</div>'
+        '</div>'
+    )
+
+
+def _usi_prep_lista_home_html(df, situacao, limite=5):
+    if df is None or df.empty:
+        return '<div class="prep-empty">Nenhuma preparação nesta condição.</div>'
+
+    itens = df[
+        df["Situacao"].astype(str).eq(situacao)
+    ].copy()
+
+    if itens.empty:
+        return '<div class="prep-empty">Nenhuma preparação nesta condição.</div>'
+
+    itens = itens.sort_values(
+        "Alvo_ISO",
+        ascending=True,
+    )
+
+    corpo = "".join(
+        _usi_prep_item_home_html(row)
+        for _, row in itens.head(int(limite)).iterrows()
+    )
+
+    if len(itens) > limite:
+        corpo += (
+            f'<div class="prep-more">+ {len(itens)-limite} '
+            'outra(s) preparação(ões)</div>'
+        )
+
+    return corpo
+
+
+def _usi_tool_resumo_home():
+    """Resumo leve da vida útil para a Home."""
+    saida = {
+        "monitoradas": 0,
+        "atencao": 0,
+        "criticas": 0,
+        "em_troca": 0,
+    }
+
+    try:
+        estados = _usi_tool_estados_todos()
+        metricas = _usi_tool_metricas_lote()
+    except Exception:
+        return saida
+
+    agora = datetime.now(FUSO_BR)
+    permitidas = set(_usinagem_maquinas_permitidas())
+
+    for maq, estado in estados.items():
+        if maq not in permitidas:
+            continue
+
+        saida["monitoradas"] += 1
+
+        if str(estado.get("Estado", "") or "").upper() == "TROCANDO":
+            saida["em_troca"] += 1
+
+        item = str(estado.get("Item", "") or "").strip().upper()
+        ferr = str(estado.get("Ferramenta", "") or "").strip().upper()
+        met = metricas.get((maq, item, ferr), {})
+        media = float(met.get("media_vida_s", 0) or 0)
+
+        if media <= 0:
+            continue
+
+        vida = _usi_tool_vida_atual_segundos(
+            estado,
+            agora,
+        )
+        pct = (vida / media) * 100 if media else 0
+
+        if pct >= 80:
+            saida["criticas"] += 1
+        elif pct >= 65:
+            saida["atencao"] += 1
+
+    return saida
+
+
+
 # =============================================================
 # USINAGEM · DASHBOARD
 # =============================================================
@@ -10677,7 +10854,10 @@ def renderizar_topbar_usinagem(tela_atual):
 def tela_usinagem_menu():
     maquinas = _usinagem_maquinas_permitidas()
     status_map = _usinagem_status_atual()
-    totais = _usinagem_totais(status_map, maquinas)
+    totais = _usinagem_totais(
+        status_map,
+        maquinas,
+    )
 
     try:
         df_preps = _usi_prep_listar(
@@ -10688,141 +10868,270 @@ def tela_usinagem_menu():
         df_preps = pd.DataFrame()
 
     resumo_preps = _usi_prep_resumo(df_preps)
+    resumo_tools = _usi_tool_resumo_home()
 
-    nome = str(st.session_state.get("operador", "") or "")
+    agora = datetime.now(FUSO_BR)
+    hora = agora.hour
+    saudacao = (
+        "Bom dia"
+        if 5 <= hora < 12
+        else "Boa tarde"
+        if 12 <= hora < 18
+        else "Boa noite"
+    )
+
+    nome_raw = str(
+        st.session_state.get("operador", "")
+        or ""
+    ).strip()
+    primeiro_nome = html.escape(
+        nome_raw.split()[0]
+        if nome_raw
+        else "Usuário"
+    )
+
+    # Cabeçalho no mesmo padrão visual da Afiação.
+    html_boas_vindas = (
+        '<div class="dash-welcome">'
+        '<div>'
+        '<div class="dash-eyebrow">'
+        'Painel operacional · Usinagem'
+        '</div>'
+        f'<div class="dash-title">{saudacao}, {primeiro_nome}.</div>'
+        '<div class="dash-subtitle">'
+        'Visão atual da Usinagem, preparações e vida útil das ferramentas.'
+        '</div>'
+        '</div>'
+        f'<div class="dash-date">{agora.strftime("%d/%m/%Y")} · '
+        f'{agora.strftime("%H:%M")}</div>'
+        '</div>'
+    )
     st.markdown(
-        f"""
-        <div style="margin:18px 0 16px 0;">
-            <div style="font-size:10px;font-weight:900;color:#2DD4BF;letter-spacing:1px;">
-                PAINEL OPERACIONAL · USINAGEM
-            </div>
-            <div style="font-size:29px;font-weight:950;color:#F4F4F5;margin-top:4px;">
-                Olá, {html.escape(nome)}.
-            </div>
-            <div style="font-size:11px;color:#8B8B98;margin-top:4px;">
-                Visão atual das máquinas disponíveis para o seu acesso.
-            </div>
-        </div>
-        """,
+        html_boas_vindas,
         unsafe_allow_html=True,
     )
 
-    k1, k2, k3, k4, k5 = st.columns(5)
-
-    # Produção continua contando máquinas com preparação apenas futura/aguardando.
-    cards = [
-        (k1, "Produzindo", totais["PRODUZINDO"], "#2DD4BF", "▶"),
-        (
-            k3,
-            "Ajuste",
-            totais["AJUSTE"],
-            "#EC4899",
-            "🎯",
-        ),
-        (
-            k4,
-            "Parada",
+    # KPIs iguais à linguagem da Afiação.
+    html_kpis = (
+        '<div class="kpi-grid">'
+        + _render_kpi(
+            "Produzindo",
+            totais["PRODUZINDO"],
+            "▶",
+            "#2DD4BF",
+            f'de {len(maquinas)} máquinas',
+        )
+        + _render_prep_kpi(
+            resumo_preps["ativa"],
+            resumo_preps["aguardando"]
+            + resumo_preps["agendada"],
+        )
+        + _render_kpi(
+            "Paradas",
             totais["PARADA"],
-            "#EF4444",
             "■",
-        ),
-        (
-            k5,
+            "#EF4444",
+            "requerem acompanhamento",
+        )
+        + _render_kpi(
             "Manutenção",
             totais["MANUTENÇÃO"],
-            "#8B5CF6",
             "⌁",
-        ),
-    ]
-
-    for col, label, valor, cor, icon in cards:
-        col.markdown(
-            f"""
-            <div style="
-                min-height:112px;
-                padding:14px;
-                border-radius:14px;
-                border:1px solid #27272A;
-                border-top:3px solid {cor};
-                background:#121216;
-            ">
-                <div style="font-size:9px;font-weight:900;color:#8B8B98;">{label.upper()}</div>
-                <div style="font-size:29px;font-weight:950;color:#F4F4F5;margin-top:8px;">{valor}</div>
-                <div style="font-size:10px;color:{cor};margin-top:4px;">{icon} máquinas</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+            "#8B5CF6",
+            "máquinas em manutenção",
         )
-
-    k2.markdown(
-        f"""
-        <div style="
-            min-height:112px;
-            padding:14px;
-            border-radius:14px;
-            border:1px solid #3A3220;
-            border-top:3px solid #F59E0B;
-            background:#14130F;
-        ">
-            <div style="font-size:9px;font-weight:900;color:#8B8B98;">PREPARAÇÕES</div>
-            <div style="font-size:29px;font-weight:950;color:#F4F4F5;margin-top:8px;">
-                {resumo_preps["total"]}
-            </div>
-            <div style="
-                display:flex;
-                gap:8px;
-                margin-top:6px;
-                font-size:8px;
-                color:#FCD34D;
-            ">
-                <span>Ativas <b>{resumo_preps["ativa"]}</b></span>
-                <span>Aguard. <b>{resumo_preps["aguardando"]}</b></span>
-                <span>Futuras <b>{resumo_preps["agendada"]}</b></span>
-            </div>
-        </div>
-        """,
+        + '</div>'
+    )
+    st.markdown(
+        html_kpis,
         unsafe_allow_html=True,
     )
 
-    st.markdown("### Produção por grupo")
-
-    grupos = _usinagem_grupos_permitidos()
-    for grupo in grupos:
-        lista = USINAGEM_GRUPOS[grupo]
-        t = _usinagem_totais(status_map, lista)
-        total = len(lista)
-        prod = t["PRODUZINDO"]
-        pct = (prod / total * 100) if total else 0
-
+    # Linha compacta para Ajustes, sem criar um quinto card grande.
+    if totais["AJUSTE"] > 0:
         st.markdown(
-            f"""
-            <div style="
-                padding:12px 14px;
-                border-radius:12px;
-                border:1px solid #22272A;
-                background:#101214;
-                margin-bottom:8px;
-            ">
-                <div style="display:flex;justify-content:space-between;gap:12px;">
-                    <div>
-                        <div style="font-size:12px;font-weight:900;color:#F4F4F5;">{html.escape(grupo)}</div>
-                        <div style="font-size:9px;color:#71717A;margin-top:3px;">
-                            {prod} produzindo · {t["PREPARAÇÃO"]} preparação · {t["AJUSTE"]} ajuste · {t["PARADA"]} parada · {t["MANUTENÇÃO"]} manutenção
-                        </div>
-                    </div>
-                    <div style="font-size:12px;font-weight:900;color:#2DD4BF;">{pct:.0f}%</div>
-                </div>
-            </div>
-            """,
+            f'<div style="margin:8px 0 2px;padding:8px 11px;'
+            f'border-radius:10px;background:rgba(236,72,153,.07);'
+            f'border:1px solid rgba(236,72,153,.18);'
+            f'color:#F472B6;font-size:10px;font-weight:850;">'
+            f'🎯 {totais["AJUSTE"]} máquina(s) em ajuste neste momento.'
+            f'</div>',
             unsafe_allow_html=True,
         )
 
-    st.divider()
+    grupos = _usinagem_grupos_permitidos()
 
-    _usi_prep_render_lista_home(
-        df_preps,
-        titulo="Preparações agora e próximas",
-        limite=12,
+    # Painel esquerdo: Produção por grupo.
+    html_grupos = (
+        '<div class="dash-panel sector-panel">'
+        '<div class="dash-panel-title">Produção por grupo</div>'
+        '<div class="dash-panel-sub">'
+        'Máquinas com preparação futura/aguardando continuam contabilizadas como produção'
+        '</div>'
+    )
+
+    for grupo in grupos:
+        lista = USINAGEM_GRUPOS.get(grupo, [])
+        totais_grupo = _usinagem_totais(
+            status_map,
+            lista,
+        )
+        html_grupos += _usi_render_grupo_bar(
+            grupo,
+            totais_grupo,
+            len(lista),
+        )
+
+    html_grupos += '</div>'
+
+    # Painel direito: Preparações agora e futuras.
+    ativas = resumo_preps["ativa"]
+    aguardando = resumo_preps["aguardando"]
+    futuras = resumo_preps["agendada"]
+
+    if df_preps is None or df_preps.empty:
+        prep_ativa_html = (
+            '<div class="prep-empty">'
+            'Nenhuma preparação ativa.'
+            '</div>'
+        )
+        prep_aguard_html = (
+            '<div class="prep-empty">'
+            'Nenhuma máquina aguardando preparador.'
+            '</div>'
+        )
+        prep_futura_html = (
+            '<div class="prep-empty">'
+            'Nenhuma preparação futura programada.'
+            '</div>'
+        )
+    else:
+        prep_ativa_html = _usi_prep_lista_home_html(
+            df_preps,
+            "PREPARANDO",
+            limite=4,
+        )
+        prep_aguard_html = _usi_prep_lista_home_html(
+            df_preps,
+            "AGUARDANDO PREPARADOR",
+            limite=4,
+        )
+        prep_futura_html = _usi_prep_lista_home_html(
+            df_preps,
+            "AGENDADA",
+            limite=4,
+        )
+
+    html_preps = (
+        '<div class="dash-panel">'
+        '<div class="dash-panel-title">Preparações agora</div>'
+        '<div class="dash-panel-sub">'
+        'Preparações da Usinagem separadas por situação'
+        '</div>'
+        '<div class="prep-summary">'
+        f'<div class="prep-chip active">● Ativas <b>{ativas}</b></div>'
+        f'<div class="prep-chip waiting">◷ Aguardando <b>{aguardando}</b></div>'
+        f'<div class="prep-chip waiting">◷ Futuras <b>{futuras}</b></div>'
+        '</div>'
+        f'<div class="prep-section-title">'
+        f'<span>▶ Preparação ativa</span>'
+        f'<span class="prep-section-count">{ativas}</span>'
+        f'</div>'
+        f'<div class="prep-list">{prep_ativa_html}</div>'
+        f'<div class="prep-section-title">'
+        f'<span>◷ Aguardando preparador</span>'
+        f'<span class="prep-section-count">{aguardando}</span>'
+        f'</div>'
+        f'<div class="prep-list">{prep_aguard_html}</div>'
+        f'<div class="prep-section-title">'
+        f'<span>◷ Preparações futuras</span>'
+        f'<span class="prep-section-count">{futuras}</span>'
+        f'</div>'
+        f'<div class="prep-list">{prep_futura_html}</div>'
+        '</div>'
+    )
+
+    col_esq, col_dir = st.columns(
+        [0.92, 1.48],
+        gap="medium",
+    )
+
+    with col_esq:
+        st.markdown(
+            html_grupos,
+            unsafe_allow_html=True,
+        )
+
+        st.markdown(
+            "<div style='margin:14px 0 6px 0;font-size:12px;"
+            "font-weight:900;color:#F4F4F5;'>🛠️ Vida útil das ferramentas</div>",
+            unsafe_allow_html=True,
+        )
+
+        def _tool_stat_card(label, valor, icone, cor):
+            return (
+                f'<div class="setup-metric-card" style="--metric-color:{cor};">'
+                f'<div class="setup-metric-icon">{html.escape(str(icone))}</div>'
+                f'<div class="setup-metric-label">{html.escape(str(label))}</div>'
+                f'<div style="font-size:24px;font-weight:950;color:#F4F4F5;'
+                f'margin-top:7px;">{int(valor)}</div>'
+                f'<div style="font-size:9px;color:#71717A;margin-top:3px;">máquina(s)</div>'
+                f'</div>'
+            )
+
+        html_tools = (
+            '<div class="setup-month-panel setup-month-panel-compact">'
+            '<div class="setup-month-top">'
+            '<div>'
+            '<div class="setup-month-title">Monitoramento de ferramentas</div>'
+            '<div class="setup-month-sub">'
+            'Situação dos ciclos ativos da Usinagem'
+            '</div>'
+            '</div>'
+            f'<div class="setup-month-badge">{resumo_tools["monitoradas"]} monitoradas</div>'
+            '</div>'
+            '<div class="setup-month-grid setup-month-grid-2x2">'
+            + _tool_stat_card(
+                "Monitoradas",
+                resumo_tools["monitoradas"],
+                "M",
+                "#2DD4BF",
+            )
+            + _tool_stat_card(
+                "Atenção · 65–79%",
+                resumo_tools["atencao"],
+                "!",
+                "#F59E0B",
+            )
+            + _tool_stat_card(
+                "Críticas · ≥80%",
+                resumo_tools["criticas"],
+                "80",
+                "#EF4444",
+            )
+            + _tool_stat_card(
+                "Em troca",
+                resumo_tools["em_troca"],
+                "T",
+                "#A78BFA",
+            )
+            + '</div></div>'
+        )
+
+        st.markdown(
+            html_tools,
+            unsafe_allow_html=True,
+        )
+
+    with col_dir:
+        st.markdown(
+            html_preps,
+            unsafe_allow_html=True,
+        )
+
+    st.markdown(
+        "<div style='margin-top:12px'></div>",
+        unsafe_allow_html=True,
     )
 
     c_maq_home, c_prog_home = st.columns(2)
